@@ -1,0 +1,7 @@
+fastapi==0.115.6
+uvicorn[standard]==0.30.6
+feedparser==6.0.11
+scikit-learn==1.5.2
+numpy==2.0.2
+python-dotenv==1.0.1
+openai==1.55.3
