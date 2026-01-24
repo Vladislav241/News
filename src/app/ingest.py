@@ -1,11 +1,128 @@
 # src/app/ingest.py
 from __future__ import annotations
 
+import os
 import hashlib
 import json
 import logging
 import time
-from datetime import datetime, timezone
+
+
+# --- clustering gates helpers (cheap, offline) ---
+import re as _re
+from datetime import datetime, timezone, timedelta
+
+_CAP_SEQ_RE = _re.compile(r"\b(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3}|[A-Z]{2,}(?:\s+[A-Z]{2,}){0,2})\b")
+_NOISE = {"the","and","for","with","from","says","said","new","news","live","update","breaking"}
+
+# Ultra-common entities that show up in many unrelated stories.
+# We still keep them as entities, but we don't allow them to be the *only*
+# reason to merge two stories.
+_WEAK_ANCHORS = {
+    "trump",
+    "biden",
+    "putin",
+    "zelensky",
+    "ukraine",
+    "russia",
+    "china",
+    "united states",
+    "u.s.",
+    "us",
+    "uk",
+    "europe",
+}
+
+
+def _extract_anchor_entities(text: str) -> set[str]:
+    """Return a smaller set of *strong* entities used as merge anchors.
+
+    Rules of thumb:
+    - multi-word proper entities ("canada tariff", "jamie dimon")
+    - longer single-word entities (>=6 chars)
+    - exclude very common political/world terms so they don't glue stories
+    """
+    ents = _extract_entities(text)
+    anchors: set[str] = set()
+    for e in ents:
+        if e in _WEAK_ANCHORS:
+            continue
+        if " " in e:
+            anchors.add(e)
+        elif len(e) >= 6:
+            anchors.add(e)
+    # cap
+    if len(anchors) > 40:
+        anchors = set(sorted(anchors, key=lambda x: (-len(x), x))[:40])
+    return anchors
+
+def _extract_entities(text: str) -> set[str]:
+    if not text:
+        return set()
+    ents: set[str] = set()
+    for m in _CAP_SEQ_RE.finditer(text):
+        chunk = m.group(0).strip()
+        parts = [w.strip('.') for w in chunk.split()]
+        if len(parts)==1 and len(parts[0]) < 4:
+            continue
+        norm = " ".join(parts).lower()
+        if norm in _NOISE:
+            continue
+        ents.add(norm)
+        for w in parts:
+            lw = w.lower()
+            if lw not in _NOISE and len(lw) >= 3:
+                ents.add(lw)
+    # limit size
+    if len(ents) > 60:
+        ents = set(sorted(ents, key=lambda x: (-len(x), x))[:60])
+    return ents
+
+
+def _anchor_entities(ents: set[str]) -> set[str]:
+    """Return stronger "anchor" entities used for merge decisions.
+
+    We treat multi-word entities ("canada trade") and longer tokens as stronger.
+    Very common names/topics are considered weak anchors.
+    """
+    anchors: set[str] = set()
+    for e in ents or set():
+        e = (e or "").strip().lower()
+        if not e or e in _NOISE:
+            continue
+        if e in _WEAK_ANCHORS:
+            continue
+        # multi-word entities are strongest
+        if " " in e:
+            anchors.add(e)
+            continue
+        # longer single tokens (often place/org) are ok
+        if len(e) >= 6:
+            anchors.add(e)
+    # keep anchors bounded
+    if len(anchors) > 40:
+        anchors = set(sorted(anchors, key=lambda x: (-len(x), x))[:40])
+    return anchors
+
+def _jaccard(a: set[str], b: set[str]) -> float:
+    if not a or not b:
+        return 0.0
+    inter = len(a & b)
+    union = len(a | b)
+    return inter / union if union else 0.0
+
+def _parse_iso_dt(s: str | None):
+    if not s:
+        return None
+    try:
+        if s.endswith('Z'):
+            s = s[:-1] + '+00:00'
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return None
 from typing import Any
 
 import feedparser
@@ -13,7 +130,13 @@ import requests
 from bs4 import BeautifulSoup
 
 from .ai import summarize_cluster
-from .clustering import canonical_cluster_key, match_cluster, normalize_title_for_key
+from .clustering import (
+    canonical_cluster_key,
+    jaccard_similarity,
+    match_cluster,
+    normalize_title_for_key,
+    strong_token_overlap,
+)
 from .db import db
 from .scoring import compute_credibility
 
@@ -418,13 +541,26 @@ def run_ingest_cycle() -> dict[str, Any]:
 
         for lang, aids in inserted_by_lang.items():
             candidates_db = db.list_recent_clusters(language=lang, limit=900)
-            candidates: list[tuple[int, str]] = []
-
+            # Precompute candidate meta once per language for better matching quality.
+            candidates_meta: list[dict] = []
             for c in candidates_db:
                 cid = int(c["id"])
                 txts = db.get_cluster_article_texts(cid, limit=10)
                 ctext = " ".join([(c.get("title") or "")] + txts).strip()
-                candidates.append((cid, ctext))
+                latest = db.get_cluster_latest_published_at(cid)
+                c_topic = (c.get("topic") or "general").strip().lower()
+                c_country = (c.get("country") or "world").strip().lower()
+                c_ents = _extract_entities(ctext)
+                c_anchors = _extract_anchor_entities(ctext)
+                candidates_meta.append({
+                    "cid": cid,
+                    "text": ctext,
+                    "topic": c_topic,
+                    "country": c_country,
+                    "latest_published_at": latest,
+                    "entities": c_ents,
+                    "anchors": c_anchors,
+                })
 
             for aid in aids:
                 art = db.get_article_by_id(aid)
@@ -444,7 +580,72 @@ def run_ingest_cycle() -> dict[str, Any]:
                 if existing:
                     cluster_id = int(existing["id"])
                 else:
+                    # --- gate before clustering ---
+                    a_topic = (art.get('topic') or 'general').strip().lower()
+                    a_country = (art.get('country') or 'world').strip().lower()
+                    a_dt = _parse_iso_dt(art.get('published_at'))
+                    a_ents = _extract_entities(f"{title} {desc} {content}")
+                    a_anchors = _anchor_entities(a_ents)
+
+                    # Per-topic stricter defaults (can be overridden by env).
+                    default_min_j = 0.10 if a_topic in {"general", "politics", "world"} else 0.08
+                    min_j = float(os.getenv('CLUSTER_MIN_ENTITY_JACCARD', str(default_min_j)))
+                    hours = int(os.getenv('CLUSTER_TIME_WINDOW_HOURS', '72'))
+                    allow_cross_topic = os.getenv('CLUSTER_ALLOW_CROSS_TOPIC', '0') == '1'
+
+                    candidates: list[tuple[int, str]] = []
+                    for c in candidates_meta:
+                        c_topic = (c.get('topic') or 'general').strip().lower()
+                        c_country = (c.get('country') or 'world').strip().lower()
+                        c_ents = c.get('entities') or set()
+                        c_anchors = c.get('anchors') or set()
+
+                        # --- topic/section gate (strict by default) ---
+                        if c_topic != a_topic:
+                            if not allow_cross_topic:
+                                continue
+                            # If we allow cross-topic merges, require strong anchor overlap.
+                            if not (a_anchors and c_anchors and len(a_anchors & c_anchors) >= 2):
+                                continue
+
+                        # --- country gate (avoid mixing countries unless one is 'world') ---
+                        if a_country != 'world' and c_country != 'world' and a_country != c_country:
+                            continue
+
+                        # --- time window gate ---
+                        c_dt = _parse_iso_dt(c.get('latest_published_at'))
+                        if a_dt and c_dt and abs(a_dt - c_dt) > timedelta(hours=hours):
+                            continue
+
+                        # --- anchor overlap gate (prevents "Trump" gluing everything) ---
+                        if a_anchors and c_anchors:
+                            if len(a_anchors & c_anchors) < 1:
+                                continue
+
+                        # --- entity overlap gate (soft, fallback) ---
+                        if len(a_ents) >= 5 and len(c_ents) >= 5:
+                            if _jaccard(a_ents, c_ents) < min_j:
+                                continue
+
+                        candidates.append((int(c['cid']), str(c['text'])))
+
+                    # If gates were too strict and we have no candidates, loosen slightly:
+                    # allow same-topic candidates within time window even without anchors,
+                    # but still require minimal entity overlap.
+                    if not candidates:
+                        for c in candidates_meta:
+                            c_topic = (c.get('topic') or 'general').strip().lower()
+                            if c_topic != a_topic:
+                                continue
+                            c_dt = _parse_iso_dt(c.get('latest_published_at'))
+                            if a_dt and c_dt and abs(a_dt - c_dt) > timedelta(hours=hours):
+                                continue
+                            c_ents = c.get('entities') or set()
+                            if len(a_ents) >= 5 and len(c_ents) >= 5 and _jaccard(a_ents, c_ents) >= (min_j + 0.05):
+                                candidates.append((int(c['cid']), str(c['text'])))
+
                     m = match_cluster(
+
                         article_text=article_text,
                         candidates=candidates,
                         similarity_threshold=SIMILARITY_THRESHOLD,
@@ -460,6 +661,50 @@ def run_ingest_cycle() -> dict[str, Any]:
                             language=lang,
                         )
                         candidates.insert(0, (cluster_id, f"{title} {desc} {content}".strip()))
+                        # keep newly created cluster as candidate within the same ingest cycle
+                        try:
+                            candidates_meta.append({
+                                "cid": cluster_id,
+                                "text": f"{title} {desc} {content}".strip(),
+                                "topic": a_topic,
+                                "latest_published_at": art.get('published_at'),
+                                "entities": a_ents,
+                            })
+                        except Exception:
+                            pass
+
+                # -------------------------------------------------
+                # FINAL COHERENCE CHECK (prevents "cluster pollution")
+                # Even if the similarity matcher picks a cluster, we require
+                # minimal coherence between the article title and cluster title.
+                # This is especially important for high-frequency names like
+                # "Trump" where unrelated stories can look textually similar.
+                # -------------------------------------------------
+                try:
+                    meta = db.get_cluster_meta(cluster_id)
+                    ctitle = (meta.get("title") or "").strip()
+                    if ctitle:
+                        a_ents_title = _extract_entities(title)
+                        c_ents_title = _extract_entities(ctitle)
+                        a_anch = _anchor_entities(a_ents_title)
+                        c_anch = _anchor_entities(c_ents_title)
+                        anchor_ok = bool(a_anch and c_anch and (a_anch & c_anch))
+                        tok_ok = strong_token_overlap(title, ctitle) >= 2
+                        jac = jaccard_similarity(title, ctitle)
+
+                        # If there is no strong anchor match AND weak token overlap,
+                        # and overall title similarity is low → start a new cluster.
+                        if (not anchor_ok) and (not tok_ok) and jac < 0.14:
+                            cluster_id = db.upsert_cluster(
+                                cluster_key=cluster_key,
+                                title=title or "Untitled event",
+                                topic=(art.get("topic") or "general").lower(),
+                                country=(art.get("country") or "world").lower(),
+                                language=lang,
+                            )
+                except Exception:
+                    # Never break ingestion on a safety check.
+                    pass
 
                 linked = db.link_cluster_article(cluster_id, aid)
                 if linked:
@@ -564,184 +809,3 @@ def run_ingest_cycle() -> dict[str, Any]:
         db.finish_ingest_run(run_id, "failed", stats)
         return stats
 
-    db.ensure_schema()
-    cfg = db.get_config()
-
-    run_id = db.start_ingest_run()
-    stats: dict[str, Any] = {
-        "feeds_total": 0,
-        "feeds_used": 0,
-        "feeds_meta": [],
-        "articles_seen": 0,
-        "articles_inserted": 0,
-        "clusters_touched": 0,
-        "scores_updated": 0,
-        "summaries_attempted": 0,
-        "summaries_success": 0,
-        "errors": 0,
-        "started_at": _utc_now_iso(),
-    }
-
-    try:
-        sources_cfg = _parse_rss_sources()
-        feeds = _iter_all_feeds(sources_cfg)
-
-        stats["feeds_total"] = len(feeds)
-        max_feeds = max(10, int(cfg.max_external_requests_per_cycle))
-        feeds = feeds[:max_feeds]
-        stats["feeds_used"] = len(feeds)
-
-        all_articles: list[dict[str, Any]] = []
-
-        for f in feeds:
-            entries, meta = _fetch_rss_feed(f)
-            meta.update({"country": f["country"], "language": f["language"], "topic": f["topic"]})
-            stats["feeds_meta"].append(meta)
-
-            for a in entries:
-                a["country"] = f["country"]
-                a["language"] = f["language"]
-                a["topic"] = f["topic"]
-            all_articles.extend(entries)
-
-        stats["articles_seen"] = len(all_articles)
-
-        inserted_ids: list[int] = []
-        for a in all_articles:
-            try:
-                aid = db.insert_article_if_new(a)
-                if aid:
-                    inserted_ids.append(aid)
-                    stats["articles_inserted"] += 1
-            except Exception:
-                stats["errors"] += 1
-                logger.exception("insert_article_if_new failed")
-
-        touched_clusters: set[int] = set()
-        inserted_by_lang: dict[str, list[int]] = {}
-
-        for aid in inserted_ids:
-            art = db.get_article_by_id(aid)
-            lang = (art.get("language") or "en").lower()
-            inserted_by_lang.setdefault(lang, []).append(aid)
-
-        for lang, aids in inserted_by_lang.items():
-            candidates_db = db.list_recent_clusters(language=lang, limit=900)
-            candidates: list[tuple[int, str]] = []
-
-            for c in candidates_db:
-                cid = int(c["id"])
-                txts = db.get_cluster_article_texts(cid, limit=10)
-                ctext = " ".join([(c.get("title") or "")] + txts)
-                candidates.append((cid, ctext))
-
-            for aid in aids:
-                art = db.get_article_by_id(aid)
-                title = art.get("title") or ""
-                desc = art.get("description") or ""
-                content = (art.get("content") or "")[:400]
-                article_text = f"{title} {desc} {content}".strip()
-
-                norm_title = normalize_title_for_key(title, lang)
-                cluster_key = canonical_cluster_key(lang, norm_title or title[:120])
-
-                existing = db.connect().execute(
-                    "SELECT id FROM clusters WHERE cluster_key=?",
-                    (cluster_key,),
-                ).fetchone()
-
-                if existing:
-                    cid = int(existing["id"])
-                else:
-                    m = match_cluster(article_text, candidates, SIMILARITY_THRESHOLD)
-                    cid = int(m.cluster_id) if m.cluster_id else db.upsert_cluster(
-                        cluster_key=cluster_key,
-                        title=title or "Untitled event",
-                        topic=art.get("topic"),
-                        country=art.get("country"),
-                        language=lang,
-                    )
-
-                if db.link_cluster_article(cid, aid):
-                    touched_clusters.add(cid)
-
-        stats["clusters_touched"] = len(touched_clusters)
-
-        for cid in touched_clusters:
-            try:
-                meta = db.get_cluster_meta(cid)
-                title = meta.get("title") or "Event"
-                sources = db.get_cluster_sources(cid)
-                score, details = compute_credibility(title, sources)
-                db.upsert_score(cid, score, details)
-                stats["scores_updated"] += 1
-            except Exception:
-                stats["errors"] += 1
-                logger.exception("scoring failed")
-
-        top = sorted(
-            touched_clusters,
-            key=lambda c: len(db.get_cluster_sources(c)),
-            reverse=True,
-        )[:12]
-
-        for cid in top:
-            try:
-                meta = db.get_cluster_meta(cid)
-                sources = db.get_cluster_sources(cid)
-                stats["summaries_attempted"] += 1
-
-                brief, summary_json, status, raw = summarize_cluster(
-                    cluster_title=meta.get("title"),
-                    sources=sources,
-                    model="gpt-4o-mini",
-                )
-
-                db.upsert_summary(
-                    cluster_id=cid,
-                    summary_text=brief,
-                    summary_json=summary_json,
-                    raw_text=raw,
-                    model="gpt-4o-mini",
-                    status=status,
-                )
-
-                if status == "success":
-                    stats["summaries_success"] += 1
-            except Exception:
-                stats["errors"] += 1
-                logger.exception("summary failed")
-
-        stats["finished_at"] = _utc_now_iso()
-        db.finish_ingest_run(run_id, "success", stats)
-        return stats
-
-    except Exception:
-        stats["errors"] += 1
-        stats["finished_at"] = _utc_now_iso()
-        logger.exception("Ingest failed")
-        db.finish_ingest_run(run_id, "failed", stats)
-        return stats
-
-def _extract_og_image_from_url(url: str) -> str | None:
-    try:
-        import requests
-        from bs4 import BeautifulSoup
-
-        resp = requests.get(
-            url,
-            timeout=6,
-            headers={"User-Agent": "Mozilla/5.0 (NewsAggregator)"},
-        )
-        if resp.status_code != 200:
-            return None
-
-        soup = BeautifulSoup(resp.text, "html.parser")
-        og = soup.find("meta", property="og:image")
-        if not og:
-            return None
-
-        content = (og.get("content") or "").strip()
-        return content or None
-    except Exception:
-        return None

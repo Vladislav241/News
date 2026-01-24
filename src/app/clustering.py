@@ -3,11 +3,16 @@ from __future__ import annotations
 
 import hashlib
 import re
+import os
+from datetime import datetime, timezone, timedelta
+
+import numpy as np
 from dataclasses import dataclass
 from typing import Any
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.decomposition import TruncatedSVD
 
 # ---- stopwords / normalization ----
 # NOTE: стоп-слова чистим только для EN.
@@ -170,14 +175,44 @@ def _combined_tfidf_best_match(
     sim_w = cosine_similarity(Xw[0:1], Xw[1:]).flatten()
     sim_c = cosine_similarity(Xc[0:1], Xc[1:]).flatten()
 
-    sims = 0.65 * sim_w + 0.35 * sim_c
+    # Latent Semantic Analysis (cheap "embedding-like" layer)
+    # Helps reduce bad merges caused by shared buzzwords.
+    lsa_w = None
+    try:
+        n_samples, n_features = Xw.shape
+        k = min(int(os.getenv("CLUSTER_LSA_COMPONENTS", "150")), max(2, n_samples - 1), max(2, n_features - 1))
+        if k >= 2:
+            svd = TruncatedSVD(n_components=k, random_state=42)
+            Z = svd.fit_transform(Xw)
+            # L2 normalize
+            import numpy as _np
+            norms = _np.linalg.norm(Z, axis=1, keepdims=True)
+            norms[norms == 0] = 1.0
+            Z = Z / norms
+            lsa_w = (Z[1:] @ Z[0].T)
+    except Exception:
+        lsa_w = None
+
+    if lsa_w is None:
+        sims = 0.65 * sim_w + 0.35 * sim_c
+        blend = "0.65*word+0.35*char"
+    else:
+        w_word = float(os.getenv("CLUSTER_WEIGHT_WORD", "0.55"))
+        w_char = float(os.getenv("CLUSTER_WEIGHT_CHAR", "0.25"))
+        w_lsa = float(os.getenv("CLUSTER_WEIGHT_LSA", "0.20"))
+        w_sum = w_word + w_char + w_lsa
+        if w_sum <= 0:
+            w_word, w_char, w_lsa, w_sum = 0.55, 0.25, 0.20, 1.0
+        w_word, w_char, w_lsa = w_word/w_sum, w_char/w_sum, w_lsa/w_sum
+        sims = (w_word * sim_w) + (w_char * sim_c) + (w_lsa * lsa_w)
+        blend = f"{w_word:.2f}*word+{w_char:.2f}*char+{w_lsa:.2f}*lsa"
 
     best_idx = int(sims.argmax())
     best_sim = float(sims[best_idx])
     best_id = int(ids[best_idx])
 
     top = sorted([(int(ids[i]), float(sims[i])) for i in range(len(sims))], key=lambda x: x[1], reverse=True)[:8]
-    return best_id, best_sim, {"top8": top, "blend": "0.65*word+0.35*char"}
+    return best_id, best_sim, {"top8": top, "blend": blend}
 
 
 def _dynamic_threshold(text: str, base: float) -> float:
@@ -188,6 +223,62 @@ def _dynamic_threshold(text: str, base: float) -> float:
     if len(toks) <= 10:
         return max(0.26, base - 0.06)
     return float(base)
+
+
+# ---- gates (before merge) ----
+_CAP_SEQ_RE = re.compile(r"\b(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3}|[A-Z]{2,}(?:\s+[A-Z]{2,}){0,2})\b")
+
+_COMMON_NOISE = {
+    "the","and","for","with","from","over","into","after","before","says","said",
+    "this","that","will","new","news","live","update","updates","breaking","top",
+    "what","why","how","who","where","when","in","on","at","to","of","a","an",
+}
+
+
+def extract_entities(text: str) -> set[str]:
+    """Cheap offline 'NER-ish' extractor to prevent bad merges."""
+    if not text:
+        return set()
+    ents: set[str] = set()
+    for m in _CAP_SEQ_RE.finditer(text):
+        chunk = m.group(0).strip()
+        words = [w.strip(".") for w in chunk.split()]
+        if len(words) == 1 and len(words[0]) < 4:
+            continue
+        norm = " ".join(words).lower()
+        if norm in _COMMON_NOISE:
+            continue
+        ents.add(norm)
+        for w in words:
+            lw = w.lower()
+            if lw not in _COMMON_NOISE and len(lw) >= 3:
+                ents.add(lw)
+    # Limit size
+    if len(ents) > 60:
+        ents = set(sorted(ents, key=lambda x: (-len(x), x))[:60])
+    return ents
+
+
+def _parse_iso_dt(s: str | None) -> Optional[datetime]:
+    if not s:
+        return None
+    try:
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def _jaccard(a: set[str], b: set[str]) -> float:
+    if not a or not b:
+        return 0.0
+    inter = len(a.intersection(b))
+    union = len(a.union(b))
+    return inter / union if union else 0.0
 
 
 def match_cluster(
@@ -208,7 +299,25 @@ def match_cluster(
 
     cid, sim, dbg = _combined_tfidf_best_match(txt_norm, candidates)
     if cid is not None and sim >= thr:
-        return ClusterMatch(cluster_id=cid, similarity=sim, method="tfidf_blend", debug={**dbg, "threshold": thr})
+        # Extra safety check: TF-IDF can over-match on a single shared entity (e.g. "Trump").
+        # We require at least some *strong* token overlap or a higher similarity.
+        cand_text = next((t for (i, t) in candidates if int(i) == int(cid)), "")
+        c_norm = normalize_text(cand_text)
+        ov = strong_token_overlap(txt_norm, c_norm)
+        j = jaccard_similarity(txt_norm, c_norm)
+
+        # If overlap is weak, only accept very high similarity.
+        if ov < 2 and j < 0.16:
+            strict = max(0.58, thr + 0.18)
+            if sim < strict:
+                return ClusterMatch(
+                    cluster_id=None,
+                    similarity=sim,
+                    method="tfidf_rejected_low_overlap",
+                    debug={**dbg, "threshold": thr, "strict": strict, "ov": ov, "j": j},
+                )
+
+        return ClusterMatch(cluster_id=cid, similarity=sim, method="tfidf_blend", debug={**dbg, "threshold": thr, "ov": ov, "j": j})
 
     best_cid = None
     best_j = 0.0

@@ -9,6 +9,58 @@ from typing import Any, Optional, Tuple
 logger = logging.getLogger("news.ai")
 
 
+def verify_same_story(
+    a_title: str,
+    a_desc: str,
+    b_title: str,
+    b_desc: str,
+    model: str = "gpt-4o-mini",
+) -> bool:
+    """Binary gate: check if two headlines/descriptions refer to the same event.
+
+    This is intentionally short to keep token cost low.
+    If OPENAI_API_KEY is not set, returns True (so the pipeline still works offline).
+    """
+    api_key = (os.getenv("OPENAI_API_KEY") or "").strip()
+    if not api_key:
+        return True
+
+    # Import lazily to avoid import-time issues during local/offline runs.
+    from openai import OpenAI
+
+    try:
+        client = OpenAI(api_key=api_key)
+
+        def clip(s: str, n: int = 380) -> str:
+            s = (s or "").strip().replace("\n", " ")
+            return s[:n]
+
+        prompt = (
+            "Decide if A and B describe the SAME real-world news story/event.\n"
+            "Answer ONLY with 'YES' or 'NO'.\n\n"
+            f"A title: {clip(a_title)}\n"
+            f"A desc: {clip(a_desc)}\n\n"
+            f"B title: {clip(b_title)}\n"
+            f"B desc: {clip(b_desc)}\n"
+        )
+
+        resp = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "You are a strict news deduplication classifier."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0,
+            max_tokens=3,
+        )
+
+        txt = (resp.choices[0].message.content or "").strip().upper()
+        return txt.startswith("Y")
+    except Exception:
+        logger.exception("verify_same_story failed; allowing match")
+        return True
+
+
 def _unwrap_fenced(text: str) -> str:
     t = (text or "").strip()
     if t.startswith("```"):
