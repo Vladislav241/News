@@ -302,13 +302,53 @@ class Database:
         except sqlite3.IntegrityError:
             return False
 
+    def merge_clusters(self, target_cluster_id: int, source_cluster_id: int) -> None:
+        """Merge source cluster into target cluster.
+
+        - Moves all cluster_articles links (deduped)
+        - Deletes source cluster and its score/summary rows
+        """
+        if int(target_cluster_id) == int(source_cluster_id):
+            return
+
+        con = self.connect()
+        cur = con.cursor()
+
+        # Move articles (dedupe via primary key)
+        rows = cur.execute(
+            "SELECT article_id FROM cluster_articles WHERE cluster_id=?",
+            (int(source_cluster_id),),
+        ).fetchall()
+        for r in rows:
+            aid = int(r[0] if not isinstance(r, sqlite3.Row) else r["article_id"])
+            cur.execute(
+                "INSERT OR IGNORE INTO cluster_articles(cluster_id, article_id, inserted_at) VALUES(?, ?, ?)",
+                (int(target_cluster_id), aid, _utc_now_iso()),
+            )
+
+        cur.execute("DELETE FROM cluster_articles WHERE cluster_id=?", (int(source_cluster_id),))
+
+        # Clean dependent tables
+        cur.execute("DELETE FROM cluster_scores WHERE cluster_id=?", (int(source_cluster_id),))
+        cur.execute("DELETE FROM cluster_summaries WHERE cluster_id=?", (int(source_cluster_id),))
+
+        # Drop cluster
+        cur.execute("DELETE FROM clusters WHERE id=?", (int(source_cluster_id),))
+        con.commit()
+
+        # Touch target so it floats up in feed consistently
+        try:
+            self.touch_cluster(int(target_cluster_id))
+        except Exception:
+            pass
+
     def list_recent_clusters(self, language: str, limit: int = 600) -> list[dict[str, Any]]:
         return self._fetchall(
             """
             SELECT id, cluster_key, title, topic, country, language, created_at, updated_at
             FROM clusters
             WHERE language=?
-            ORDER BY updated_at DESC
+            ORDER BY updated_at DESC, id DESC
             LIMIT ?
             """,
             (language, limit),
@@ -520,7 +560,7 @@ class Database:
             LEFT JOIN article_scores s ON s.cluster_id=c.id
             LEFT JOIN article_summaries sm ON sm.cluster_id=c.id
             WHERE {" AND ".join(where)}
-            ORDER BY c.updated_at DESC
+            ORDER BY c.updated_at DESC, c.id DESC
             LIMIT ?
         """
         params.append(max(1, min(400, int(limit))))
