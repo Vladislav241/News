@@ -10,9 +10,47 @@ from pydantic import BaseModel
 
 from ..db import db
 from ..ingest import run_ingest_cycle
-from ..scoring import compute_importance
+from ..scoring import compute_importance, compute_credibility
+
+import threading
 
 router = APIRouter()
+
+# Cache {cache_key: (expires_at_epoch, payload_dict)}
+_FEED_CACHE: dict[str, tuple[float, dict]] = {}
+_FEED_CACHE_LOCK = threading.Lock()
+
+# How long one "snapshot" lives. Everyone requesting the same key within
+# this window gets identical ordering and identical values.
+FEED_SNAPSHOT_SECONDS = 60
+
+
+def _snapshot_bucket(now: float | None = None, window: int = FEED_SNAPSHOT_SECONDS) -> int:
+    """Return a stable time bucket index for snapshotting."""
+    if now is None:
+        now = time.time()
+    return int(now // window)
+
+
+# Backward-compatible alias: some earlier revisions referenced this name.
+def _current_snapshot_bucket() -> int:
+    return _snapshot_bucket()
+
+
+def _feed_cache_key(
+    *,
+    interests: str,
+    country: str,
+    language: str,
+    since: str | None,
+    q: str | None,
+    limit: int,
+    bucket: int,
+) -> str:
+    qn = (q or "").strip().lower()
+    sn = (since or "").strip()
+    inorm = (interests or "general").strip().lower()
+    return f"v2|{bucket}|i={inorm}|c={country}|l={language}|since={sn}|q={qn}|limit={limit}"
 
 _REFRESH_STATE: dict[str, Any] = {"last_ts_by_ip": {}}
 REFRESH_COOLDOWN_SECONDS = 180
@@ -105,6 +143,15 @@ def _decorate_cluster_row(c: dict[str, Any], include_sources: bool = True) -> di
     if c.get("score_details_json"):
         try:
             details = json.loads(c["score_details_json"])
+        except Exception:
+            details = None
+
+    # If the cluster doesn't have a stored score yet, compute it on the fly
+    # so the UI never shows long runs of "0/100" (common right after ingest
+    # or after a fresh deploy on Render).
+    if details is None and sources:
+        try:
+            details = compute_credibility(sources)
         except Exception:
             details = None
 
@@ -216,14 +263,35 @@ def get_news(
 ) -> dict[str, Any]:
     db.ensure_schema()
 
-    interests_list = [x.strip() for x in (interests or "").split(",") if x.strip()]
+    interests_list = [x.strip().lower() for x in (interests or "").split(",") if x.strip()]
+    interests_norm = ",".join(sorted(set(interests_list)))
+    country = (country or "world").strip().lower()
+    language = (language or "en").strip().lower()
+    limit_n = max(1, min(400, int(limit)))
+
+    bucket = _current_snapshot_bucket()
+    cache_key = _feed_cache_key(
+        interests=interests_norm,
+        country=(country or "world").strip().lower(),
+        language=(language or "en").strip().lower(),
+        since=since,
+        q=q,
+        limit=limit_n,
+        bucket=bucket,
+    )
+
+    now = time.time()
+    with _FEED_CACHE_LOCK:
+        cached = _FEED_CACHE.get(cache_key)
+        if cached and cached[0] > now:
+            return cached[1]
 
     clusters = db.query_clusters(
         interests=interests_list,
         country=country,
         language=language,
         since_iso=since,
-        limit=max(1, min(400, int(limit))),
+        limit=limit_n,
     )
 
     items = [_decorate_cluster_row(c) for c in clusters]
@@ -261,7 +329,23 @@ def get_news(
         reverse=True,
     )
 
-    return {"status": "ok", "count": len(items), "items": items, "cutoff": cutoff}
+    snapshot_at = datetime.fromtimestamp(
+        bucket * FEED_SNAPSHOT_SECONDS, tz=timezone.utc
+    ).isoformat()
+
+    payload = {
+        "status": "ok",
+        "count": len(items),
+        "items": items,
+        "cutoff": cutoff,
+        "snapshot_bucket": bucket,
+        "snapshot_at": snapshot_at,
+    }
+
+    with _FEED_CACHE_LOCK:
+        _FEED_CACHE[cache_key] = (time.time() + FEED_SNAPSHOT_SECONDS, payload)
+
+    return payload
 
 
 @router.get("/api/news/by_ids")

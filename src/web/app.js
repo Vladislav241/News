@@ -934,23 +934,9 @@ function renderCards(items, opts) {
     .filter((it) => itemMatchesSearch(it, q))
     .filter((it) => itemPassesFilters(it));
 
-  // Feed should be stable: sort by first time the cluster was seen (prevents old items jumping to top on updates).
-  if (state.mode === 'feed') {
-    const seen0 = loadSeenState();
-    const firstSeen = (it) => {
-      const key = getItemId(it);
-      const v = Number(seen0?.[String(key)]?.first_seen_at);
-      return Number.isFinite(v) ? v : 0;
-    };
-    filtered.sort((a, b) => {
-      const fa = firstSeen(a);
-      const fb = firstSeen(b);
-      if (fb !== fa) return fb - fa;
-      const ua = Date.parse(a?.latest_published_at || a?.updated_at || '') || 0;
-      const ub = Date.parse(b?.latest_published_at || b?.updated_at || '') || 0;
-      return ub - ua;
-    });
-  }
+  // IMPORTANT: do not sort on the client.
+  // The server returns a deterministic order (and a time-bucketed snapshot),
+  // so every device sees the same feed for the same interests.
 
   let visible = filtered;
   if (state.mode === 'feed' && !feedExpanded && filtered.length > FEED_PAGE_SIZE) {
