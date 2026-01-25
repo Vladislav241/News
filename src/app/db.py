@@ -520,7 +520,7 @@ class Database:
             LEFT JOIN article_scores s ON s.cluster_id=c.id
             LEFT JOIN article_summaries sm ON sm.cluster_id=c.id
             WHERE {" AND ".join(where)}
-            ORDER BY c.updated_at DESC
+            ORDER BY c.updated_at DESC, c.id DESC
             LIMIT ?
         """
         params.append(max(1, min(400, int(limit))))

@@ -255,6 +255,8 @@ def get_news(
             x.get("latest_published_at") or "",
             int(x.get("importance") or 0),
             int(x.get("credibility_score") or 0),
+            int(x.get("sources_count") or 0),
+            int(x.get("cluster_id") or 0),
         ),
         reverse=True,
     )

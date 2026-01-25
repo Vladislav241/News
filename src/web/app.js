@@ -300,14 +300,48 @@ function applyTabs() {
   if (selectedBar) selectedBar.style.display = isTracking ? "none" : "";
 
   updateTrashZone();
+  
+function updateTrackingHint() {
+  const el = qs('trackingHint');
+  if (!el) return;
+  const show = (state.mode === 'fav') && (getFavIds().length > 0);
+  el.style.display = show ? 'block' : 'none';
+}
+updateTrackingHint();
 }
 
 function updateTrashZone() {
   const z = qs('trashZone');
   if (!z) return;
-  const show = (state.mode === 'fav');
+
+  const show = (state.mode === 'fav') && !!state.isDragging; // show only while dragging
   z.style.display = show ? 'grid' : 'none';
   z.setAttribute('aria-hidden', show ? 'false' : 'true');
+
+  if (show) updateTrashZonePosition();
+}
+
+function updateTrashZonePosition() {
+  const z = qs('trashZone');
+  if (!z) return;
+
+  const baseBottom = 92; // must match CSS bottom
+  const footer = document.querySelector('footer');
+  if (!footer) {
+    z.style.bottom = `${baseBottom}px`;
+    return;
+  }
+
+  const r = footer.getBoundingClientRect();
+
+  if (r.top >= window.innerHeight) {
+    z.style.bottom = `${baseBottom}px`;
+    return;
+  }
+
+  const overlap = window.innerHeight - r.top;
+  const extra = overlap > 0 ? (overlap + 24) : 0;
+  z.style.bottom = `${baseBottom + extra}px`;
 }
 
 function itemMatchesSearch(item, q) {
@@ -692,6 +726,10 @@ function createCardElement(item, ctx, seen) {
   // Only show tracking delta + icon inside the Tracking tab.
   const showTrackingUI = state.mode === 'fav';
 
+  const dragHandleHtml = showTrackingUI
+    ? `<span class=\"dragHandle\" title=\"Drag to delete\" aria-label=\"Drag to delete\">⋮⋮</span>`
+    : '';
+
   const deltaHtml = (!showTrackingUI || !hasPrev || deltaDir === 'flat')
     ? ''
     : `<div class="delta ${deltaDir}">${deltaDir === 'up' ? '▲' : '▼'} ${deltaAbs}</div>`;
@@ -720,7 +758,7 @@ function createCardElement(item, ctx, seen) {
     <details class="newsDetails">
       <summary class="newsSummary">
         <div class="newsTopRow">
-          <div class="newsTitle">${escapeHtml(item.title || 'Event')}</div>
+          <div class="newsTitle">${dragHandleHtml}${escapeHtml(item.title || 'Event')}</div>
           <div class="newsTopRight">
             ${flameHtml}
             <div class="scoreBadge ${score < LOW_SCORE_THRESHOLD ? 'dark' : 'light'}">${score} / 100</div>
@@ -792,6 +830,10 @@ function createCardElement(item, ctx, seen) {
   // Drag-to-delete in Tracking tab
   div.addEventListener('dragstart', (e) => {
     if (state.mode !== 'fav') return;
+
+    state.isDragging = true;
+    updateTrashZone();
+
     try {
       e.dataTransfer.setData('text/plain', String(id));
       e.dataTransfer.effectAllowed = 'move';
@@ -800,6 +842,8 @@ function createCardElement(item, ctx, seen) {
   });
   div.addEventListener('dragend', () => {
     div.classList.remove('isDragging');
+    state.isDragging = false;
+    updateTrashZone();
   });
 
   return div;
@@ -1159,14 +1203,19 @@ async function fetchFeed(opts) {
   const newIds = updateSeenStateFromItems(items);
 
   // Decide rendering mode
-  if (shouldReset) {
-    currentFeedKey = feedKey;
-    renderCards(items, { nowTs: Date.now(), newIds, suppressNewBadges, incremental: false, animate: false });
-    hasInitialFeedLoaded = true;
-  } else {
-    renderCards(items, { nowTs: Date.now(), newIds, suppressNewBadges, incremental: true, animate: true });
-    hasInitialFeedLoaded = true;
-  }
+  currentFeedKey = feedKey;
+
+  // ВСЕГДА полный ререндер, чтобы порядок был строго как на сервере
+  renderCards(items, {
+    nowTs: Date.now(),
+    newIds,
+    suppressNewBadges,
+    incremental: false,
+    animate: false, // можно true, но лучше false чтобы не "прыгало"
+  });
+
+  hasInitialFeedLoaded = true;
+
 
   const lastUpdatedEl = qs("lastUpdated");
   if (lastUpdatedEl) {
@@ -1204,6 +1253,8 @@ async function fetchFavorites() {
   // Update seen to keep delta calculations consistent in Tracking.
   markSeen(items, now);
   renderCards(items, { nowTs: now, newIds: new Set(), suppressNewBadges: true });
+
+  updateTrackingHint();
 
   qs("lastUpdated").textContent =
     `Избранное: ${new Date().toLocaleString()} — событий: ${items.length}`;
@@ -1349,6 +1400,12 @@ function bindUI() {
   // Tracking: drag-to-delete zone (cards can be dragged onto the trash)
   const z = qs('trashZone');
   if (z) {
+    const onScrollOrResize = () => {
+      if (state.mode === 'fav' && state.isDragging) updateTrashZonePosition();
+    };
+    window.addEventListener('scroll', onScrollOrResize, { passive: true });
+    window.addEventListener('resize', onScrollOrResize);
+
     const clearOver = () => z.classList.remove('isOver');
     z.addEventListener('dragover', (e) => {
       if (state.mode !== 'fav') return;
@@ -1366,6 +1423,8 @@ function bindUI() {
       if (state.mode !== 'fav') return;
       e.preventDefault();
       clearOver();
+      state.isDragging = false;
+      updateTrashZone();
       const id = String(e.dataTransfer?.getData('text/plain') || '').trim();
       if (!id) return;
 
