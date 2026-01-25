@@ -62,6 +62,72 @@ import feedparser
 import requests
 from bs4 import BeautifulSoup
 
+
+# =========================================================
+# RSS TEXT SANITIZATION
+# Many feeds (e.g. The Guardian) embed "Recommended/What to read next"
+# blocks and extra link lists into the RSS <description>. Those fragments
+# pollute clustering and cause unrelated stories to be merged.
+# We keep only the first meaningful paragraph and cut off common promo blocks.
+# =========================================================
+
+_CUT_MARKERS = [
+    "what to read next",
+    "recommended stories",
+    "recommended",
+    "related",
+    "more on this story",
+    "read more",
+    "go deeper",
+]
+
+
+def _clean_rss_html(text: str) -> str:
+    if not text:
+        return ""
+    t = text.strip()
+
+    # If it's HTML, extract first real paragraph and ignore promo/link lists.
+    if "<" in t and ">" in t:
+        try:
+            soup = BeautifulSoup(t, "html.parser")
+            # remove noisy elements if present
+            for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
+                tag.decompose()
+
+            # Prefer first paragraph as a compact summary
+            p = soup.find("p")
+            if p:
+                t = p.get_text(" ", strip=True)
+            else:
+                t = soup.get_text(" ", strip=True)
+        except Exception:
+            # fall back to raw
+            t = BeautifulSoup(t, "html.parser").get_text(" ", strip=True)
+
+    # Hard cut on common promo markers
+    low = t.lower()
+    cut_at = None
+    for m in _CUT_MARKERS:
+        idx = low.find(m)
+        if idx != -1:
+            cut_at = idx if cut_at is None else min(cut_at, idx)
+    if cut_at is not None and cut_at > 0:
+        t = t[:cut_at].strip()
+
+    # Drop bullet-heavy tails (often link lists)
+    lines = [ln.strip() for ln in t.splitlines() if ln.strip()]
+    if len(lines) > 1:
+        # If many lines start with bullets, keep only the first line.
+        bulletish = sum(1 for ln in lines[1:] if ln.startswith(("•", "-", "*")))
+        if bulletish >= 1:
+            t = lines[0]
+
+    # Limit length so clustering isn't dominated by boilerplate
+    if len(t) > 450:
+        t = t[:450].rsplit(" ", 1)[0].strip() + "…"
+    return t
+
 from .ai import summarize_cluster
 from .clustering import canonical_cluster_key, match_cluster, normalize_title_for_key
 from .db import db
@@ -125,7 +191,8 @@ def _safe_entry_text(entry: Any) -> tuple[str, str, str]:
     except Exception:
         content = ""
 
-    return title, desc, content
+    # Clean RSS HTML/link blocks that break clustering
+    return title, _clean_rss_html(desc), _clean_rss_html(content)
 
 
 # =========================================================

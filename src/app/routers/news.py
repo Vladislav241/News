@@ -310,11 +310,20 @@ def favorites_remove(payload: FavoriteSync) -> dict[str, Any]:
 
 @router.post("/api/news/refresh")
 def refresh(request: Request) -> dict[str, Any]:
+    """Manual ingest trigger.
+
+    In production we DO NOT want end-users to trigger ingestion (rate limits, thundering herd).
+    The server runs ingestion automatically (see main.py). Keep this endpoint only for admin use.
+    """
     cfg = db.get_config()
-    if cfg.refresh_token:
-        token = request.headers.get("x-refresh-token", "").strip()
-        if token != cfg.refresh_token:
-            raise HTTPException(status_code=401, detail="Invalid refresh token")
+    token_required = (cfg.refresh_token or "").strip()
+    if not token_required:
+        # Disabled unless you explicitly set REFRESH_TOKEN in config/env.
+        raise HTTPException(status_code=403, detail="Manual refresh is disabled")
+
+    token = request.headers.get("x-refresh-token", "").strip()
+    if token != token_required:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
 
     client_ip = request.client.host if request.client else "unknown"
     now = time.time()

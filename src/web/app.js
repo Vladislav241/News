@@ -1231,38 +1231,10 @@ function tickCooldownUI() {
 }
 
 async function refreshBackend() {
-  if (Date.now() < state.cooldownUntil) return;
-
-  setStatus("Запускаю refresh на сервере...");
-  qs("btnRefresh").disabled = true;
-
-  try {
-    const res = await fetch(`${API_BASE}/api/news/refresh`, { method: "POST" });
-
-    if (res.status === 429) {
-      let retry = Number(res.headers.get("Retry-After") || 0);
-      try {
-        const data = await res.json();
-        retry = Number(data?.detail?.retry_after_seconds || retry || 0);
-      } catch {}
-      if (retry > 0) startCooldown(retry);
-      return;
-    }
-
-    if (!res.ok) {
-      const txt = await res.text();
-      setStatus(`refresh: ${res.status} ${txt}`);
-      return;
-    }
-
-    const data = await res.json();
-    setStatus(`refresh ok: inserted=${data.ingest?.articles_inserted ?? "?"}, touched=${data.ingest?.clusters_touched ?? "?"}`);
-
-    if (state.mode === "feed") await fetchFeed();
-    else await fetchFavorites();
-  } finally {
-    setTimeout(tickCooldownUI, 0);
-  }
+  // "Refresh" now means "reload my feed". Ingest happens server-side on a schedule.
+  setStatus("Обновляю ленту...");
+  if (state.mode === "feed") await fetchFeed();
+  else await fetchFavorites();
 }
 
 function bindUI() {
@@ -1421,26 +1393,12 @@ function bindUI() {
 
 
 async function refreshBackendQuiet() {
-  // Triggers server ingest without UI noise (used by auto updates).
-  if (Date.now() < state.cooldownUntil) return;
-  try {
-    const res = await fetch(`${API_BASE}/api/news/refresh`, { method: "POST" });
-    if (res.status === 429) {
-      let retry = Number(res.headers.get("Retry-After") || 0);
-      try {
-        const data = await res.json();
-        retry = Number(data?.detail?.retry_after_seconds || retry || 0);
-      } catch {}
-      if (retry > 0) startCooldown(retry);
-      return;
-    }
-  } catch {}
+  // Server now ingests on a schedule. Clients should not trigger ingest.
+  return;
 }
 
 async function autoUpdateTick(trigger) {
-  // 1) ask backend to ingest (if any sources are available)
-  await refreshBackendQuiet();
-  // 2) fetch and incrementally insert new cards
+  // Fetch and incrementally insert new cards.
   if (state.mode === "feed") await fetchFeed({ quiet: true });
   else await fetchFavorites();
 }

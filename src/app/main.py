@@ -88,7 +88,11 @@ def _get_refresh_interval_seconds() -> int:
 
 
 async def _auto_refresh_loop() -> None:
-    # Run forever: ingest on schedule so clients can simply GET /api/news
+    """Periodic ingest so the feed updates server-side (users don't need to press Refresh)."""
+    # Run once shortly after boot so fresh deploys don't stay empty for many minutes.
+    await asyncio.sleep(2.0)
+    first = True
+
     while True:
         try:
             enabled = _env_bool("AUTO_REFRESH", True)
@@ -98,13 +102,16 @@ async def _auto_refresh_loop() -> None:
                 await asyncio.sleep(5.0)
                 continue
 
-            # Wait between cycles (so server boots instantly)
-            await asyncio.sleep(float(interval))
+            # Wait between cycles (but don't delay the very first run)
+            if not first:
+                await asyncio.sleep(float(interval))
+            first = False
 
             # Prevent overlapping cycles
             async with _ingest_lock:
                 db.ensure_schema()
-                run_ingest_cycle()
+                # run_ingest_cycle is CPU/IO bound and synchronous
+                await asyncio.to_thread(run_ingest_cycle)
 
         except asyncio.CancelledError:
             break
