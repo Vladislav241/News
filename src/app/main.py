@@ -17,6 +17,7 @@ from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from starlette.middleware.gzip import GZipMiddleware
 
 from .db import db
 from .ingest import run_ingest_cycle
@@ -27,6 +28,9 @@ from .routers.news import router as news_router
 log = logging.getLogger("news.autorefresh")
 
 app = FastAPI(title="NEWS")
+
+# GZip responses (helps a lot on slow/cheap hosts)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # ---------- CORS ----------
 allowed_origins = os.getenv("CORS_ORIGINS", "*").split(",")
@@ -40,15 +44,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---------- Routers ----------
-app.include_router(health_router)
-app.include_router(news_router)
-app.include_router(debug_router)
-
 # ---------- Static frontend ----------
-# If your repo layout is different, adjust these paths.
+# Serve /static/* first. We'll mount the SPA (/) at the very end.
 app.mount("/static", StaticFiles(directory="src/web"), name="static")
-app.mount("/", StaticFiles(directory="src/web", html=True), name="web")
 
 
 @app.get("/favicon.ico", include_in_schema=False)
@@ -59,6 +57,15 @@ def favicon():
         return FileResponse(path, media_type="image/png")
     # Fallback: return a 404 if the file isn't there
     return Response(status_code=404)
+
+
+# ---------- Routers ----------
+app.include_router(health_router)
+app.include_router(news_router)
+app.include_router(debug_router)
+
+# Mount the frontend last so it doesn't swallow API routes (and /favicon.ico).
+app.mount("/", StaticFiles(directory="src/web", html=True), name="web")
 
 # ---------- Auto refresh loop ----------
 _auto_task: Optional[asyncio.Task] = None

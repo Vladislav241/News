@@ -1192,6 +1192,7 @@ async function fetchFeed(opts) {
   const options = opts || {};
   const quiet = !!options.quiet;
   const forceReset = !!options.reset;
+  const signal = options.signal;
 
   const interests = encodeURIComponent((state.interests || []).join(","));
   const q = encodeURIComponent((state.q || "").trim());
@@ -1212,7 +1213,8 @@ async function fetchFeed(opts) {
 
   if (!quiet) setStatus("Загрузка ленты...");
 
-  const res = await fetch(url);
+  // Allow the caller to abort (we use this to prevent overlapping requests on slow hosts like Render)
+  const res = await fetch(url, signal ? { signal } : undefined);
   if (!res.ok) {
     if (!quiet) setStatus(`Ошибка /api/news: ${res.status}`);
     return;
@@ -1512,20 +1514,61 @@ async function main() {
   // initial load
   await fetchFeed({ reset: true });
 
+  /**
+   * Auto refresh strategy (Render can be slow):
+   * - never run overlapping requests
+   * - throttle visibility/focus refreshes
+   * - keep the feed fresh while tab is visible, but without spamming
+   */
+  const AUTO_REFRESH_MS = 60 * 1000;      // baseline: 1 min while visible
+  const WAKE_THROTTLE_MS = 15 * 1000;     // focus/visibility won't refresh more often than this
+  let lastFetchAt = 0;
+  let inFlight = null;
+
+  async function safeRefresh(reason, opts = {}) {
+    const now = Date.now();
+
+    // Do nothing while hidden
+    if (document.hidden) return;
+
+    // Only refresh the active mode
+    const isFeed = state.mode === 'feed';
+
+    // Throttle wake-up spam (some browsers fire focus + visibility together)
+    if ((reason === 'focus' || reason === 'visible') && (now - lastFetchAt) < WAKE_THROTTLE_MS) {
+      return;
+    }
+
+    // Don't overlap network requests
+    if (inFlight) return inFlight;
+
+    inFlight = (async () => {
+      try {
+        if (isFeed) await fetchFeed(opts);
+        else await fetchFavorites(opts);
+        lastFetchAt = Date.now();
+      } finally {
+        inFlight = null;
+      }
+    })();
+
+    return inFlight;
+  }
+
   // Refresh when user comes back to the tab (after sleep/background throttling)
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) autoUpdateTick('visible');
+    if (!document.hidden) void safeRefresh('visible', { quiet: true });
   });
-  window.addEventListener('focus', () => autoUpdateTick('focus'));
+  window.addEventListener('focus', () => void safeRefresh('focus', { quiet: true }));
 
-  // auto-refresh
-  setInterval(async () => {
-    if (state.mode === "feed") await fetchFeed();
-    else await fetchFavorites();
-  }, 10 * 60 * 1000);
+  // Periodic refresh while visible
+  setInterval(() => {
+    if (document.hidden) return;
+    void safeRefresh('interval', { quiet: true });
+  }, AUTO_REFRESH_MS);
 
-  // cooldown UI tick
-  setInterval(tickCooldownUI, 250);
+  // cooldown UI tick (UI only; keep it light)
+  setInterval(tickCooldownUI, 1000);
 }
 
 
