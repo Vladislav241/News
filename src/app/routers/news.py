@@ -16,6 +16,43 @@ import threading
 
 router = APIRouter()
 
+# ----------------------------
+# Trending (🔥) server-side flag
+# ----------------------------
+# Deterministic so all users see the same result.
+# Default rule (easy to explain):
+#   - >= 4 outlets AND
+#   - updated recently.
+#
+# Tweak these later if you add a real "popularity" signal.
+TRENDING_MIN_OUTLETS = 4
+# Window chosen to tolerate timezone/clock differences and still mean "actively updating".
+TRENDING_WINDOW = timedelta(hours=6)
+
+
+def _compute_is_trending(cluster: dict[str, Any], sources_count: int) -> bool:
+    """Compute a deterministic server-side 'trending' flag.
+
+    v1 heuristic:
+      - sources_count >= TRENDING_MIN_OUTLETS
+      - cluster updated recently (updated_at or latest_published_at within TRENDING_WINDOW)
+
+    Notes:
+      - if timestamps are missing/invalid, fall back to outlets-only.
+      - we treat naive timestamps as UTC.
+    """
+    if sources_count < TRENDING_MIN_OUTLETS:
+        return False
+
+    dt = _parse_dt(cluster.get("updated_at")) or _parse_dt(cluster.get("latest_published_at"))
+    if not dt:
+        return True
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    now = datetime.now(timezone.utc)
+    return (now - dt) <= TRENDING_WINDOW
+
 # Cache {cache_key: (expires_at_epoch, payload_dict)}
 _FEED_CACHE: dict[str, tuple[float, dict]] = {}
 _FEED_CACHE_LOCK = threading.Lock()
@@ -30,11 +67,6 @@ def _snapshot_bucket(now: float | None = None, window: int = FEED_SNAPSHOT_SECON
     if now is None:
         now = time.time()
     return int(now // window)
-
-
-# Backward-compatible alias: some earlier revisions referenced this name.
-def _current_snapshot_bucket() -> int:
-    return _snapshot_bucket()
 
 
 def _feed_cache_key(
@@ -125,6 +157,24 @@ def _build_diff_proofs(
     return out
 
 
+
+def _parse_dt(value):
+    """Parse datetime coming from sqlite (string) or already-a-datetime."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    s = str(value).strip()
+    if not s:
+        return None
+    # Support both 'Z' and '+00:00'
+    s = s.replace("Z", "+00:00")
+    try:
+        return datetime.fromisoformat(s)
+    except Exception:
+        return None
+
+
 def _decorate_cluster_row(c: dict[str, Any], include_sources: bool = True) -> dict[str, Any]:
     cid = int(c["id"])
 
@@ -211,6 +261,7 @@ def _decorate_cluster_row(c: dict[str, Any], include_sources: bool = True) -> di
         "latest_published_at": latest_pub,
         "image": event_image,
         "sources_count": sources_count,
+        "is_trending": _compute_is_trending(c, sources_count),
         "credibility_score": credibility_score,
         "credibility_explanation": credibility_explanation,
         "credibility_factors": credibility_factors,
@@ -269,7 +320,9 @@ def get_news(
     language = (language or "en").strip().lower()
     limit_n = max(1, min(400, int(limit)))
 
-    bucket = _current_snapshot_bucket()
+    # NOTE: bucketed snapshots make the feed deterministic across devices.
+    # The helper is called _snapshot_bucket() in this file.
+    bucket = _snapshot_bucket()
     cache_key = _feed_cache_key(
         interests=interests_norm,
         country=(country or "world").strip().lower(),
@@ -378,6 +431,67 @@ def favorites_sync(payload: FavoriteSync) -> dict[str, Any]:
     db.upsert_favorites(payload.device_id, payload.ids)
     return {"status": "ok", "count": len(payload.ids)}
 
+
+
+@router.get("/api/tracking")
+def get_tracking(device_id: str) -> dict[str, Any]:
+    """Return user's tracked clusters with server-side deltas.
+
+    Deltas are computed vs the last time the user opened Tracking on any device.
+    After returning, we update last_seen_* in DB so next open shows changes since this open.
+    """
+    db.ensure_schema()
+
+    fav_rows = db.get_favorites_with_state(device_id)
+    if not fav_rows:
+        return {"status": "ok", "count": 0, "items": []}
+
+    state_by_id = {r["cluster_id"]: r for r in fav_rows}
+    ids = [r["cluster_id"] for r in fav_rows]
+
+    clusters = db.get_clusters_by_ids(ids)
+    items: list[dict[str, Any]] = []
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    updates = []
+    for c in clusters:
+        cid = c["id"]
+        sources = db.get_cluster_sources(cid)
+        item = _decorate_cluster_row(c, sources)
+
+        prev = state_by_id.get(cid) or {}
+        prev_score = prev.get("last_seen_score")
+        prev_sources = prev.get("last_seen_sources_count")
+
+        # If never seen before: delta = 0 (no arrow)
+        try:
+            cur_score = int(item.get("credibility_score") or 0)
+        except Exception:
+            cur_score = 0
+        try:
+            cur_sources = int(item.get("sources_count") or 0)
+        except Exception:
+            cur_sources = 0
+
+        delta_score = 0 if prev_score is None else int(cur_score - int(prev_score))
+        delta_sources_count = 0 if prev_sources is None else int(cur_sources - int(prev_sources))
+
+        item["delta_score"] = delta_score
+        item["delta_sources_count"] = delta_sources_count
+
+        items.append(item)
+        updates.append((cid, cur_score, cur_sources, now_iso))
+
+    # Keep order stable (newest first)
+    def _sort_key(it: dict[str, Any]):
+        return (it.get("latest_published_at") or "", it.get("cluster_id") or 0)
+
+    items.sort(key=_sort_key, reverse=True)
+
+    db.update_favorites_seen_state(device_id, updates)
+
+    return {"status": "ok", "count": len(items), "items": items}
 
 @router.get("/api/favorites")
 def favorites_get(device_id: str) -> dict[str, Any]:

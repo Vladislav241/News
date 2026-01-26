@@ -99,15 +99,18 @@ function loadPrefs() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
     const p = JSON.parse(raw);
-    state.interests = Array.isArray(p.interests) ? p.interests : state.interests;
+    // Keep interests deterministic & deduplicated (prevents duplicate chips like "technology" twice)
+    const ints = Array.isArray(p.interests) ? p.interests : state.interests;
+    state.interests = [...new Set(ints.map(String))].filter(Boolean);
     state.country = p.country || state.country;
     state.language = p.language || state.language;
   } catch {}
 }
 
 function savePrefs() {
+  const interests = [...new Set((state.interests || []).map(String))].filter(Boolean);
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
-    interests: state.interests,
+    interests,
     country: state.country,
     language: state.language,
   }));
@@ -214,13 +217,34 @@ function updateSeenStateFromItems(items) {
     // Keep the first time the item was seen in the feed so it won't "jump" to top on updates.
     const firstSeenAt = Number.isFinite(Number(prev.first_seen_at)) ? Number(prev.first_seen_at) : now;
 
+    const newScore = Number(it.credibility_score ?? it.credibility ?? it.score ?? it.rating);
+    const oldScore = Number(prev.credibility_score);
+    const oldUpdatedAt = prev.updated_at || "";
+    const newUpdatedAt = it.updated_at || oldUpdatedAt || "";
+
+    // If score changed, remember the delta so Tracking can show ▲/▼.
+    const hasOld = Number.isFinite(oldScore);
+    const hasNew = Number.isFinite(newScore);
+    const delta = (hasOld && hasNew) ? (newScore - oldScore) : 0;
+    const scoreChanged = (hasOld && hasNew && delta !== 0);
+
     seen[key] = {
       ...prev,
       first_seen_at: firstSeenAt,
       last_seen_at: now,
       sources_count: Number(it.sources_count ?? prev.sources_count ?? 0),
-      credibility_score: Number(it.credibility_score ?? it.credibility ?? it.score ?? it.rating ?? prev.credibility_score ?? 0),
-      updated_at: it.updated_at || prev.updated_at || "",
+      credibility_score: hasNew ? newScore : Number(prev.credibility_score ?? 0),
+      updated_at: newUpdatedAt,
+
+      // Delta fields (optional)
+      ...(scoreChanged ? {
+        prev_credibility_score: oldScore,
+        credibility_delta: delta,
+        delta_at: now,
+        delta_updated_at: newUpdatedAt,
+      } : {}),
+
+      // If the item updated but score didn't, keep previous delta (do not wipe it).
     };
   }
 
@@ -259,7 +283,7 @@ async function pullFavoritesFromServerAndMerge() {
 function renderTags() {
   const tagsEl = qs("tags");
   tagsEl.innerHTML = "";
-  DEFAULT_INTERESTS.forEach((tag) => {
+  [...new Set(DEFAULT_INTERESTS)].forEach((tag) => {
     const el = document.createElement("div");
     el.className = "tag" + (state.interests.includes(tag) ? " on" : "");
     el.textContent = tag;
@@ -268,7 +292,8 @@ function renderTags() {
         state.interests = state.interests.filter((x) => x !== tag);
         if (state.interests.length === 0) state.interests = ["general"];
       } else {
-        state.interests.push(tag);
+        // Make sure we never introduce duplicates
+        state.interests = [...new Set([...(state.interests || []), tag])];
       }
       renderTags();
       if (state.mode === "feed") await fetchFeed();
@@ -579,7 +604,9 @@ function createCardElement(item, ctx, seen) {
   // Redesign: cards are always light; only the score badge switches black/white.
   div.className = 'newsCard';
 
-  // Tracking: allow drag-to-delete only inside Tracking tab.
+  
+  if (state.mode === 'fav') div.setAttribute('draggable','true');
+// Tracking: allow drag-to-delete only inside Tracking tab.
   if (state.mode === 'fav') {
     div.setAttribute('draggable', 'true');
   } else {
@@ -717,42 +744,49 @@ function createCardElement(item, ctx, seen) {
   const imageUrl = getNewsImage(item);
 
   // Tracking-only UI (icon + delta like in the reference)
-  const prev = seen[String(id)]?.credibility_score;
-  const prevNum = Number(prev);
-  const hasPrev = Number.isFinite(prevNum);
-  const delta = hasPrev ? (score - prevNum) : 0;
-  const deltaDir = delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat';
-  const deltaAbs = Math.abs(delta);
-  // Only show tracking delta + icon inside the Tracking tab.
-  const showTrackingUI = state.mode === 'fav';
+//
+// IMPORTANT: delta must come from the server so every device sees the same Tracking changes.
+// Backend should return `delta_score` (positive/negative) per tracked item.
+const delta = Number(item?.delta_score ?? item?.delta ?? item?.credibility_delta ?? 0);
+const hasDelta = Number.isFinite(delta) && delta !== 0;
+const deltaDir = delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat';
+const deltaAbs = Math.abs(delta);
+
+// Only show tracking delta + icon inside the Tracking tab.
+const showTrackingUI = state.mode === 'fav';
 
   const dragHandleHtml = showTrackingUI
     ? `<span class=\"dragHandle\" title=\"Drag to delete\" aria-label=\"Drag to delete\">⋮⋮</span>`
     : '';
 
-  const deltaHtml = (!showTrackingUI || !hasPrev || deltaDir === 'flat')
+  const deltaHtml = (!showTrackingUI || !hasDelta || deltaDir === 'flat')
     ? ''
     : `<div class="delta ${deltaDir}">${deltaDir === 'up' ? '▲' : '▼'} ${deltaAbs}</div>`;
 
-  const iconSrc = deltaDir === 'down'
-    ? '/static/icons/TrackingRed.png'
-    : '/static/icons/TrackingGreen.png';
-  const iconTone = deltaDir === 'down' ? 'red' : 'green';
+  const iconSrc = !showTrackingUI
+    ? '/static/icons/Tracking.png'
+    : (deltaDir === 'down'
+      ? '/static/icons/TrackingRed.png'
+      : (deltaDir === 'up'
+        ? '/static/icons/TrackingGreen.png'
+        : '/static/icons/Tracking.png'));
+  const iconTone = deltaDir === 'down' ? 'red' : (deltaDir === 'up' ? 'green' : 'neutral');
   const iconHtml = !showTrackingUI
     ? ''
     : `<div class="trackIconWrap ${iconTone}" title="Tracking">
          <img class="trackIcon" src="${iconSrc}" alt="Tracking" />
        </div>`;
 
-  // NEW flame badge (feed only)
-  const nowTs = Number(ctx?.nowTs || Date.now());
-  const suppressNewBadges = !!ctx?.suppressNewBadges;
-  const newIds = ctx?.newIds instanceof Set ? ctx.newIds : new Set();
-  const seenRow = seen[idStr] || {};
-  const firstSeenAt = Number(seenRow?.first_seen_at || 0);
-  const isWithinWindow = firstSeenAt > 0 && (nowTs - firstSeenAt) <= NEW_BADGE_WINDOW_MS;
-  const isNew = !suppressNewBadges && state.mode === 'feed' && (newIds.has(idStr) || isWithinWindow);
-  const flameHtml = isNew ? `<img class="newFlame" src="/static/icons/new.png" alt="New" title="New" />` : '';
+  // Share button (Feed + Tracking). No functionality for now.
+  const shareHtml = `<button class="shareBtn" type="button" title="Share" aria-label="Share">
+    <img class="shareIcon" src="/static/icons/Share.png" alt="Share" />
+  </button>`;
+
+  // Trending flame badge (server-side; consistent across devices)
+  const isTrending = !!item.is_trending;
+  const flameHtml = isTrending
+    ? `<img class="newFlame" src="/static/icons/new.png" alt="Trending" title="Trending" />`
+    : '';
 
   div.innerHTML = `
     <details class="newsDetails">
@@ -764,6 +798,7 @@ function createCardElement(item, ctx, seen) {
             <div class="scoreBadge ${score < LOW_SCORE_THRESHOLD ? 'dark' : 'light'}">${score} / 100</div>
             ${deltaHtml}
             ${iconHtml}
+            ${shareHtml}
           </div>
         </div>
         <div class="newsMeta">${metaLine}</div>
@@ -812,6 +847,15 @@ function createCardElement(item, ctx, seen) {
     imgEl.addEventListener('load', () => {
       if (imgEl.parentElement) imgEl.parentElement.dataset.imageState = 'ready';
     });
+  }
+
+  // Share button should not toggle the details accordion.
+  const shareBtn = div.querySelector('.shareBtn');
+  if (shareBtn) {
+    shareBtn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
   }
 
   const favBtn = div.querySelector(`[data-fav="${id}"]`);
@@ -875,23 +919,21 @@ function updateCardElement(el, item, ctx, seen) {
   if (state.mode === 'fav') el.setAttribute('draggable', 'true');
   else el.removeAttribute('draggable');
 
-  // Update NEW flame visibility (it may expire)
-  const now = Number.isFinite(Number(ctx?.nowTs)) ? Number(ctx.nowTs) : Date.now();
-  const firstSeenAt = Number(seen?.[idStr]?.first_seen_at);
-  const withinWindow = Number.isFinite(firstSeenAt) && (now - firstSeenAt) <= NEW_BADGE_WINDOW_MS;
-  const shouldShowNew = (state.mode === 'feed') && !ctx?.suppressNewBadges && (ctx?.newIds?.has(idStr) || withinWindow);
+  // Update Trending flame visibility (server-driven)
+  const shouldShowTrending = !!item.is_trending;
 
   const flame = el.querySelector('.newFlame');
-  if (shouldShowNew) {
+  if (shouldShowTrending) {
     if (!flame) {
-      const titleEl = el.querySelector('.newsTitle');
-      if (titleEl) {
+      const topRight = el.querySelector('.newsTopRight');
+      if (topRight) {
         const img = document.createElement('img');
         img.className = 'newFlame';
         img.src = '/static/icons/new.png';
-        img.alt = 'New';
-        img.title = 'New';
-        titleEl.prepend(img);
+        img.alt = 'Trending';
+        img.title = 'Trending';
+        // Put it before score badge for the same layout
+        topRight.prepend(img);
       }
     }
   } else {
@@ -1214,39 +1256,41 @@ async function fetchFeed(opts) {
 
 
 async function fetchFavorites() {
-  const ids = getFavIds();
-  qs("favCount").textContent = String(ids.length);
+  const deviceId = getDeviceId();
+  setStatus('Loading tracking…');
 
-  if (ids.length === 0) {
-    qs("cards").innerHTML =
-      `<div class="panel muted">Избранное пустое. Нажимай ☆ на карточке, чтобы сохранить событие.</div>`;
-    qs("lastUpdated").textContent = `Избранное: пусто`;
-    return;
+  try {
+    const r = await fetch(`${API_BASE}/api/tracking?device_id=${encodeURIComponent(deviceId)}`);
+    const data = await r.json();
+    const items = (data && data.items) ? data.items : [];
+
+    // Tracking page uses server-side deltas (delta_score / delta_sources_count)
+    renderCards(items, { nowTs: Date.now(), newIds: new Set(), suppressNewBadges: true, incremental: false, animate: false });
+    setStatus(items.length ? '' : 'Tracking is empty. Tap ★ on a news card to add.');
+    updateCounts();
+  } catch (e) {
+    console.error(e);
+    setStatus('Failed to load tracking.');
   }
-
-  setStatus("Обновляю избранное...");
-  const url = `${API_BASE}/api/news/by_ids?ids=${encodeURIComponent(ids.join(","))}`;
-  const res = await fetch(url);
-
-  if (!res.ok) {
-    setStatus(`Ошибка избранного: ${res.status}`);
-    return;
-  }
-
-  const data = await res.json();
-  const items = data.items || [];
-  const now = Date.now();
-  // Update seen to keep delta calculations consistent in Tracking.
-  markSeen(items, now);
-  renderCards(items, { nowTs: now, newIds: new Set(), suppressNewBadges: true });
-
-  updateTrackingHint();
-
-  qs("lastUpdated").textContent =
-    `Избранное: ${new Date().toLocaleString()} — событий: ${items.length}`;
-
-  setStatus("");
 }
+
+// ✅ Keep header counters in sync (Tracking badge)
+function updateCounts() {
+  try {
+    const n = (getFavIds() || []).length;
+
+    // Old counter (hidden)
+    const favCountEl = document.getElementById("favCount");
+    if (favCountEl) favCountEl.textContent = String(n);
+
+    // New header badge
+    const trackingCountEl = document.getElementById("trackingCount");
+    if (trackingCountEl) trackingCountEl.textContent = String(n);
+  } catch (_) {
+    // noop
+  }
+}
+
 
 function startCooldown(seconds) {
   const now = Date.now();
@@ -1255,13 +1299,15 @@ function startCooldown(seconds) {
 
 function tickCooldownUI() {
   const now = Date.now();
+  const btn = qs("btnRefresh");
+  if (!btn) return;
   if (state.cooldownUntil > now) {
     const left = Math.ceil((state.cooldownUntil - now) / 1000);
-    qs("btnRefresh").disabled = true;
+    btn.disabled = true;
     setStatus(`Обновление доступно через ${left}с`);
   } else {
-    if (qs("btnRefresh").disabled) {
-      qs("btnRefresh").disabled = false;
+    if (btn.disabled) {
+      btn.disabled = false;
       setStatus("");
     }
   }
@@ -1326,7 +1372,8 @@ function bindUI() {
     else await fetchFavorites();
   };
 
-  qs("btnRefresh").onclick = refreshBackend;
+  const btnRefresh = qs("btnRefresh");
+  if (btnRefresh) btnRefresh.onclick = refreshBackend;
 
 
   // Header Tracking button (replaces Favorites tab)

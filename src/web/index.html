@@ -11,7 +11,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Jersey+25&display=swap" rel="stylesheet">
   <style>
     :root{
-      --bg:#f4f5f7;
+      /* Clean flat look closer to the Figma reference */
+      --bg:#ffffff;
       --panel:#ffffff;
       --card:#ffffff;
       --stroke:#e5e7eb;
@@ -22,8 +23,8 @@
       --chipText:rgba(15,23,42,.82);
       --black:#111113;
       --white:#ffffff;
-      --shadow: 0 12px 30px rgba(2,6,23,.08);
-      --shadow2: 0 18px 45px rgba(2,6,23,.10);
+      --shadow: none;
+      --shadow2: none;
     }
     *{ box-sizing:border-box; }
     body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 0; background:var(--bg); color:var(--text); }
@@ -33,45 +34,82 @@
     .wrap { max-width: 1040px; margin: 0 auto; padding: 18px 16px 0; }
     header {
       position: sticky; top: 0; z-index: 20;
-      background: rgba(244,245,247,.85);
+      background: #ffffff;
       backdrop-filter: blur(10px);
       border-bottom: 1px solid var(--stroke);
     }
-    .headerInner { max-width: 1040px; margin: 0 auto; padding: 14px 16px; display:flex; align-items:center; justify-content:space-between; gap: 18px; }
-    .brand { display:flex; align-items:center; gap: 12px; min-width: 220px; cursor: pointer; user-select: none; }
-    .brandLogo { width: 26px; height: 26px; object-fit: contain; display:block; }
+  .headerInner {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 28px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start; /* важно */
+  gap: 18px;
+}
+
+
+
+    .brand { display:flex; align-items:center; gap: 12px;  cursor: pointer; user-select: none; }
+    .brandLogo{
+  width: 42px;
+  height: 42px;
+  object-fit: contain;
+  display:block;
+}
+
     /* used in footer */
     .brandMark { width: 22px; height: 22px; background: #0b0b0f; border-radius: 3px; }
     .brandText { font-family: "Jersey 25", Inter, system-ui; font-size: 22px; line-height: 1; letter-spacing: .6px; }
-    .brandText .top { font-size: 22px; }
-    .brandText .bottom { font-size: 26px; }
+    .brandText .top { font-size: 26px; }
+    .brandText .bottom { font-size: 24px; }
 
-    .tagline {
-      flex: 1;
-      text-align: center;
-      color: rgba(15,23,42,.35);
-      font-size: 18px;
-      letter-spacing: .12em;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
+.tagline{
+  flex: 0 0 auto;      /* НЕ растягиваем */
+  text-align: left;
+  margin-left: 12px;   /* расстояние от лого */
+  font-size: 18px;
+  letter-spacing: .08em;
+  color: rgba(15,23,42,.28);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 520px;    /* чтобы не налезало на кнопки */
+}
 
-    .headerRight { display:flex; align-items:center; gap: 10px; min-width: 220px; justify-content:flex-end; }
+
+
+
+
+  .headerRight{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  margin-left: auto;   /* важно: кнопки уедут вправо */
+  justify-content:flex-end;
+}
+
 
     .trackBtn {
-      display:flex;
-      align-items:center;
-      gap: 10px;
-      border: 1px solid rgba(15,23,42,.18);
-      background: #fff;
-      color: var(--text);
-      border-radius: 12px;
-      padding: 9px 12px;
-      cursor:pointer;
-      box-shadow: 0 8px 20px rgba(2,6,23,.06);
-    }
-    .trackBtn:hover { transform: translateY(-1px); box-shadow: 0 14px 26px rgba(2,6,23,.10); }
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  font-size: 18px;
+
+  background: transparent;
+  border: none;
+
+  padding: 10px 16px;
+  border-radius: 999px;
+
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+    .trackBtn:hover {
+  background: rgba(28, 41, 73, 0.06); /* мягкий серый */
+}
     .trackBadge {
       min-width: 22px;
       height: 22px;
@@ -122,20 +160,34 @@
       box-shadow: var(--shadow);
     }
     .searchRow { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-    .searchWrap {
-      flex: 1;
-      min-width: 240px;
-      display:flex;
-      align-items:center;
-      gap:10px;
-      background: #ffffff;
-      border:1px solid var(--stroke);
-      border-radius: 14px;
-      padding: 10px 12px;
-      box-shadow: 0 8px 24px rgba(2,6,23,.04);
-    }
+    .searchWrap{
+  width: 100%;
+  max-width: 980px;   /* <-- увеличивай: 900 / 1000 / 1100 */
+  margin: 0 auto;
+
+  display:flex;
+  align-items:center;
+  gap: 14px;
+
+  padding: 16px 22px; /* чуть больше воздуха */
+  border-radius: 14px;
+
+  background:#fff;
+  border: 1.5px solid rgba(15,23,42,0.25); 
+}
+
+.searchWrap input{
+  font-size: 18px;    /* было 14/18 */
+  padding-top: 5px; 
+  line-height: 1.2;
+}
+
+.searchWrap input::placeholder{
+  font-size: 18px;
+}
+
     .searchIcon {
-      width: 18px; height: 18px;
+      width: 26px; height: 26px;
       opacity: .55;
       background: currentColor;
       -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>') center/contain no-repeat;
@@ -194,8 +246,8 @@
     /* Used when toggling Show more / Hide for a smoother swap */
     .cards.is-fading { opacity: 0; transform: translateY(8px); }
 
-    .newsCard { border-radius: 16px; overflow:hidden; box-shadow: var(--shadow); border: 1px solid var(--stroke); background: var(--card); transition: transform .14s ease, box-shadow .14s ease; }
-    .newsCard:hover { transform: translateY(-1px); box-shadow: var(--shadow2); }
+    .newsCard { border-radius: 16px; overflow:hidden; box-shadow: none; border: 1px solid var(--stroke); background: var(--card); }
+    .newsCard:hover { transform: none; box-shadow: none; }
     /* Redesign: cards are always light; only the score badge switches black/white */
     .newsCard.isLow { background: var(--card); border-color: var(--stroke); }
 
@@ -245,7 +297,43 @@
     .newsCard.isLow .trackIconWrap.green{ border-color: rgba(34,197,94,.55); }
     .newsCard.isLow .trackIconWrap.red{ border-color: rgba(239,68,68,.55); }
     .trackIcon{ width: 18px; height: 18px; object-fit: contain; display:block; }
-    
+
+    /* Share button (top-right on cards) */
+    .shareBtn{
+      width: 44px;
+      height: 34px;
+      border-radius: 12px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background: transparent;
+      border: 1px solid rgba(15,23,42,.22);
+      cursor: pointer;
+      padding: 0;
+    }
+    .shareBtn:hover{ filter: brightness(.98); }
+    .newsCard.isLow .shareBtn{ border-color: rgba(255,255,255,.18); }
+    .shareIcon{ width: 18px; height: 18px; object-fit: contain; display:block; }
+
+    /* External link icon (to match the Figma card actions) */
+    .openBtn{
+      width: 44px;
+      height: 34px;
+      border-radius: 12px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border: 1px solid rgba(15,23,42,.14);
+      background: rgba(255,255,255,.85);
+      cursor:pointer;
+      transition: filter .12s ease;
+      text-decoration:none;
+    }
+    .openBtn:hover{ filter: brightness(.98); }
+    .newsCard.isLow .openBtn{ border-color: rgba(255,255,255,.18); background: rgba(17,17,19,.25); }
+    .openBtn svg{ width: 18px; height: 18px; opacity: .85; }
+    .newsCard.isLow .openBtn svg{ opacity: .95; }
+
     .dragHandle{
       display:inline-flex;
       align-items:center;
@@ -271,6 +359,7 @@
       font-size: 13px;
       min-width: 86px;
       text-align:center;
+        margin-right: 35px;
     }
     .newsCard.isLow .scoreBadge { background: transparent; border-color: rgba(17,17,19,.14); color: var(--text); }
 
@@ -443,7 +532,15 @@
     .footerLinks { display:flex; flex-direction:column; gap: 6px; }
     .footerLinks a { color: rgba(15,23,42,.75); text-decoration:none; }
     .footerLinks a:hover { text-decoration:underline; }
-    .copyright { margin-top: 22px; text-align:center; color: rgba(15,23,42,.55); font-size: 12px; }
+   .copyright {
+  padding: 25px 0;      /* ✅ сильнее сверху и снизу */
+  text-align: center;
+  color: rgba(15,23,42,.55);
+  font-size: 12px;
+}
+
+
+
     @media (max-width: 860px) {
       .footerGrid { grid-template-columns: 1fr 1fr; }
     }
@@ -525,6 +622,45 @@
   box-shadow: 0 8px 30px rgba(0,0,0,0.08);
 }
 
+/* ===== FIGMA-LIKE FLAT OVERRIDES ===== */
+.btn, .trackBtn, .tab, .iconBtn, .searchWrap { box-shadow: none !important; }
+.btn:hover, .trackBtn:hover, .tab:hover, .iconBtn:hover { transform: none !important; box-shadow: none !important; }
+.newsCard { box-shadow: none !important; }
+.newsCard:hover { transform: none !important; box-shadow: none !important; }
+.panel, .field, .searchWrap { box-shadow: none !important; }
+
+.footerLogo{
+  display:flex;
+  align-items:center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.footerLogoImg{
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  display:block;
+}
+
+.footerBrandText{
+  font-family: "Jersey 25", Inter, system-ui;
+  line-height: 1;
+  letter-spacing: .6px;
+}
+
+.footerBrandText .top{ font-size: 22px; }
+.footerBrandText .bottom{ font-size: 26px; }
+
+.footerDivider {
+  width: 100%;
+  height: 1px;
+  background: var(--stroke);
+
+  margin-top: 50px;   /* ✅ большой отступ сверху */
+  margin-bottom: 30px; /* ✅ отступ перед copyright */
+}
+
 
 </style>
 </head>
@@ -533,8 +669,9 @@
     <div class="headerInner">
       <!-- Brand: logo + ONE news. (matches the reference) -->
       <div id="brand" class="brand" aria-label="ONE news" role="button" tabindex="0">
-        <img src="/static/icons/Logo.png" alt="Logo" />
-        <div class="brandText"><div class="top">ONE</div><div class="bottom">news.</div></div>
+        <img class="brandLogo" src="/static/icons/Logo.png" alt="Logo" />
+
+        <div class="brandText"><div class="top">CHECK</div><div class="bottom">news.</div></div>
       </div>
 
       <div class="tagline">Track credibility of breaking news</div>
@@ -545,8 +682,8 @@
           <span id="trackingCount" class="trackBadge">0</span>
         </button>
         <button id="btnLogin" class="loginBtn" type="button">Login</button>
-        <!-- Keep manual refresh (dev) -->
-        <button id="btnRefresh" class="btn" type="button" style="padding:8px 10px;border-radius:12px;">Refresh</button>
+        <!-- Manual refresh kept for JS compatibility, but hidden in the new design -->
+        <button id="btnRefresh" class="btn hiddenCompat" type="button">Refresh</button>
       </div>
     </div>
   </header>
@@ -618,49 +755,69 @@
   </div>
 
   <footer>
-    <div class="footerInner">
-      <div class="footerGrid">
-        <div>
-          <div class="footerLogo">
-            <div class="brandMark" aria-hidden="true"></div>
-            <div class="brandText"><span>ONE</span><br><span>news.</span></div>
-          </div>
-        </div>
 
-        <div>
-          <div class="footerColTitle">Company</div>
-          <div class="footerLinks">
-            <a href="#" onclick="return false;">About Us</a>
-            <a href="#" onclick="return false;">Blog</a>
-            <a href="#" onclick="return false;">Careers</a>
-            <a href="#" onclick="return false;">Contact</a>
-          </div>
-        </div>
+  <!-- ✅ Основной контейнер (ограниченная ширина) -->
+  <div class="footerInner">
+    <div class="footerGrid">
 
-        <div>
-          <div class="footerColTitle">Resources</div>
-          <div class="footerLinks">
-            <a href="#" onclick="return false;">Help Center</a>
-            <a href="#" onclick="return false;">Documentation</a>
-            <a href="#" onclick="return false;">API</a>
-            <a href="#" onclick="return false;">Status</a>
-          </div>
-        </div>
-
-        <div>
-          <div class="footerColTitle">Policy</div>
-          <div class="footerLinks">
-            <a href="#" onclick="return false;">Privacy Policy</a>
-            <a href="#" onclick="return false;">Terms of Service</a>
-            <a href="#" onclick="return false;">Service</a>
-            <a href="#" onclick="return false;">Cookie Policy</a>
+      <!-- LOGO COLUMN -->
+      <div>
+        <div class="footerLogo">
+          <img class="footerLogoImg" src="/static/icons/Logo.png" alt="Logo" />
+          <div class="footerBrandText">
+            <div class="top">CHECK</div>
+            <div class="bottom">news.</div>
           </div>
         </div>
       </div>
 
-      <div class="copyright">© 2026 ONENews. All rights reserved.</div>
+      <!-- Company -->
+      <div>
+        <div class="footerColTitle">Company</div>
+        <div class="footerLinks">
+          <a href="#" onclick="return false;">About Us</a>
+          <a href="#" onclick="return false;">Blog</a>
+          <a href="#" onclick="return false;">Careers</a>
+          <a href="#" onclick="return false;">Contact</a>
+        </div>
+      </div>
+
+      <!-- Resources -->
+      <div>
+        <div class="footerColTitle">Resources</div>
+        <div class="footerLinks">
+          <a href="#" onclick="return false;">Help Center</a>
+          <a href="#" onclick="return false;">Documentation</a>
+          <a href="#" onclick="return false;">API</a>
+          <a href="#" onclick="return false;">Status</a>
+        </div>
+      </div>
+
+      <!-- Policy -->
+      <div>
+        <div class="footerColTitle">Policy</div>
+        <div class="footerLinks">
+          <a href="#" onclick="return false;">Privacy Policy</a>
+          <a href="#" onclick="return false;">Terms of Service</a>
+          <a href="#" onclick="return false;">Service</a>
+          <a href="#" onclick="return false;">Cookie Policy</a>
+        </div>
+      </div>
+
     </div>
-  </footer>
+  </div>
+
+  <!-- ✅ Divider теперь ВНЕ контейнера (на всю ширину экрана) -->
+  <div class="footerDivider"></div>
+
+  <!-- ✅ Copyright тоже отдельно и с отступами -->
+  <div class="copyright">
+    © 2026 ONENews. All rights reserved.
+  </div>
+
+</footer>
+
+
 
   <!-- Tracking: drag cards here to delete (shown only in Tracking tab) -->
   <div id="trashZone" class="trashZone" aria-hidden="true">

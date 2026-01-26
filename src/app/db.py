@@ -141,9 +141,15 @@ class Database:
                     device_id TEXT NOT NULL,
                     cluster_id INTEGER NOT NULL,
                     created_at TEXT NOT NULL,
-                    PRIMARY KEY (device_id, cluster_id),
-                    FOREIGN KEY(cluster_id) REFERENCES clusters(id) ON DELETE CASCADE
+
+                    -- Server-side tracking state (so tracking deltas work across devices)
+                    last_seen_score INTEGER,
+                    last_seen_sources_count INTEGER,
+                    last_seen_at TEXT,
+
+                    PRIMARY KEY (device_id, cluster_id)
                 );
+
                 CREATE INDEX IF NOT EXISTS idx_favorites_cluster ON favorites(cluster_id);
                 CREATE INDEX IF NOT EXISTS idx_favorites_device ON favorites(device_id);
 
@@ -173,6 +179,17 @@ class Database:
 
             if not self._has_column("article_summaries", "raw_text"):
                 conn.execute("ALTER TABLE article_summaries ADD COLUMN raw_text TEXT;")
+
+
+            # Favorites tracking state (server-side deltas for Tracking UI)
+            if not self._has_column("favorites", "last_seen_score"):
+                conn.execute("ALTER TABLE favorites ADD COLUMN last_seen_score INTEGER;")
+
+            if not self._has_column("favorites", "last_seen_sources_count"):
+                conn.execute("ALTER TABLE favorites ADD COLUMN last_seen_sources_count INTEGER;")
+
+            if not self._has_column("favorites", "last_seen_at"):
+                conn.execute("ALTER TABLE favorites ADD COLUMN last_seen_at TEXT;")
 
             conn.commit()
 
@@ -476,6 +493,47 @@ class Database:
             (device_id,),
         )
         return [int(r["cluster_id"]) for r in rows]
+
+    def get_favorites_with_state(self, device_id: str):
+        """Return favorites rows with server-side tracking state."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT cluster_id, created_at, last_seen_score, last_seen_sources_count, last_seen_at
+                FROM favorites
+                WHERE device_id = ?
+                ORDER BY created_at DESC
+                """,
+                (device_id,),
+            ).fetchall()
+
+        return [
+            {
+                "cluster_id": r["cluster_id"],
+                "created_at": r["created_at"],
+                "last_seen_score": r["last_seen_score"],
+                "last_seen_sources_count": r["last_seen_sources_count"],
+                "last_seen_at": r["last_seen_at"],
+            }
+            for r in rows
+        ]
+
+    def update_favorites_seen_state(self, device_id: str, updates):
+        """Bulk update favorites seen state. updates: list of (cluster_id, score, sources_count, seen_at_iso)."""
+        if not updates:
+            return
+
+        with self.connect() as conn:
+            conn.executemany(
+                """
+                UPDATE favorites
+                SET last_seen_score = ?, last_seen_sources_count = ?, last_seen_at = ?
+                WHERE device_id = ? AND cluster_id = ?
+                """,
+                [(u[1], u[2], u[3], device_id, u[0]) for u in updates],
+            )
+            conn.commit()
+
 
     def is_cluster_favorited_anywhere(self, cluster_id: int) -> bool:
         row = self._fetchone("SELECT 1 as x FROM favorites WHERE cluster_id=? LIMIT 1", (int(cluster_id),))

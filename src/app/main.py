@@ -13,9 +13,10 @@ try:
 except Exception:
     pass
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from .db import db
 from .ingest import run_ingest_cycle
@@ -48,6 +49,16 @@ app.include_router(debug_router)
 # If your repo layout is different, adjust these paths.
 app.mount("/static", StaticFiles(directory="src/web"), name="static")
 app.mount("/", StaticFiles(directory="src/web", html=True), name="web")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    """Avoid noisy 404s in the browser console."""
+    path = os.path.join("src", "web", "static", "icons", "Logo.png")
+    if os.path.exists(path):
+        return FileResponse(path, media_type="image/png")
+    # Fallback: return a 404 if the file isn't there
+    return Response(status_code=404)
 
 # ---------- Auto refresh loop ----------
 _auto_task: Optional[asyncio.Task] = None
