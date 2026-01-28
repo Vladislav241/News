@@ -164,6 +164,48 @@ class Database:
                     error_count INTEGER NOT NULL DEFAULT 0,
                     backoff_until TEXT
                 );
+
+                -- -----------------
+                -- Auth (users + tokens + per-user favorites)
+                -- -----------------
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email TEXT NOT NULL UNIQUE,
+                    hashed_password TEXT,
+                    email_verified INTEGER NOT NULL DEFAULT 0,
+                    provider TEXT NOT NULL DEFAULT 'local',
+                    provider_id TEXT,
+                    created_at TEXT NOT NULL,
+                    last_login TEXT
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_users_provider ON users(provider, provider_id);
+
+                CREATE TABLE IF NOT EXISTS auth_tokens (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    token_type TEXT NOT NULL,
+                    token_hash TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    consumed_at TEXT,
+                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_auth_tokens_type ON auth_tokens(token_type);
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_tokens_hash ON auth_tokens(token_hash);
+
+                CREATE TABLE IF NOT EXISTS user_favorites (
+                    user_id INTEGER NOT NULL,
+                    cluster_id INTEGER NOT NULL,
+                    created_at TEXT NOT NULL,
+                    last_seen_score INTEGER,
+                    last_seen_sources_count INTEGER,
+                    last_seen_at TEXT,
+                    PRIMARY KEY (user_id, cluster_id),
+                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+                    FOREIGN KEY(cluster_id) REFERENCES clusters(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_user_favs_user ON user_favorites(user_id);
+                CREATE INDEX IF NOT EXISTS idx_user_favs_cluster ON user_favorites(cluster_id);
                 """
             )
 
@@ -538,6 +580,155 @@ class Database:
     def is_cluster_favorited_anywhere(self, cluster_id: int) -> bool:
         row = self._fetchone("SELECT 1 as x FROM favorites WHERE cluster_id=? LIMIT 1", (int(cluster_id),))
         return bool(row)
+
+    # -----------------
+    # Auth: users + tokens
+    # -----------------
+    def get_user_by_email(self, email: str) -> Optional[dict[str, Any]]:
+        email = (email or "").strip().lower()
+        if not email:
+            return None
+        return self._fetchone("SELECT * FROM users WHERE email=?", (email,))
+
+    def get_user_by_id(self, user_id: int) -> Optional[dict[str, Any]]:
+        try:
+            uid = int(user_id)
+        except Exception:
+            return None
+        return self._fetchone("SELECT * FROM users WHERE id=?", (uid,))
+
+    def create_user_local(self, email: str, hashed_password: str) -> int:
+        now = _utc_now_iso()
+        cur = self._exec(
+            "INSERT INTO users(email, hashed_password, email_verified, provider, created_at) VALUES(?, ?, 0, 'local', ?)",
+            ((email or "").strip().lower(), hashed_password, now),
+        )
+        return int(cur.lastrowid)
+
+    def upsert_oauth_user(self, provider: str, provider_id: str, email: str) -> int:
+        provider = (provider or "").strip().lower()
+        provider_id = (provider_id or "").strip()
+        email = (email or "").strip().lower()
+        now = _utc_now_iso()
+
+        # existing by provider id
+        row = self._fetchone("SELECT id FROM users WHERE provider=? AND provider_id=?", (provider, provider_id))
+        if row:
+            # update email if changed
+            self._exec("UPDATE users SET email=? WHERE id=?", (email, int(row["id"])))
+            return int(row["id"])
+
+        # existing by email
+        row = self._fetchone("SELECT id FROM users WHERE email=?", (email,))
+        if row:
+            self._exec("UPDATE users SET provider=?, provider_id=? WHERE id=?", (provider, provider_id, int(row["id"])))
+            return int(row["id"])
+
+        cur = self._exec(
+            "INSERT INTO users(email, hashed_password, email_verified, provider, provider_id, created_at) VALUES(?, NULL, 1, ?, ?, ?)",
+            (email, provider, provider_id, now),
+        )
+        return int(cur.lastrowid)
+
+    def set_user_email_verified(self, user_id: int, verified: bool) -> None:
+        self._exec("UPDATE users SET email_verified=? WHERE id=?", (1 if verified else 0, int(user_id)))
+
+    def set_user_password(self, user_id: int, hashed_password: str) -> None:
+        self._exec("UPDATE users SET hashed_password=? WHERE id=?", (hashed_password, int(user_id)))
+
+    def update_user_last_login(self, user_id: int) -> None:
+        self._exec("UPDATE users SET last_login=? WHERE id=?", (_utc_now_iso(), int(user_id)))
+
+    def create_auth_token(self, user_id: int, token_type: str, token_hash: str, expires_minutes: int) -> None:
+        now = datetime.now(timezone.utc)
+        exp = now + timedelta(minutes=expires_minutes)
+        self._exec(
+            "INSERT INTO auth_tokens(user_id, token_type, token_hash, expires_at, created_at) VALUES(?, ?, ?, ?, ?)",
+            (int(user_id), token_type, token_hash, exp.replace(microsecond=0).isoformat(), now.replace(microsecond=0).isoformat()),
+        )
+
+    def consume_auth_token(self, token_type: str, raw_token: str) -> Optional[dict[str, Any]]:
+        from .auth.security import token_hash as _th
+
+        th = _th((raw_token or "").strip())
+        now_iso = _utc_now_iso()
+        row = self._fetchone(
+            "SELECT * FROM auth_tokens WHERE token_type=? AND token_hash=? AND consumed_at IS NULL AND expires_at > ?",
+            (token_type, th, now_iso),
+        )
+        if not row:
+            return None
+        self._exec("UPDATE auth_tokens SET consumed_at=? WHERE id=?", (now_iso, int(row["id"])))
+        return row
+
+    # -----------------
+    # Auth: per-user favorites (Tracking)
+    # -----------------
+    def upsert_user_favorites(self, user_id: int, cluster_ids: list[int]) -> None:
+        uid = int(user_id)
+        normalized: list[int] = []
+        seen: set[int] = set()
+        for cid in (cluster_ids or [])[:500]:
+            try:
+                v = int(cid)
+            except Exception:
+                continue
+            if v not in seen:
+                seen.add(v)
+                normalized.append(v)
+
+        now = _utc_now_iso()
+        with self.conn:
+            if not normalized:
+                self.conn.execute("DELETE FROM user_favorites WHERE user_id=?", (uid,))
+            else:
+                placeholders = ",".join(["?"] * len(normalized))
+                self.conn.execute(
+                    f"DELETE FROM user_favorites WHERE user_id=? AND cluster_id NOT IN ({placeholders})",
+                    (uid, *normalized),
+                )
+
+            self.conn.executemany(
+                "INSERT OR IGNORE INTO user_favorites(user_id, cluster_id, created_at) VALUES(?, ?, ?)",
+                [(uid, cid, now) for cid in normalized],
+            )
+
+    def get_user_favorite_ids(self, user_id: int) -> list[int]:
+        rows = self._fetchall(
+            "SELECT cluster_id FROM user_favorites WHERE user_id=? ORDER BY created_at DESC",
+            (int(user_id),),
+        )
+        return [int(r["cluster_id"]) for r in rows]
+
+    def delete_user_favorite(self, user_id: int, cluster_id: int) -> None:
+        self._exec("DELETE FROM user_favorites WHERE user_id=? AND cluster_id=?", (int(user_id), int(cluster_id)))
+
+    def get_user_favorites_with_state(self, user_id: int) -> list[dict[str, Any]]:
+        rows = self._fetchall(
+            """
+            SELECT cluster_id, created_at, last_seen_score, last_seen_sources_count, last_seen_at
+            FROM user_favorites
+            WHERE user_id=?
+            ORDER BY created_at DESC
+            """,
+            (int(user_id),),
+        )
+        return rows
+
+    def update_user_favorites_seen_state(self, user_id: int, updates) -> None:
+        if not updates:
+            return
+        uid = int(user_id)
+        with self.connect() as conn:
+            conn.executemany(
+                """
+                UPDATE user_favorites
+                SET last_seen_score = ?, last_seen_sources_count = ?, last_seen_at = ?
+                WHERE user_id = ? AND cluster_id = ?
+                """,
+                [(u[1], u[2], u[3], uid, u[0]) for u in updates],
+            )
+            conn.commit()
 
     # --------- API query ----------
     def query_clusters(

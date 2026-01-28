@@ -152,8 +152,10 @@ def compute_credibility(cluster_title: str, sources: list[dict[str, Any]]) -> tu
 
     score = 50 + sum(int(f["impact"]) for f in factors)
 
+    # With a single outlet we cannot claim high credibility.
+    # Keep the score in the "uncertain" range and never above 50.
     if unique_count <= 1:
-        score = min(score, 62)
+        score = min(score, 50)
 
     score = max(0, min(100, int(score)))
 

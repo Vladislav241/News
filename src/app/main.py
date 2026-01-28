@@ -19,11 +19,15 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from starlette.middleware.gzip import GZipMiddleware
 
+from starlette.middleware.base import BaseHTTPMiddleware
+
 from .db import db
 from .ingest import run_ingest_cycle
 from .routers.debug import router as debug_router
 from .routers.health import router as health_router
+from .routers.auth import router as auth_router
 from .routers.news import router as news_router
+from .auth.deps import csrf_origin_check
 
 log = logging.getLogger("news.autorefresh")
 
@@ -36,13 +40,41 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 allowed_origins = os.getenv("CORS_ORIGINS", "*").split(",")
 allowed_origins = [o.strip() for o in allowed_origins if o.strip()] or ["*"]
 
+allow_credentials = (os.getenv("CORS_ALLOW_CREDENTIALS") or "0").strip().lower() in ("1", "true", "yes")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_credentials=False,
+    allow_credentials=allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        # CSRF origin check for cookie auth
+        try:
+            csrf_origin_check(request)
+        except Exception as e:
+            # csrf_origin_check raises HTTPException; let FastAPI handle it
+            raise
+
+        resp = await call_next(request)
+        resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+        resp.headers.setdefault("X-Frame-Options", "DENY")
+        resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        resp.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+        # Keep CSP minimal to avoid breaking your current inline styles.
+        # You can harden later once you move CSS to files.
+        resp.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self' https:; img-src 'self' https: data:; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'unsafe-inline' https:; connect-src 'self' https:;",
+        )
+        return resp
+
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 # ---------- Static frontend ----------
 # Serve /static/* first. We'll mount the SPA (/) at the very end.
@@ -52,7 +84,9 @@ app.mount("/static", StaticFiles(directory="src/web"), name="static")
 @app.get("/favicon.ico", include_in_schema=False)
 def favicon():
     """Avoid noisy 404s in the browser console."""
-    path = os.path.join("src", "web", "static", "icons", "Logo.png")
+    # The project stores icons directly under src/web/icons
+    # (and /static is mounted to src/web).
+    path = os.path.join("src", "web", "icons", "Logo.png")
     if os.path.exists(path):
         return FileResponse(path, media_type="image/png")
     # Fallback: return a 404 if the file isn't there
@@ -61,6 +95,7 @@ def favicon():
 
 # ---------- Routers ----------
 app.include_router(health_router)
+app.include_router(auth_router)
 app.include_router(news_router)
 app.include_router(debug_router)
 

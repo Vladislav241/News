@@ -33,6 +33,16 @@ const NEW_BADGE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 let hasInitialFeedLoaded = false;
 let currentFeedKey = "";
 
+// ----------------------------
+// Auth state (cookie-based)
+// ----------------------------
+let authState = {
+  authenticated: false,
+  user: null,
+};
+
+let _resetToken = "";
+
 function setFeedExpanded(v) {
   const target = !!v;
   const cardsEl = document.getElementById('cards');
@@ -170,6 +180,10 @@ function setFavIds(ids) {
 function isFav(id) { return getFavIds().includes(Number(id)); }
 
 function toggleFav(id) {
+  if (!authState.authenticated) {
+    openAuthModal('favorite');
+    return isFav(id);
+  }
   id = Number(id);
   const ids = getFavIds();
   if (ids.includes(id)) {
@@ -185,6 +199,10 @@ function toggleFav(id) {
 }
 
 function removeFav(id) {
+  if (!authState.authenticated) {
+    openAuthModal('favorite');
+    return false;
+  }
   // getFavIds() returns numeric ids; keep comparisons numeric
   id = Number(id);
   const ids = getFavIds();
@@ -260,17 +278,19 @@ function markSeen(items) {
 
 
 async function syncFavoritesToServer() {
+  if (!authState.authenticated) return;
   const ids = getFavIds();
   await fetch(`${API_BASE}/api/favorites/sync`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ device_id: DEVICE_ID, ids }),
+    body: JSON.stringify({ ids }),
   });
 }
 
 async function pullFavoritesFromServerAndMerge() {
   try {
-    const res = await fetch(`${API_BASE}/api/favorites?device_id=${encodeURIComponent(DEVICE_ID)}`);
+    if (!authState.authenticated) return;
+    const res = await fetch(`${API_BASE}/api/favorites`);
     if (!res.ok) return;
     const data = await res.json();
     const serverIds = Array.isArray(data.ids) ? data.ids.map(Number).filter(Number.isFinite) : [];
@@ -278,6 +298,308 @@ async function pullFavoritesFromServerAndMerge() {
     const merged = [...new Set([...serverIds, ...localIds])];
     setFavIds(merged);
   } catch {}
+}
+
+// ----------------------------
+// Auth modal helpers
+// ----------------------------
+
+function _showAuthError(elId, msg, asHtml = false) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.classList.toggle('isShow', !!msg);
+  if (!msg) {
+    el.textContent = '';
+    return;
+  }
+  if (asHtml) el.innerHTML = msg;
+  else el.textContent = msg;
+}
+
+function setAuthStep(step) {
+  const steps = {
+    choose: 'authStepChoose',
+    email: 'authStepEmail',
+    forgot: 'authStepForgot',
+    reset: 'authStepReset',
+  };
+  for (const k of Object.values(steps)) {
+    const el = document.getElementById(k);
+    if (el) el.style.display = 'none';
+  }
+  const id = steps[step] || steps.choose;
+  const target = document.getElementById(id);
+  if (target) target.style.display = '';
+
+  // Clear errors
+  _showAuthError('authError', '');
+  _showAuthError('authForgotError', '');
+  _showAuthError('authResetError', '');
+}
+
+function openAuthModal(reason = 'login') {
+  const back = document.getElementById('authBackdrop');
+  if (!back) return;
+  back.classList.add('isOpen');
+  back.setAttribute('aria-hidden', 'false');
+
+  // Default step
+  setAuthStep('choose');
+
+  if (reason === 'verify_required') {
+    setAuthStep('email');
+    const emailEl = document.getElementById('authEmail');
+    if (emailEl && authState.user?.email) emailEl.value = authState.user.email;
+    _showAuthError(
+      'authError',
+      `Please verify your email to use Tracking and saving.\n\nCheck your inbox for a verification link.\n\n` +
+        `<a href="#" id="authResendVerify" class="authLink">Resend verification email</a>`,
+      true,
+    );
+    const a = document.getElementById('authResendVerify');
+    if (a) {
+      a.onclick = async (e) => {
+        e.preventDefault();
+        const em = (document.getElementById('authEmail')?.value || authState.user?.email || '').trim();
+        if (!em) {
+          _showAuthError('authError', 'Enter your email first.');
+          return;
+        }
+        try {
+          await fetch(`${API_BASE}/api/auth/verify/resend`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: em }),
+          });
+          _showAuthError('authError', 'Verification email sent. Check your inbox (and spam).');
+        } catch {
+          _showAuthError('authError', 'Failed to send email. Try again later.');
+        }
+      };
+    }
+  }
+}
+
+function closeAuthModal() {
+  const back = document.getElementById('authBackdrop');
+  if (!back) return;
+  back.classList.remove('isOpen');
+  back.setAttribute('aria-hidden', 'true');
+  setAuthStep('choose');
+}
+
+function updateAuthUI() {
+  const btnLogin = document.getElementById('btnLogin');
+  if (btnLogin) {
+    btnLogin.textContent = authState.authenticated ? 'Account' : 'Login';
+  }
+}
+
+async function refreshAuthState() {
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/me`);
+    const data = await res.json();
+    authState = {
+      authenticated: !!data?.authenticated,
+      user: data?.user || null,
+    };
+  } catch {
+    authState = { authenticated: false, user: null };
+  }
+  updateAuthUI();
+
+  if (authState.authenticated) {
+    await pullFavoritesFromServerAndMerge();
+    await syncFavoritesToServer();
+  }
+}
+
+function bindAuthModalUI() {
+  const back = document.getElementById('authBackdrop');
+  if (!back) return;
+
+  const closeBtn = document.getElementById('authClose');
+  if (closeBtn) closeBtn.onclick = closeAuthModal;
+  back.addEventListener('click', (e) => {
+    if (e.target === back) closeAuthModal();
+  });
+
+  const btnGoogle = document.getElementById('btnGoogle');
+  if (btnGoogle) {
+    btnGoogle.onclick = async () => {
+      try {
+        const r = await fetch(`${API_BASE}/api/auth/oauth/google/start`);
+        const j = await r.json();
+        if (j?.url) window.location.href = j.url;
+      } catch {
+        // noop
+      }
+    };
+  }
+
+  const btnEmail = document.getElementById('btnEmail');
+  if (btnEmail) btnEmail.onclick = () => setAuthStep('email');
+
+  const backLink = document.getElementById('authBack');
+  if (backLink) backLink.onclick = (e) => { e.preventDefault(); setAuthStep('choose'); };
+
+  const forgotLink = document.getElementById('authForgot');
+  if (forgotLink) forgotLink.onclick = (e) => { e.preventDefault(); setAuthStep('forgot'); };
+
+  const forgotBack = document.getElementById('authForgotBack');
+  if (forgotBack) forgotBack.onclick = (e) => { e.preventDefault(); setAuthStep('email'); };
+
+  const submit = document.getElementById('authSubmit');
+  if (submit) {
+    submit.onclick = async () => {
+      const email = (document.getElementById('authEmail')?.value || '').trim();
+      const password = (document.getElementById('authPassword')?.value || '').trim();
+      if (!email || !password) {
+        _showAuthError('authError', 'Enter email and password.');
+        return;
+      }
+
+      // Try login first. If 401/404-ish -> register.
+      try {
+        let r = await fetch(`${API_BASE}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+
+        if (r.ok) {
+          await refreshAuthState();
+          closeAuthModal();
+          // Reload feed so paywall disappears
+          await fetchFeed({ reset: true });
+          return;
+        }
+
+        const err = await safeReadError(r);
+
+        // If invalid credentials -> attempt register (only if it's likely a new user)
+        if (r.status === 401) {
+          r = await fetch(`${API_BASE}/api/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+          });
+          if (r.ok) {
+            _showAuthError('authError', 'Account created. Check your email to verify before using Tracking/saving.');
+            return;
+          }
+          const err2 = await safeReadError(r);
+          _showAuthError('authError', err2 || 'Registration failed.');
+          return;
+        }
+
+        _showAuthError('authError', err || 'Login failed.');
+      } catch {
+        _showAuthError('authError', 'Network error. Try again.');
+      }
+    };
+  }
+
+  const forgotSubmit = document.getElementById('authForgotSubmit');
+  if (forgotSubmit) {
+    forgotSubmit.onclick = async () => {
+      const email = (document.getElementById('authForgotEmail')?.value || '').trim();
+      if (!email) {
+        _showAuthError('authForgotError', 'Enter your email.');
+        return;
+      }
+      try {
+        await fetch(`${API_BASE}/api/auth/forgot`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        });
+        _showAuthError('authForgotError', 'If that email exists, we sent a reset link.');
+      } catch {
+        _showAuthError('authForgotError', 'Failed to send reset link.');
+      }
+    };
+  }
+
+  const resetSubmit = document.getElementById('authResetSubmit');
+  if (resetSubmit) {
+    resetSubmit.onclick = async () => {
+      const newPassword = (document.getElementById('authResetPassword')?.value || '').trim();
+      if (!_resetToken) {
+        _showAuthError('authResetError', 'Missing reset token.');
+        return;
+      }
+      if (!newPassword) {
+        _showAuthError('authResetError', 'Enter a new password.');
+        return;
+      }
+      try {
+        const r = await fetch(`${API_BASE}/api/auth/reset`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: _resetToken, new_password: newPassword }),
+        });
+        if (!r.ok) {
+          const err = await safeReadError(r);
+          _showAuthError('authResetError', err || 'Reset failed.');
+          return;
+        }
+        _showAuthError('authResetError', 'Password updated. You can log in now.');
+        setAuthStep('email');
+      } catch {
+        _showAuthError('authResetError', 'Network error.');
+      }
+    };
+  }
+}
+
+async function safeReadError(res) {
+  try {
+    const j = await res.json();
+    const d = j?.detail;
+    if (typeof d === 'string') return d;
+    if (d?.message) return d.message;
+    return '';
+  } catch {
+    return '';
+  }
+}
+
+async function handleAuthQueryParams() {
+  const url = new URL(window.location.href);
+  const verify = url.searchParams.get('verify');
+  const reset = url.searchParams.get('reset');
+  const login = url.searchParams.get('login');
+
+  if (verify) {
+    try {
+      const r = await fetch(`${API_BASE}/api/auth/verify?token=${encodeURIComponent(verify)}`, { method: 'POST' });
+      if (r.ok) {
+        // Clean query
+        url.searchParams.delete('verify');
+        window.history.replaceState({}, '', url.toString());
+        await refreshAuthState();
+        openAuthModal('login');
+        setAuthStep('email');
+        _showAuthError('authError', 'Email verified. You can use Tracking now.');
+      }
+    } catch {}
+  }
+
+  if (reset) {
+    _resetToken = reset;
+    // Clean query
+    url.searchParams.delete('reset');
+    window.history.replaceState({}, '', url.toString());
+    openAuthModal('login');
+    setAuthStep('reset');
+  }
+
+  if (login === 'success') {
+    url.searchParams.delete('login');
+    window.history.replaceState({}, '', url.toString());
+    await refreshAuthState();
+  }
 }
 
 function renderTags() {
@@ -584,7 +906,7 @@ function removeLastRenderedCard() {
   }
 }
 
-function createCardElement(item, ctx, seen) {
+function createCardElement(item, ctx, seen, idx) {
   const div = document.createElement('div');
   const id = Number(item.cluster_id ?? item.event_id);
   const idStr = String(id);
@@ -613,11 +935,17 @@ function createCardElement(item, ctx, seen) {
     div.removeAttribute('draggable');
   }
 
-  const updatedHHMM = formatTimeHHMM(item.updated_at || item.latest_published_at);
+  // "New" vs "Updated" is computed on the server so everyone sees the same label.
+  const isNew = !!item.is_new;
+  const metaTime = isNew
+    ? (item.created_at || item.updated_at || item.latest_published_at)
+    : (item.updated_at || item.latest_published_at || item.created_at);
+  const metaHHMM = formatTimeHHMM(metaTime);
   const primarySource = pickPrimarySourceName(item);
+  const metaLabel = isNew ? 'New' : 'Updated';
   const metaLine =
     `Source: ${escapeHtml(primarySource)} · ${sourcesCount} outlets · ${escapeHtml(item.country || 'world')} / ${escapeHtml(item.language || 'en')}` +
-    (updatedHHMM ? ` · Updated ${escapeHtml(updatedHHMM)}` : '');
+    (metaHHMM ? ` · ${metaLabel} ${escapeHtml(metaHHMM)}` : '');
 
   const diffState = getSourceDiffState(item);
 
@@ -789,6 +1117,7 @@ const showTrackingUI = state.mode === 'fav';
     : '';
 
   div.innerHTML = `
+    <div class="cardInner">
     <details class="newsDetails">
       <summary class="newsSummary">
         <div class="newsTopRow">
@@ -836,7 +1165,25 @@ const showTrackingUI = state.mode === 'fav';
         </div>
       </div>
     </details>
+    </div>
   `;
+
+  // Guest paywall overlay
+  const isLocked = (!authState.authenticated && state.mode !== 'fav' && typeof idx === 'number')
+    ? (idx >= 3)
+    : (!!item.guest_locked && !authState.authenticated && state.mode !== 'fav');
+  if (isLocked) {
+    div.classList.add('paywallBlur');
+    const ov = document.createElement('div');
+    ov.className = 'paywallOverlay';
+    ov.innerHTML = `<button class="paywallBtn" type="button">Create an account to continue</button>`;
+    ov.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openAuthModal('paywall');
+    });
+    div.appendChild(ov);
+  }
 
   const imgEl = div.querySelector('img.newsImage');
   if (imgEl) {
@@ -996,7 +1343,8 @@ function renderCards(items, opts) {
 const newFeedEls = [];
 let newInsertIndex = 0;
 
-for (const item of visible) {
+for (let idx = 0; idx < visible.length; idx++) {
+  const item = visible[idx];
   const idStr = getItemId(item);
   if (!idStr) continue;
 
@@ -1006,7 +1354,7 @@ for (const item of visible) {
     continue;
   }
 
-  const el = createCardElement(item, { nowTs: now, newIds, suppressNewBadges }, seen);
+  const el = createCardElement(item, { nowTs: now, newIds, suppressNewBadges }, seen, idx);
 
   // Animate only truly new items in feed.
   if (animate && !suppressNewBadges && state.mode === 'feed' && newIds.has(idStr)) {
@@ -1258,11 +1606,33 @@ async function fetchFeed(opts) {
 
 
 async function fetchFavorites() {
-  const deviceId = getDeviceId();
+  if (!authState.authenticated) {
+    openAuthModal('tracking');
+    setStatus('');
+    return;
+  }
+
+  // Require email verification for Tracking/Favorites (backend enforces too)
+  if (authState.user && authState.user.provider === 'local' && !authState.user.email_verified) {
+    openAuthModal('verify_required');
+    setStatus('');
+    return;
+  }
+
   setStatus('Loading tracking…');
 
   try {
-    const r = await fetch(`${API_BASE}/api/tracking?device_id=${encodeURIComponent(deviceId)}`);
+    const r = await fetch(`${API_BASE}/api/tracking`);
+    if (r.status === 401) {
+      authState = { authenticated: false, user: null };
+      updateAuthUI();
+      openAuthModal('tracking');
+      return;
+    }
+    if (r.status === 403) {
+      openAuthModal('verify_required');
+      return;
+    }
     const data = await r.json();
     const items = (data && data.items) ? data.items : [];
 
@@ -1382,11 +1752,43 @@ function bindUI() {
   const btnTracking = document.getElementById("btnTracking");
   if (btnTracking) {
     btnTracking.onclick = async () => {
+      if (!authState.authenticated) {
+        openAuthModal('tracking');
+        return;
+      }
+      // If local email is not verified, keep user on Feed and prompt verification
+      if (authState.user && authState.user.provider === 'local' && !authState.user.email_verified) {
+        openAuthModal('verify_required');
+        return;
+      }
+
       state.mode = "fav";
       applyTabs();
       await fetchFavorites();
       // scroll to top so user sees list instantly
       window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+  }
+
+  // Header Login / Account button
+  const btnLogin = document.getElementById('btnLogin');
+  if (btnLogin) {
+    btnLogin.onclick = async () => {
+      if (!authState.authenticated) {
+        openAuthModal('login');
+        return;
+      }
+      // Minimal "Account" behavior: logout
+      const ok = confirm('Log out from CHECK news?');
+      if (!ok) return;
+      await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST' });
+      authState = { authenticated: false, user: null };
+      updateAuthUI();
+      // After logout, go back to Feed
+      state.mode = 'feed';
+      setFeedExpanded(false);
+      applyTabs();
+      await fetchFeed();
     };
   }
 
@@ -1503,9 +1905,9 @@ async function main() {
 
   setFavIds(getFavIds());
 
-  // server-side favorites knowledge (to preserve on cleanup)
-  await pullFavoritesFromServerAndMerge();
-  await syncFavoritesToServer();
+  bindAuthModalUI();
+  await refreshAuthState();
+  await handleAuthQueryParams();
 
   bindUI();
   renderTags();

@@ -10,4 +10,8 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
+      - key: REQUIRE_EMAIL_VERIFIED
+        value: "1"
+      - key: COOKIE_SECURE
+        value: "1"
       # Set OPENAI_API_KEY in Render dashboard (Environment tab), do NOT commit it.

@@ -5,10 +5,11 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
 
 from ..db import db
+from ..auth.deps import get_current_user_optional, require_user
 from ..ingest import run_ingest_cycle
 from ..scoring import compute_importance, compute_credibility
 
@@ -28,6 +29,12 @@ router = APIRouter()
 TRENDING_MIN_OUTLETS = 4
 # Window chosen to tolerate timezone/clock differences and still mean "actively updating".
 TRENDING_WINDOW = timedelta(hours=6)
+
+# "New" label window: for how long after creation a cluster is considered new.
+NEW_WINDOW = timedelta(hours=6)
+
+# If a cluster gets meaningfully updated soon after creation, show it as "Updated".
+NEW_UPDATE_GRACE = timedelta(minutes=10)
 
 
 def _compute_is_trending(cluster: dict[str, Any], sources_count: int) -> bool:
@@ -52,6 +59,36 @@ def _compute_is_trending(cluster: dict[str, Any], sources_count: int) -> bool:
         dt = dt.replace(tzinfo=timezone.utc)
     now = datetime.now(timezone.utc)
     return (now - dt) <= TRENDING_WINDOW
+
+
+def _compute_is_new(cluster: dict[str, Any]) -> bool:
+    """Compute a server-side 'new' flag.
+
+    Goal: a *newly created* cluster should show "New" instead of "Updated".
+    We keep it "New" for a short window after creation, unless it has already
+    been meaningfully updated.
+    """
+    created = _parse_dt(cluster.get("created_at"))
+    if not created:
+        return False
+
+    updated = _parse_dt(cluster.get("updated_at"))
+
+    # Normalize timezone
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=timezone.utc)
+    if updated and updated.tzinfo is None:
+        updated = updated.replace(tzinfo=timezone.utc)
+
+    now = datetime.now(timezone.utc)
+    if (now - created) > NEW_WINDOW:
+        return False
+
+    # If the cluster was updated soon after creation, show it as "Updated".
+    if updated and (updated - created) > NEW_UPDATE_GRACE:
+        return False
+
+    return True
 
 # Cache {cache_key: (expires_at_epoch, payload_dict)}
 _FEED_CACHE: dict[str, tuple[float, dict]] = {}
@@ -78,11 +115,13 @@ def _feed_cache_key(
     q: str | None,
     limit: int,
     bucket: int,
+    variant: str,
 ) -> str:
     qn = (q or "").strip().lower()
     sn = (since or "").strip()
     inorm = (interests or "general").strip().lower()
-    return f"v2|{bucket}|i={inorm}|c={country}|l={language}|since={sn}|q={qn}|limit={limit}"
+    v = (variant or "guest").strip().lower()
+    return f"v3|{bucket}|v={v}|i={inorm}|c={country}|l={language}|since={sn}|q={qn}|limit={limit}"
 
 _REFRESH_STATE: dict[str, Any] = {"last_ts_by_ip": {}}
 REFRESH_COOLDOWN_SECONDS = 180
@@ -101,7 +140,6 @@ class Preferences(BaseModel):
 
 
 class FavoriteSync(BaseModel):
-    device_id: str
     ids: list[int] = []
 
 
@@ -262,6 +300,7 @@ def _decorate_cluster_row(c: dict[str, Any], include_sources: bool = True) -> di
         "image": event_image,
         "sources_count": sources_count,
         "is_trending": _compute_is_trending(c, sources_count),
+        "is_new": _compute_is_new(c),
         "credibility_score": credibility_score,
         "credibility_explanation": credibility_explanation,
         "credibility_factors": credibility_factors,
@@ -305,6 +344,7 @@ def save_preferences(p: Preferences) -> dict:
 
 @router.get("/api/news")
 def get_news(
+    user=Depends(get_current_user_optional),
     interests: str = "",
     country: str = "world",
     language: str = "en",
@@ -331,6 +371,7 @@ def get_news(
         q=q,
         limit=limit_n,
         bucket=bucket,
+        variant=("auth" if user else "guest"),
     )
 
     now = time.time()
@@ -347,7 +388,22 @@ def get_news(
         limit=limit_n,
     )
 
-    items = [_decorate_cluster_row(c) for c in clusters]
+    # Paywall: guests get full details only for the first 3 items.
+    is_guest = user is None
+    items: list[dict[str, Any]] = []
+    for idx, c in enumerate(clusters):
+        if (not is_guest) or idx < 3:
+            items.append(_decorate_cluster_row(c, include_sources=True))
+        else:
+            it = _decorate_cluster_row(c, include_sources=False)
+            # redact details
+            it.pop("summary_facts", None)
+            it.pop("summary_diffs", None)
+            it.pop("summary_uncertainties", None)
+            it["summary"] = ""
+            it["credibility_explanation"] = "Create an account to view full details."
+            it["guest_locked"] = True
+            items.append(it)
 
     cutoff = _days_ago_iso(FEED_KEEP_DAYS)
     items = [
@@ -426,15 +482,15 @@ def news_by_ids(ids: str) -> dict[str, Any]:
 
 
 @router.post("/api/favorites/sync")
-def favorites_sync(payload: FavoriteSync) -> dict[str, Any]:
+def favorites_sync(payload: FavoriteSync, user=Depends(require_user)) -> dict[str, Any]:
     db.ensure_schema()
-    db.upsert_favorites(payload.device_id, payload.ids)
+    db.upsert_user_favorites(int(user["id"]), payload.ids)
     return {"status": "ok", "count": len(payload.ids)}
 
 
 
 @router.get("/api/tracking")
-def get_tracking(device_id: str) -> dict[str, Any]:
+def get_tracking(user=Depends(require_user)) -> dict[str, Any]:
     """Return user's tracked clusters with server-side deltas.
 
     Deltas are computed vs the last time the user opened Tracking on any device.
@@ -442,7 +498,7 @@ def get_tracking(device_id: str) -> dict[str, Any]:
     """
     db.ensure_schema()
 
-    fav_rows = db.get_favorites_with_state(device_id)
+    fav_rows = db.get_user_favorites_with_state(int(user["id"]))
     if not fav_rows:
         return {"status": "ok", "count": 0, "items": []}
 
@@ -457,8 +513,7 @@ def get_tracking(device_id: str) -> dict[str, Any]:
     updates = []
     for c in clusters:
         cid = c["id"]
-        sources = db.get_cluster_sources(cid)
-        item = _decorate_cluster_row(c, sources)
+        item = _decorate_cluster_row(c, include_sources=True)
 
         prev = state_by_id.get(cid) or {}
         prev_score = prev.get("last_seen_score")
@@ -489,22 +544,22 @@ def get_tracking(device_id: str) -> dict[str, Any]:
 
     items.sort(key=_sort_key, reverse=True)
 
-    db.update_favorites_seen_state(device_id, updates)
+    db.update_user_favorites_seen_state(int(user["id"]), updates)
 
     return {"status": "ok", "count": len(items), "items": items}
 
 @router.get("/api/favorites")
-def favorites_get(device_id: str) -> dict[str, Any]:
+def favorites_get(user=Depends(require_user)) -> dict[str, Any]:
     db.ensure_schema()
-    ids = db.get_favorite_ids(device_id)
+    ids = db.get_user_favorite_ids(int(user["id"]))
     return {"status": "ok", "ids": ids}
 
 
 @router.post("/api/favorites/remove")
-def favorites_remove(payload: FavoriteSync) -> dict[str, Any]:
+def favorites_remove(payload: FavoriteSync, user=Depends(require_user)) -> dict[str, Any]:
     db.ensure_schema()
     for cid in (payload.ids or [])[:200]:
-        db.delete_favorite(payload.device_id, cid)
+        db.delete_user_favorite(int(user["id"]), int(cid))
     return {"status": "ok"}
 
 
