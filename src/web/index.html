@@ -11,8 +11,10 @@
 
   <!-- Fonts: Jersey 25 (logo) + Inter (UI) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Jersey+25&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700&family=Jersey+25&display=swap" rel="stylesheet">
+
+
   <style>
     :root{
       /* Clean flat look closer to the Figma reference */
@@ -635,26 +637,26 @@
 
 .footerLogo{
   display:flex;
-  align-items:center;
+    align-items:flex-end;
   gap: 12px;
   margin-bottom: 10px;
 }
 
 .footerLogoImg{
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   object-fit: contain;
   display:block;
 }
 
 .footerBrandText{
   font-family: "Jersey 25", Inter, system-ui;
-  line-height: 1;
+  line-height: 0.65;
   letter-spacing: .6px;
 }
 
-.footerBrandText .top{ font-size: 22px; }
-.footerBrandText .bottom{ font-size: 26px; }
+.footerBrandText .top{ font-size: 35px; }
+.footerBrandText .bottom{ font-size: 33px; }
 
 .footerDivider {
   width: 100%;
@@ -695,18 +697,22 @@
   padding: 22px;
 }
 .authBackdrop.isOpen{ display:flex; }
- .authModal{
-  /* Compact “square-ish” modal like the reference */
-  width: min(640px, 100%);
+.authModal{
+  /* Figma card */
+  width: min(720px, 100%);
   background: #fff;
-  border-radius: 18px;
+    min-height: 580px;
+  border-radius: 37px;
+  border: 1px solid #B8B8B8;
   overflow: hidden;
-  box-shadow: 0 24px 70px rgba(0,0,0,0.22);
+  box-shadow: 0 28px 80px rgba(0,0,0,0.20);
   position: relative;
-  
 }
 .authModalInner{
-  padding: 26px 30px 22px;
+  padding: 70px 52px 40px;
+}
+#authStepChoose{
+  margin-top: 40px; /* двигает вниз только заголовок + кнопки */
 }
 .authBrand{
   display:flex;
@@ -714,6 +720,7 @@
   justify-content:flex-start;
   position:relative;
   width: 100%; 
+   margin-top: -20px; 
 }
 
 .authClose{
@@ -726,9 +733,25 @@
   cursor: pointer;
   opacity: .7;
 }
-.authTitle{ font-size: 34px; line-height: 1.08; margin: 14px 0 8px; letter-spacing: -0.4px; text-align:center; font-weight: 300;}
+.authTitle{
+  font-size: 38px;
+  line-height: 1.08;
+  margin: 18px 0 10px;
+  letter-spacing: -0.4px;
+  text-align: center;
+  font-weight: 250;
+  white-space: nowrap; /* ✅ больше не переносится */
+}
 
-.authSub{ color: #A1A1A1; margin: 0 auto 18px; max-width: 460px; text-align:center; font-size: 15px;}
+
+.authSub{
+  color: #A1A1A1;
+  margin: 0 auto 20px;
+  max-width: 520px;
+  text-align: center;
+  font-size: 16px;
+  line-height: 1.45;
+}
 
 .authBtn {justify-content: center;}
 .authActions{
@@ -736,24 +759,45 @@
   flex-direction: column;
   gap: 12px;
   margin: 18px auto 0;
-  max-width: 420px;
+  max-width: 510px;
 }
 .authBtn{
   display:flex;
   align-items:center;
-   justify-content:center;
+  justify-content:flex-start; /* ✅ влево */
   gap: 12px;
+
   width: 100%;
   max-width: 600px;
-  margin: 0 auto; 
-  border: 1px solid #e6e6e6;
+  margin: 0 auto;
+
+  border: 1px solid #E1E1E1;
   background: #fff;
   border-radius: 16px;
-  padding: 13px 18px;
-  font-weight: 600;
+  height: 56px;
+
+  padding: 0 18px;           /* оставляем */
+  padding-left: 24px;        /* ✅ чуть левее как в фигме */
+
+  font-weight: 400;
+  font-size: 17px;
   cursor:pointer;
 }
-.authBtnPrimary{ background:#000; border-color:#000; color:#fff; }
+.authBtn span{
+  font-weight: 300; /* тоньше текст */
+}
+#authBackdrop .authModal .authBtn,
+#authBackdrop .authModal .authBtn * {
+  font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial !important;
+  font-weight: 300 !important;
+}
+.authBtnPrimary{
+  background:#000;
+  border-color:#000;
+  color:#fff;
+  font-weight: 500;
+  font-size: 16px;
+}
 .authBtn:hover{ background:#f7f7f7; }
 .authBtnPrimary:hover{ background:#111; }
 .authIcon{ width: 22px; height: 22px; object-fit: contain; display:block; }
@@ -763,12 +807,12 @@
   margin: 10px 0;
 }
 .authDivider::before,.authDivider::after{ content:""; height:1px; background:#eee; flex:1; }
-.authFieldLabel{ font-weight: 600; margin-top: 14px; margin-bottom: 8px; }
+.authFieldLabel{ font-weight: 300; margin-top: 16px; margin-bottom: 8px; font-size: 15px; }
 .authInput{
   width:100%;
-  border:1px solid #e6e6e6;
-  border-radius: 14px;
-  padding: 14px 16px;
+  border:1px solid #E1E1E1;
+  border-radius: 16px;
+  padding: 16px 16px;
   font-size: 16px;
   outline: none;
 }
@@ -777,22 +821,114 @@
 .authLink{ color:#111; opacity: .75; cursor:pointer; text-decoration: none; }
 .authLink:hover{ opacity: 1; text-decoration: underline; }
 .authFoot{
-  font-size: 13px;
+  font-size: 16px;
   color:#9a9a9a;
   text-align:center;
-  padding: 18px 30px 26px;
+  padding: 8px 30px 26px;
 }
 .authError{ color:#b00020; margin-top: 12px; display:none; }
 .authError.isShow{ display:block; }
 
 .authNote{
-  max-width: 420px;   /* как у .authActions */
+  max-width: 510px;   /* как у .authActions */
   margin: 10px auto 0;
   color:#9a9a9a;
   font-size: 10px;
   text-align: left;   /* ✅ начинается от начала кнопки */
 }
 
+/* ОДИНАКОВЫЙ РАЗМЕР для email/password и кнопки */
+#authStepEmail .authFieldLabel,
+#authStepEmail .authInput,
+#authStepEmail #authSubmit{
+  max-width: 510px;
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  display: block;
+}
+
+/* одинаковая высота */
+#authStepEmail .authInput,
+#authStepEmail #authSubmit{
+  height: 56px;
+  border-radius: 16px;
+}
+
+/* инпуты: убираем "высоту через padding", делаем как у кнопки */
+#authStepEmail .authInput{
+  padding: 0 16px;     /* вместо padding: 16px 16px; */
+  line-height: 56px;   /* чтобы текст был по центру по вертикали */
+}
+
+/* кнопка уже height:56 у .authBtn, но на всякий */
+#authStepEmail #authSubmit{
+  padding: 0 18px;
+}
+/* Ряд Back / Forgot = такая же ширина как кнопка */
+#authStepEmail .authRowBetween{
+  max-width: 510px;
+  width: 100%;
+  margin: 12px auto 0;   /* по центру под кнопкой */
+  padding: 0 4px;        /* маленький внутренний отступ */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* чтобы текст не "уезжал" и не ломал верстку */
+#authStepEmail .authRowBetween .authLink{
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+/* ===== Forgot password: input + button одинаковые ===== */
+#authStepForgot .authFieldLabel,
+#authStepForgot .authInput,
+#authStepForgot .authActions,
+#authStepForgot #authForgotSubmit{
+  max-width: 510px;
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  display: block;
+}
+
+/* одинаковая высота */
+#authStepForgot .authInput,
+#authStepForgot #authForgotSubmit{
+  height: 56px;
+  border-radius: 16px;
+}
+
+/* инпут внутри ровный */
+#authStepForgot .authInput{
+  padding: 0 16px;
+  font-size: 16px;
+}
+
+/* ✅ кнопка: текст строго по центру */
+#authStepForgot #authForgotSubmit{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 0;
+  font-weight: 400;
+}
+/* ✅ Ошибки в модалке: такая же ширина и центр, как инпуты/кнопки */
+#authBackdrop .authError{
+  max-width: 510px;
+  width: 100%;
+  margin: 10px auto 0;
+  padding: 0 4px;          /* чтобы совпало с рядом кнопок */
+  text-align: left;
+  font-size: 14px;
+}
+
+/* если нужно чуть ниже под инпутом */
+#authStepForgot #authForgotError{
+  margin-top: 14px;
+}
 
 </style>
 </head>
