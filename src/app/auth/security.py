@@ -6,26 +6,35 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError, InvalidHash
 
-PWD_CONTEXT = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Argon2 is a modern password hashing algorithm and avoids bcrypt backend issues on newer Pythons.
+PWD_HASHER = PasswordHasher()
 
 
 def hash_password(password: str) -> str:
-    return PWD_CONTEXT.hash(password)
+    # Guard against weird whitespace/newline issues coming from clients.
+    password = (password or "").strip()
+    if not password:
+        raise ValueError("Password cannot be empty.")
+    return PWD_HASHER.hash(password)
 
 
 def verify_password(password: str, hashed_password: str) -> bool:
     try:
-        return PWD_CONTEXT.verify(password, hashed_password)
+        return PWD_HASHER.verify(hashed_password, (password or "").strip())
+    except (VerifyMismatchError, InvalidHash, ValueError):
+        return False
     except Exception:
         return False
 
 
 def _secret_key() -> str:
-    key = (os.getenv("AUTH_SECRET_KEY") or "").strip()
+    # Support both names to avoid misconfiguration between local/.env and Render env vars.
+    key = (os.getenv("AUTH_SECRET_KEY") or os.getenv("JWT_SECRET_KEY") or "").strip()
     if not key:
-        # Dev fallback only. In prod (Render) you MUST set AUTH_SECRET_KEY.
+        # Dev fallback only. In prod (Render) you MUST set AUTH_SECRET_KEY or JWT_SECRET_KEY.
         key = "dev-insecure-secret-change-me-" + "x" * 24
     return key
 
