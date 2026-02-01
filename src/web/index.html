@@ -1250,6 +1250,331 @@
   align-items: center;
   justify-content: center;
 }
+
+    /* --------------------
+       Share modal
+       -------------------- */
+    .shareBackdrop{
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.55);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      z-index: 9999;
+    }
+    .shareBackdrop.isOpen{ display:flex; }
+
+    .shareModal{
+      width: min(520px, 92vw);
+      background: #fff;
+      border-radius: 22px;
+      padding: 32px;
+      box-shadow: 0 25px 70px rgba(0,0,0,0.18);
+      border: 1px solid rgba(15,23,42,.08);
+      text-align: center;
+      animation: shareModalIn .35s ease;
+    }
+    @keyframes shareModalIn{
+      from{ opacity:0; transform: scale(.96); }
+      to{ opacity:1; transform: scale(1); }
+    }
+    .shareHeader{
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      padding: 18px 20px;
+      border-bottom: 1px solid rgba(15,23,42,.08);
+    }
+    .shareTitle{
+      font-size: 18px;
+      font-weight: 700;
+      color: #0f172a;
+    }
+    .shareClose{
+      width: 38px; height: 38px;
+      border-radius: 12px;
+      border: 1px solid rgba(15,23,42,.16);
+      background: transparent;
+      cursor: pointer;
+      font-size: 18px;
+      line-height: 1;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+
+    .shareBody{
+      display: grid;
+      gap: 18px;
+      padding: 0; /* modal has padding now */
+    }
+    .sharePreviewWrap{
+      background: rgba(15,23,42,.04);
+      border: 1px solid rgba(15,23,42,.08);
+      border-radius: 18px;
+      padding: 12px;
+    }
+    .sharePreviewImg{
+      width: 100%;
+      height: auto;
+      display:block;
+      border-radius: 14px;
+      background: #fff;
+    }
+
+    .shareMeta{ display:grid; gap: 6px; }
+    .shareHeadline{
+      font-size: 18px;
+      font-weight: 700;
+      color: #0f172a;
+      line-height: 1.25;
+    }
+    .shareSubline{
+      font-size: 13px;
+      color: rgba(15,23,42,.65);
+      line-height: 1.35;
+    }
+
+    .shareActions{
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin-top: 6px;
+    }
+    .shareAction{
+      width: 100%;
+      height: 52px;
+      border-radius: 14px;
+      border: 1px solid #d1d5db;
+      background: #fff;
+      color: #0f172a;
+      font-weight: 600;
+      font-size: 17px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      transition: background .2s ease, transform .05s ease, border-color .2s ease;
+    }
+    .shareAction img{ width: 18px; height: 18px; }
+    .shareAction:hover{ background: #f3f4f6; }
+    .shareAction:active{ transform: translateY(1px); }
+
+    .shareAction.primary{
+      background: #0b0b0b;
+      border-color: #0b0b0b;
+      color: #fff;
+    }
+    .shareAction.primary:hover{ background: #222; }
+
+    .shareAction.ghost{
+      background: #fff;
+      border: 1px solid #d1d5db;
+    }
+
+
+    .shareAction{
+      width: 100%;
+      height: 52px;
+      border-radius: 14px;
+      border: 1px solid #d1d5db;
+      background: #fff;
+      color: #0f172a;
+      font-weight: 600;
+      font-size: 17px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      transition: background .2s ease, transform .05s ease, border-color .2s ease;
+    }
+    .shareAction img{ width: 18px; height: 18px; }
+    .shareAction:hover{ background: #f3f4f6; }
+    .shareAction:active{ transform: translateY(1px); }
+
+    .shareAction.primary{
+      background: #0b0b0b;
+      border-color: #0b0b0b;
+      color: #fff;
+    }
+    .shareAction.primary:hover{ background: #222; }
+
+    .shareAction.ghost{
+      background: #fff;
+      border: 1px solid #d1d5db;
+    }
+.shareMeta{display:none;} /* mockup has no extra headline under panel */
+.shareNoThanks{
+      margin-top: 8px;
+      width: 100%;
+      background: transparent;
+      border: none;
+      color: #9ca3af;
+      font-size: 15px;
+      cursor: pointer;
+      transition: color .2s ease;
+      padding: 10px 0 0;
+      text-align: center;
+    }
+    .shareNoThanks:hover{ color: #374151; }
+/* --------------------
+   Share modal (fixed)
+   -------------------- */
+
+.shareBackdrop{
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  z-index: 9999;
+}
+.shareBackdrop.isOpen{ display:flex; }
+
+.shareModal{
+  width: min(760px, 94vw);        /* больше, как на макете */
+  background: #fff;
+  border-radius: 34px;
+  border: 1px solid rgba(0,0,0,0.18);
+  box-shadow: 0 28px 80px rgba(0,0,0,0.20);
+  padding: 0;                    /* важно: не давим контент паддингом */
+  overflow: hidden;
+  animation: shareModalIn .25s ease;
+}
+@keyframes shareModalIn{
+  from{ opacity:0; transform: scale(.98); }
+  to{ opacity:1; transform: scale(1); }
+}
+
+.shareBody{
+  padding: 46px 44px 38px;       /* основной воздух внутри */
+  display: grid;
+  gap: 18px;
+  text-align: center;
+}
+
+/* Заголовок + подзаголовок */
+.shareHero h1{
+  margin: 0;
+  font-size: 44px;
+  font-weight: 300;
+  letter-spacing: -0.02em;
+}
+.shareHero p{
+  margin: 10px 0 0;
+  font-size: 18px;
+  color: rgba(0,0,0,0.55);
+}
+
+/* Панель ARTICLE PREVIEW */
+.sharePanel{
+  margin: 10px auto 0;
+  width: min(520px, 100%);
+  border: 1px solid rgba(0,0,0,0.18);
+  border-radius: 24px;
+  padding: 18px 18px 20px;
+  background: #fff;
+}
+
+.sharePanelLabel{
+  text-align: left;
+  font-size: 14px;
+  letter-spacing: 0.12em;
+  color: rgba(0,0,0,0.35);
+  margin: 0 0 12px;
+}
+
+/* рамка под картинку */
+.sharePreviewFrame{
+  border-radius: 18px;
+  overflow: hidden;
+  background: rgba(0,0,0,0.03);
+  border: 1px solid rgba(0,0,0,0.10);
+  padding: 14px;
+}
+.sharePreviewImg{
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 14px;
+  background: #fff;
+}
+
+/* Кнопки */
+.shareActions{
+  width: min(520px, 100%);
+  margin: 0 auto;
+  display: grid;
+  gap: 14px;
+}
+
+.shareAction{
+  width: 100%;
+  height: 62px;
+  border-radius: 18px;
+  border: 1px solid rgba(0,0,0,0.20);
+  background: #fff;
+  color: #111;
+  font-size: 20px;
+  font-weight: 400;
+  cursor: pointer;
+
+  display: grid;
+  grid-template-columns: 52px 1fr 52px; /* иконка слева, текст по центру */
+  align-items: center;
+}
+.shareAction img{
+  width: 22px;
+  height: 22px;
+  justify-self: center;
+}
+.shareAction span{
+  justify-self: center;
+}
+
+.shareAction.primary{
+  background: #0b0b0b;
+  border-color: #0b0b0b;
+  color: #fff;
+}
+.shareAction:hover{ filter: brightness(.98); }
+.shareAction:active{ transform: translateY(1px); }
+
+/* No thanks */
+.shareNoThanks{
+  margin: 8px auto 0;
+  width: min(520px, 100%);
+  background: transparent;
+  border: none;
+  font-size: 22px;
+  font-weight: 300;
+  color: rgba(0,0,0,0.35);
+  cursor: pointer;
+}
+.shareNoThanks:hover{ color: rgba(0,0,0,0.55); }
+
+.shareMeta{ display:none; } /* ты её всё равно скрываешь */
+
+/* Mobile */
+@media (max-width: 640px){
+  .shareBody{ padding: 30px 20px 24px; }
+  .shareHero h1{ font-size: 32px; }
+  .shareHero p{ font-size: 16px; }
+  .shareAction{ height: 58px; font-size: 18px; border-radius: 16px; }
+  .shareNoThanks{ font-size: 18px; }
+}
+
+
 </style>
 </head>
 <body>
@@ -1556,7 +1881,6 @@
 
   <!-- Tracking: drag cards here to delete (shown only in Tracking tab) -->
   <div id="trashZone" class="trashZone" aria-hidden="true">
-    <!-- icons are served from /static/icons/* (FastAPI static mount) -->
     <img src="/static/icons/Delete.png" alt="Delete" />
   </div>
 
@@ -1648,6 +1972,53 @@
     </div>
   </div>
 
-  <script src="/static/app.js"></script>
+ <script src="/static/app.js"></script>
+
+<!-- Share modal -->
+<div id="shareBackdrop" class="shareBackdrop" aria-hidden="true">
+  <div class="shareModal" role="dialog" aria-modal="true" aria-labelledby="shareHeroTitle">
+
+    <div class="shareBody">
+      <div class="shareHero">
+        <h1 id="shareHeroTitle">Share this event</h1>
+        <p>Share a news event you find important or relevant.</p>
+      </div>
+
+      <div class="sharePanel">
+        <div class="sharePanelLabel">ARTICLE PREVIEW</div>
+        <div class="sharePreviewFrame">
+          <img id="sharePreviewImg" class="sharePreviewImg" alt="Share preview" />
+        </div>
+      </div>
+
+      <!-- keep these ids for JS, but hidden by CSS -->
+      <div class="shareMeta" style="display:none;">
+        <div id="shareHeadline" class="shareHeadline"></div>
+        <div id="shareSubline" class="shareSubline"></div>
+      </div>
+
+      <div class="shareActions">
+        <button id="shareToXBtn" class="shareAction primary" type="button">
+          <img src="/static/icons/x.png" alt="X" />
+          <span>Share on X</span>
+        </button>
+
+        <button id="shareToThreadsBtn" class="shareAction secondary" type="button">
+          <img src="/static/icons/treds.png" alt="Threads" />
+          <span>Share on Threads</span>
+        </button>
+
+        <button id="shareCopyBtn" class="shareAction ghost" type="button">
+          <img src="/static/icons/copy.png" alt="Copy" />
+          <span>Copy link</span>
+        </button>
+      </div>
+
+      <button id="shareNoThanks" class="shareNoThanks" type="button">No thanks!</button>
+    </div>
+
+  </div>
+</div>
+
 </body>
 </html>

@@ -1,5 +1,101 @@
 const API_BASE = ""; // same-origin
 
+// --- Share (OG card page) ---
+
+async function shareCluster(item) {
+  const id = item?.id ?? item?.cluster_id ?? item?.clusterId;
+  if (!id) return;
+
+  const baseUrl = location.origin;
+  const url = `${baseUrl}/share/${id}`;
+
+  // Best practice: share the URL; social apps render the preview card via OG/Twitter meta tags.
+  openShareModal({
+    url,
+    id,
+    title: item?.title || 'CHECK news',
+    score: item?.score ?? item?.trust_score ?? null,
+    outlets: item?.sources_count ?? item?.outlet_count ?? null,
+  });
+}
+
+function openShareModal(data) {
+  const backdrop = document.getElementById('shareBackdrop');
+  const closeBtn = document.getElementById('shareCloseBtn'); // may be null if removed in UI
+  const noThanks = document.getElementById('shareNoThanks');
+  const img = document.getElementById('sharePreviewImg');
+  const headline = document.getElementById('shareHeadline');
+  const toX = document.getElementById('shareToXBtn');
+  const toThreads = document.getElementById('shareToThreadsBtn');
+  const copyBtn = document.getElementById('shareCopyBtn');
+
+  if (!backdrop || !img || !headline || !toX || !toThreads || !copyBtn) {
+    // Safety fallback: just copy link
+    return copyShareLink(data.url);
+  }
+
+  // Populate UI
+  headline.textContent = data.title || 'Share';
+  img.src = `/api/share-image/${encodeURIComponent(data.id)}.png?dpr=2&v=${Date.now()}`;
+
+  img.onerror = () => {
+    // If image generator fails, still allow share
+    img.removeAttribute('src');
+    img.style.display = 'none';
+  };
+
+  const encodedUrl = encodeURIComponent(data.url);
+  const tweetText = encodeURIComponent(`Trust score • ${data.title || 'CHECK news'}`);
+  const xUrl = `https://twitter.com/intent/tweet?url=${encodedUrl}&text=${tweetText}`;
+
+  toX.onclick = () => window.open(xUrl, '_blank', 'noopener,noreferrer');
+
+  // Threads doesn't provide a fully reliable web intent. Best UX: open Threads and copy the link.
+  toThreads.onclick = async () => {
+    await copyShareLink(data.url);
+    window.open('https://www.threads.net/', '_blank', 'noopener,noreferrer');
+  };
+
+  copyBtn.onclick = () => copyShareLink(data.url);
+
+  const close = () => closeShareModal();
+  if (closeBtn) closeBtn.onclick = close;
+  if (noThanks) noThanks.onclick = close;
+  if (noThanks) noThanks.onkeydown = (e)=>{ if(e.key==='Enter' || e.key===' ') close(); };
+
+  backdrop.onclick = (e) => {
+    if (e.target === backdrop) close();
+  };
+
+  document.addEventListener('keydown', function esc(e){
+    if (e.key === 'Escape') {
+      document.removeEventListener('keydown', esc);
+      close();
+    }
+  });
+
+  backdrop.classList.add('isOpen');
+  backdrop.setAttribute('aria-hidden', 'false');
+}
+
+function closeShareModal(){
+  const backdrop = document.getElementById('shareBackdrop');
+  if (!backdrop) return;
+  backdrop.classList.remove('isOpen');
+  backdrop.setAttribute('aria-hidden', 'true');
+}
+
+async function copyShareLink(url){
+  try{
+    await navigator.clipboard.writeText(url);
+    if (typeof toast === 'function') toast('Link copied');
+    else alert('Link copied');
+  }catch(e){
+    prompt('Copy link:', url);
+  }
+}
+
+
 const DEFAULT_INTERESTS = [
   "general",
   "business",
@@ -1614,9 +1710,10 @@ const showTrackingUI = state.mode === 'fav';
   // Share button should not toggle the details accordion.
   const shareBtn = div.querySelector('.shareBtn');
   if (shareBtn) {
-    shareBtn.onclick = (e) => {
+    shareBtn.onclick = async (e) => {
       e.preventDefault();
       e.stopPropagation();
+      await shareCluster(item);
     };
   }
 

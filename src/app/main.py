@@ -28,6 +28,7 @@ from .routers.health import router as health_router
 from .routers.auth import router as auth_router
 from .routers.news import router as news_router
 from .routers.billing import router as billing_router
+from .routers.share import router as share_router
 from .auth.deps import csrf_origin_check
 
 log = logging.getLogger("news.autorefresh")
@@ -99,6 +100,7 @@ app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(news_router)
 app.include_router(billing_router)
+app.include_router(share_router)
 app.include_router(debug_router)
 
 # Mount the frontend last so it doesn't swallow API routes (and /favicon.ico).
