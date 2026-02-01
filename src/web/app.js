@@ -1,5 +1,106 @@
 const API_BASE = ""; // same-origin
 
+// --- Deep-link support (shared URLs) ---
+// We keep the shared URL as /share/<id> for OG meta tags, but users get
+// redirected to /?open=<id>&shared=1. Here we auto-open that card.
+let pendingOpenClusterId = null;
+let pendingOpenRequiresAuth = false; // true when coming from a shared link
+
+function readDeepLinkParams() {
+  try {
+    const url = new URL(window.location.href);
+    const open = url.searchParams.get('open');
+    const shared = url.searchParams.get('shared');
+    const id = open && /^\d+$/.test(open) ? Number(open) : null;
+    return { id, shared: shared === '1' || shared === 'true' };
+  } catch {
+    return { id: null, shared: false };
+  }
+}
+
+function clearDeepLinkParams() {
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('open');
+    url.searchParams.delete('shared');
+    window.history.replaceState({}, '', url.toString());
+  } catch {}
+}
+
+function openCardInDOM(clusterId) {
+  const cards = document.getElementById('cards');
+  if (!cards) return false;
+  const card = cards.querySelector(`.newsCard[data-id="${String(clusterId)}"]`);
+  if (!card) return false;
+  const details = card.querySelector('details.newsDetails');
+  if (details) details.open = true;
+  // Scroll the opened card into view (nicely)
+  try {
+    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch {
+    card.scrollIntoView();
+  }
+  // Brief highlight so user notices the opened item
+  card.classList.add('isDeepLinked');
+  setTimeout(() => card.classList.remove('isDeepLinked'), 1400);
+  return true;
+}
+
+async function ensureItemInFeedAndOpen(clusterId) {
+  // 1) If already rendered -> open
+  if (openCardInDOM(clusterId)) return true;
+
+  // 2) Try to fetch this single item and inject into current feed
+  try {
+    const r = await fetch(`${API_BASE}/api/news/by_ids?ids=${encodeURIComponent(String(clusterId))}`);
+    if (!r.ok) return false;
+    const j = await r.json();
+    const item = (j?.items && j.items[0]) ? j.items[0] : null;
+    if (!item) return false;
+
+    // Prepend and re-render (keep existing order after the injected item)
+    const existing = Array.isArray(lastFeedItems) ? lastFeedItems : [];
+    const seen = new Set([String(clusterId)]);
+    const merged = [item];
+    for (const it of existing) {
+      const id = String(it?.cluster_id ?? it?.event_id ?? '');
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      merged.push(it);
+    }
+    lastFeedItems = merged;
+    renderCards(merged, {
+      nowTs: Date.now(),
+      newIds: new Set(),
+      suppressNewBadges: true,
+      incremental: false,
+      animate: false,
+    });
+
+    // Open after render
+    return openCardInDOM(clusterId);
+  } catch {
+    return false;
+  }
+}
+
+async function maybeOpenDeepLinkedArticle() {
+  if (!pendingOpenClusterId) return;
+
+  // If it is a shared link, require auth first (your requirement).
+  if (pendingOpenRequiresAuth && !authState?.authenticated) {
+    openAuthModal('login');
+    return;
+  }
+
+  const id = pendingOpenClusterId;
+  pendingOpenClusterId = null;
+  pendingOpenRequiresAuth = false;
+
+  await ensureItemInFeedAndOpen(id);
+  clearDeepLinkParams();
+}
+
 // --- Share (OG card page) ---
 
 async function shareCluster(item) {
@@ -656,6 +757,9 @@ function bindAuthModalUI() {
           }
           // Reload feed so paywall disappears
           await fetchFeed({ reset: true });
+
+          // If user came from a shared deep-link, open the requested article now.
+          await maybeOpenDeepLinkedArticle();
           return;
         }
 
@@ -783,6 +887,9 @@ async function handleAuthQueryParams() {
     url.searchParams.delete('login');
     window.history.replaceState({}, '', url.toString());
     await refreshAuthState();
+    // After OAuth redirects back, refresh the feed and open any deep-link.
+    await fetchFeed({ reset: true });
+    await maybeOpenDeepLinkedArticle();
   }
 }
 
@@ -2416,6 +2523,13 @@ async function main() {
   loadPrefs();
   loadFilters();
 
+  // Capture deep-link request early (before auth/feed fetch)
+  const dl = readDeepLinkParams();
+  if (dl.id) {
+    pendingOpenClusterId = dl.id;
+    pendingOpenRequiresAuth = !!dl.shared;
+  }
+
   setFavIds(getFavIds());
 
   bindAuthModalUI();
@@ -2430,6 +2544,9 @@ async function main() {
 
   // initial load
   await fetchFeed({ reset: true });
+
+  // If we arrived via a shared URL (/?open=...), open that article card.
+  await maybeOpenDeepLinkedArticle();
 
   /**
    * Auto refresh strategy (Render can be slow):

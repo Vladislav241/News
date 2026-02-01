@@ -457,8 +457,26 @@ def get_news(
     return payload
 
 
+def _redact_item_for_guest(it: dict[str, Any]) -> dict[str, Any]:
+    """Redact details for guests (same paywall behavior as /api/news).
+
+    /api/news/by_ids is used for deep-links (e.g. shared URLs). Without
+    this, guests could bypass the paywall by requesting an item directly.
+    """
+    it = dict(it)
+    it.pop("summary_facts", None)
+    it.pop("summary_diffs", None)
+    it.pop("summary_uncertainties", None)
+    it["summary"] = ""
+    it["credibility_explanation"] = "Create an account to view full details."
+    it["guest_locked"] = True
+    # Remove sources/details (keep count/metadata)
+    it["sources"] = []
+    return it
+
+
 @router.get("/api/news/by_ids")
-def news_by_ids(ids: str) -> dict[str, Any]:
+def news_by_ids(ids: str, user=Depends(get_current_user_optional)) -> dict[str, Any]:
     db.ensure_schema()
 
     id_list: list[int] = []
@@ -474,6 +492,10 @@ def news_by_ids(ids: str) -> dict[str, Any]:
     id_list = list(dict.fromkeys(id_list))[:200]
     rows = db.get_clusters_by_ids(id_list)
     items = [_decorate_cluster_row(r) for r in rows]
+
+    # Apply paywall for guests.
+    if user is None:
+        items = [_redact_item_for_guest(it) for it in items]
 
     pos = {cid: i for i, cid in enumerate(id_list)}
     items.sort(key=lambda x: pos.get(int(x["cluster_id"]), 10**9))

@@ -461,6 +461,9 @@ def share_page(cluster_id: int, request: Request):
 
     base = _base_url(request)
     page_url = f"{base}/share/{int(cluster_id)}"
+    # Deep-link into the web app so the article card opens immediately.
+    # We keep /share/{id} as the shared URL because it contains OG meta tags.
+    app_url = f"{base}/?open={int(cluster_id)}&shared=1"
     img_url = f"{base}/api/share-image/{int(cluster_id)}.png"
 
     html = f"""<!doctype html>
@@ -506,6 +509,7 @@ def share_page(cluster_id: int, request: Request):
         <img src="/api/share-image/{int(cluster_id)}.png" alt="Share card" />
       </div>
       <div class="cta">
+        <a class="btn" href="{app_url}" id="openBtn" style="text-decoration:none; display:inline-flex; align-items:center; justify-content:center;">Open article</a>
         <button class="btn" id="shareBtn">Share</button>
         <button class="btn secondary" id="copyBtn">Copy link</button>
       </div>
@@ -516,10 +520,21 @@ def share_page(cluster_id: int, request: Request):
 <script>
 (function(){{
   const url = {json.dumps(page_url)};
+  const appUrl = {json.dumps(app_url)};
   const title = {json.dumps(title)};
   const text = {json.dumps(desc)};
   const shareBtn = document.getElementById('shareBtn');
   const copyBtn = document.getElementById('copyBtn');
+
+  // Auto-open the article inside the app for real users.
+  // Avoid redirecting social preview bots (they need to read OG tags).
+  const ua = (navigator.userAgent || '').toLowerCase();
+  const isBot = /bot|crawl|spider|slurp|facebookexternalhit|twitterbot|slackbot|discordbot|whatsapp/i.test(ua);
+  if (!isBot) {{
+    setTimeout(()=>{{
+      try {{ window.location.replace(appUrl); }} catch(e) {{ window.location.href = appUrl; }}
+    }}, 350);
+  }}
 
   async function copyLink(){{
     try {{
