@@ -43,6 +43,13 @@ let authState = {
 
 let _resetToken = "";
 
+// ----------------------------
+// Billing / Pricing (MVP)
+// ----------------------------
+let billingInterval = 'monthly';
+let pendingCheckout = null; // { plan, interval }
+let billingState = { plan: 'free', status: 'active', interval: 'monthly' };
+
 function setFeedExpanded(v) {
   const target = !!v;
   const cardsEl = document.getElementById('cards');
@@ -388,11 +395,60 @@ function closeAuthModal() {
   setAuthStep('choose');
 }
 
-function updateAuthUI() {
-  const btnLogin = document.getElementById('btnLogin');
-  if (btnLogin) {
-    btnLogin.textContent = authState.authenticated ? 'Account' : 'Login';
+function updateAccountPlanPill() {
+  const pill = document.getElementById('accountPlanPill');
+  if (!pill) return;
+
+  // Only show for paid plans.
+  if (!authState.authenticated) {
+    pill.style.display = 'none';
+    return;
   }
+
+  const plan = (billingState?.plan || 'free').toLowerCase();
+  if (plan === 'pro') {
+    pill.textContent = 'PRO';
+    pill.style.display = 'inline-flex';
+  } else if (plan === 'analyst') {
+    pill.textContent = 'ANALYST';
+    pill.style.display = 'inline-flex';
+  } else {
+    pill.style.display = 'none';
+  }
+}
+
+function updateAuthUI() {
+  // In this version the header uses btnAccount.
+  const btnAccount = document.getElementById('btnAccount');
+  const accountMenu = document.getElementById('accountMenu');
+  const menuLogout = document.getElementById('menuLogout');
+
+  if (btnAccount) {
+    // Keep the visible label consistent with the design.
+    const label = authState.authenticated ? 'Account' : 'Login';
+    btnAccount.setAttribute('aria-label', label);
+
+    // Also update the visible text (button contains a text node + optional plan pill span).
+    const pill = document.getElementById('accountPlanPill');
+    const textNode = Array.from(btnAccount.childNodes).find(n => n.nodeType === Node.TEXT_NODE);
+    if (textNode) {
+      textNode.textContent = label + ' ';
+    } else {
+      // Fallback: rebuild safely
+      btnAccount.textContent = label + ' ';
+      if (pill) btnAccount.appendChild(pill);
+    }
+  }
+
+  // When logged out, ensure the dropdown is closed and logout item hidden.
+  if (!authState.authenticated) {
+    if (accountMenu) accountMenu.classList.remove('open');
+    if (menuLogout) menuLogout.style.display = 'none';
+  } else {
+    if (menuLogout) menuLogout.style.display = '';
+  }
+
+  updateAccountPlanPill();
 }
 
 async function refreshAuthState() {
@@ -412,6 +468,32 @@ async function refreshAuthState() {
     await pullFavoritesFromServerAndMerge();
     await syncFavoritesToServer();
   }
+
+  // Billing state depends on auth
+  await refreshBillingState();
+}
+
+async function refreshBillingState() {
+  // If not logged in, treat as free.
+  if (!authState.authenticated) {
+    billingState = { plan: 'free', status: 'active', interval: 'monthly' };
+    updatePricingUI();
+    return;
+  }
+  try {
+    const r = await fetch(`${API_BASE}/api/billing/me`);
+    const j = await r.json();
+    billingState = {
+      plan: j?.plan || 'free',
+      status: j?.status || 'active',
+      interval: j?.interval || 'monthly',
+      current_period_end: j?.current_period_end || null,
+    };
+  } catch {
+    billingState = { plan: 'free', status: 'active', interval: 'monthly' };
+  }
+  updatePricingUI();
+  updateAccountPlanPill();
 }
 
 function bindAuthModalUI() {
@@ -470,6 +552,12 @@ function bindAuthModalUI() {
         if (r.ok) {
           await refreshAuthState();
           closeAuthModal();
+          if (pendingCheckout) {
+            const pc = pendingCheckout;
+            pendingCheckout = null;
+            await startCheckout(pc.plan, pc.interval);
+            return;
+          }
           // Reload feed so paywall disappears
           await fetchFeed({ reset: true });
           return;
@@ -599,6 +687,333 @@ async function handleAuthQueryParams() {
     url.searchParams.delete('login');
     window.history.replaceState({}, '', url.toString());
     await refreshAuthState();
+  }
+}
+
+// ----------------------------
+// Pricing / Billing UI
+// ----------------------------
+function bindPricingUI(){
+  const pricingSection = document.getElementById('pricingSection');
+  const feedView = document.getElementById('feedView');
+  if(!pricingSection || !feedView) return;
+
+  // Selected plan for the single CTA button under the cards
+  let selectedPlan = (billingState?.plan || 'free').toLowerCase();
+
+  function setPage(page){
+    if(page === 'pricing'){
+      feedView.style.display = 'none';
+      pricingSection.style.display = 'block';
+      window.scrollTo({ top: 0, behavior: 'instant' });
+      const btn = document.getElementById('btnPricing');
+      if(btn) btn.setAttribute('aria-current','page');
+    }else{
+      pricingSection.style.display = 'none';
+      feedView.style.display = 'block';
+      const btn = document.getElementById('btnPricing');
+      if(btn) btn.removeAttribute('aria-current');
+    }
+  }
+
+  // Expose for other handlers (Tracking / Login, etc.)
+  window.__setMainPage = setPage;
+
+  const btnPricing = document.getElementById('btnPricing');
+  if(btnPricing){
+    btnPricing.addEventListener('click', (e)=>{
+      e.preventDefault();
+      setPage('pricing');
+    });
+  }
+
+  // Clicking the logo/title returns to the feed
+  const brand = document.getElementById('brand');
+  if(brand){
+    brand.addEventListener('click', (e)=>{
+      e.preventDefault();
+      setPage('feed');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  }
+
+  const monthlyBtn = document.getElementById('billMonthly');
+  const yearlyBtn  = document.getElementById('billYearly');
+
+  function syncIntervalUI(){
+    const isMonthly = (billingInterval === 'monthly');
+    if(monthlyBtn){
+      monthlyBtn.classList.toggle('on', isMonthly);
+      monthlyBtn.setAttribute('aria-selected', isMonthly ? 'true':'false');
+    }
+    if(yearlyBtn){
+      yearlyBtn.classList.toggle('on', !isMonthly);
+      yearlyBtn.setAttribute('aria-selected', !isMonthly ? 'true':'false');
+    }
+    document.querySelectorAll('.planPrice').forEach(el=>{
+      const monthlyStr = el.getAttribute('data-price-monthly') || '';
+      const yearlyStr  = el.getAttribute('data-price-yearly') || '';
+
+      const nowEl  = el.querySelector('.priceNow');
+      const wasEl  = el.querySelector('.priceWas');
+      const saveEl = el.querySelector('.priceSave');
+
+      // Fallback: if HTML wasn't updated for some reason, keep previous behavior.
+      if(!nowEl){
+        const v = isMonthly ? monthlyStr : yearlyStr;
+        if(v) el.textContent = v;
+        return;
+      }
+
+      if(isMonthly){
+        nowEl.textContent = monthlyStr;
+        if(wasEl) wasEl.style.display = 'none';
+        if(saveEl) saveEl.style.display = 'none';
+        return;
+      }
+
+      // Yearly view: show new price + struck-through "would be" annual price + savings.
+      nowEl.textContent = yearlyStr;
+
+      const parsePrice = (s)=>{
+        const n = parseFloat(String(s).replace(/[^0-9.]/g,''));
+        return Number.isFinite(n) ? n : null;
+      };
+
+      const m = parsePrice(monthlyStr);
+      const y = parsePrice(yearlyStr);
+      if(m != null && y != null){
+        const annual = m * 12;
+        const pct = Math.max(0, Math.round((1 - (y / annual)) * 100));
+
+        if(wasEl){
+          wasEl.textContent = `$${annual.toFixed(2)}`;
+          wasEl.style.display = 'inline';
+        }
+        if(saveEl){
+          saveEl.textContent = pct > 0 ? `Save ${pct}%` : '';
+          saveEl.style.display = pct > 0 ? 'inline' : 'none';
+        }
+      }else{
+        if(wasEl) wasEl.style.display = 'none';
+        if(saveEl) saveEl.style.display = 'none';
+      }
+    });
+  }
+
+  function syncSelectionUI(){
+    document.querySelectorAll('.planCard').forEach(card=>{
+      const plan = card.getAttribute('data-plan');
+      card.classList.toggle('isSelected', plan === selectedPlan);
+    });
+
+    const mainBtn = document.getElementById('pricingMainCta');
+    if(mainBtn){
+      const currentPlan = (billingState?.plan || 'free').toLowerCase();
+      const status = (billingState?.status || 'active').toLowerCase();
+      const currentInterval = (billingState?.interval || 'monthly').toLowerCase();
+      const hasActivePaid =
+        authState.authenticated &&
+        currentPlan !== 'free' &&
+        (status === 'active' || status === 'trialing');
+
+      const isCurrentSelected = hasActivePaid && selectedPlan === currentPlan && billingInterval === currentInterval;
+
+      if (isCurrentSelected) {
+        mainBtn.textContent = 'Current plan';
+        mainBtn.disabled = true;
+      } else {
+        mainBtn.disabled = false;
+        mainBtn.textContent =
+          selectedPlan === 'free' ? 'Get Free' :
+          selectedPlan === 'pro' ? 'Upgrade to Pro' :
+          'Upgrade to Analyst';
+      }
+    }
+  }
+
+  // Select plan by clicking a card
+  document.querySelectorAll('.planCard').forEach(card=>{
+    card.addEventListener('click', ()=>{
+      selectedPlan = card.getAttribute('data-plan') || 'free';
+      syncSelectionUI();
+    });
+    card.addEventListener('keydown', (ev)=>{
+      if(ev.key === 'Enter' || ev.key === ' '){
+        ev.preventDefault();
+        selectedPlan = card.getAttribute('data-plan') || 'free';
+        syncSelectionUI();
+      }
+    });
+  });
+
+  if(monthlyBtn) monthlyBtn.addEventListener('click', ()=>{
+    billingInterval = 'monthly';
+    syncIntervalUI();
+  });
+  if(yearlyBtn) yearlyBtn.addEventListener('click', ()=>{
+    billingInterval = 'yearly';
+    syncIntervalUI();
+  });
+
+ const mainBtn = document.getElementById('pricingMainCta');
+
+if (mainBtn) {
+  mainBtn.addEventListener('click', async () => {
+
+    const currentPlan = (billingState?.plan || 'free').toLowerCase();
+    const status = (billingState?.status || '').toLowerCase();
+    const currentInterval = (billingState?.interval || 'monthly').toLowerCase();
+
+    const hasActivePaid =
+      authState.authenticated &&
+      currentPlan !== 'free' &&
+      (status === 'active' || status === 'trialing');
+
+    // ✅ Уже куплено → запрещаем повторную покупку
+    if (
+      hasActivePaid &&
+      selectedPlan === currentPlan &&
+      billingInterval === currentInterval
+    ) {
+      toast("✅ You already have this plan.");
+      return;
+    }
+
+    // дальше твоя логика
+    if (selectedPlan === 'free') {
+      toast("Free plan enabled (no payment).");
+      return;
+    }
+
+        await startCheckout(selectedPlan, billingInterval);
+  });
+}
+
+
+  // Default state
+  syncIntervalUI();
+  syncSelectionUI();
+}
+
+
+function setBillingInterval(interval) {
+  billingInterval = interval;
+  const bM = document.getElementById('billMonthly');
+  const bY = document.getElementById('billYearly');
+  if (bM && bY) {
+    bM.classList.toggle('on', interval === 'monthly');
+    bY.classList.toggle('on', interval === 'yearly');
+    bM.setAttribute('aria-selected', interval === 'monthly' ? 'true' : 'false');
+    bY.setAttribute('aria-selected', interval === 'yearly' ? 'true' : 'false');
+  }
+  // Update displayed prices (+ crossed out annual "was" when Yearly)
+  document.querySelectorAll('.planPrice').forEach((el) => {
+    const monthlyStr = el.getAttribute('data-price-monthly') || '';
+    const yearlyStr  = el.getAttribute('data-price-yearly') || '';
+
+    const now = el.querySelector('.priceNow');
+    const was = el.querySelector('.priceWas');
+    const save = el.querySelector('.priceSave');
+
+    if (!now) return;
+
+    if (interval === 'yearly') {
+      now.textContent = yearlyStr || monthlyStr;
+
+      const monthly = parseMoney(monthlyStr);
+      const annualWas = monthly * 12;
+      const yearly = parseMoney(yearlyStr);
+
+      if (was) {
+        was.style.display = (monthly > 0 && yearly > 0) ? 'block' : 'none';
+        was.textContent = (monthly > 0 && yearly > 0) ? formatMoney(annualWas) : '';
+      }
+
+      if (save) {
+        const pct = (annualWas > 0 && yearly > 0)
+          ? Math.round(((annualWas - yearly) / annualWas) * 100)
+          : 0;
+        save.style.display = (pct > 0) ? 'block' : 'none';
+        save.textContent = (pct > 0) ? `Save ${pct}%` : '';
+      }
+    } else {
+      now.textContent = monthlyStr || yearlyStr;
+      if (was) { was.style.display = 'none'; was.textContent = ''; }
+      if (save) { save.style.display = 'none'; save.textContent = ''; }
+    }
+  });
+}
+
+function updatePricingUI() {
+  // Highlight current plan + update CTA text
+  document.querySelectorAll('.planCard').forEach((card) => {
+    const plan = card.getAttribute('data-plan');
+    const btn = card.querySelector('.planBtn');
+    const isCurrent = plan === billingState.plan;
+    card.classList.toggle('current', isCurrent);
+    if (btn) {
+      if (isCurrent) {
+        btn.textContent = 'Current plan';
+        btn.disabled = true;
+      } else {
+        btn.disabled = false;
+        if (plan === 'free') btn.textContent = 'Switch to Free';
+        else if (plan === 'pro') btn.textContent = 'Upgrade to Pro';
+        else btn.textContent = 'Upgrade to Analyst';
+      }
+    }
+  });
+}
+
+async function startCheckout(plan, interval) {
+  try {
+    if (plan === 'free') {
+      await fetch(`${API_BASE}/api/billing/set-free`, { method: 'POST' });
+      await refreshBillingState();
+      // Refresh feed so paywall disappears
+      await fetchFeed({ reset: true });
+      const sec = document.getElementById('pricingSection');
+      if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+
+    const r = await fetch(`${API_BASE}/api/billing/checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan, interval }),
+    });
+    const j = await r.json();
+    if (!r.ok) {
+      alert(j?.detail || 'Failed to start checkout');
+      return;
+    }
+    if (j?.url) window.location.href = j.url;
+  } catch {
+    alert('Network error. Try again.');
+  }
+}
+
+async function handleBillingQueryParams() {
+  const url = new URL(window.location.href);
+  const checkout = url.searchParams.get('checkout');
+  const sessionId = url.searchParams.get('session_id');
+  if (checkout === 'success' && sessionId) {
+    try {
+      const r = await fetch(`${API_BASE}/api/billing/checkout/complete?session_id=${encodeURIComponent(sessionId)}`, {
+        method: 'POST',
+      });
+      // Clean query params either way
+      url.searchParams.delete('checkout');
+      url.searchParams.delete('session_id');
+      window.history.replaceState({}, '', url.toString());
+      if (r.ok) {
+        await refreshBillingState();
+        await fetchFeed({ reset: true });
+      }
+    } catch {
+      // ignore
+    }
   }
 }
 
@@ -1752,6 +2167,7 @@ function bindUI() {
   const btnTracking = document.getElementById("btnTracking");
   if (btnTracking) {
     btnTracking.onclick = async () => {
+      if(window.__setMainPage) window.__setMainPage('feed');
       if (!authState.authenticated) {
         openAuthModal('tracking');
         return;
@@ -1906,8 +2322,10 @@ async function main() {
   setFavIds(getFavIds());
 
   bindAuthModalUI();
+  bindPricingUI();
   await refreshAuthState();
   await handleAuthQueryParams();
+  await handleBillingQueryParams();
 
   bindUI();
   renderTags();
@@ -1973,6 +2391,116 @@ async function main() {
   setInterval(tickCooldownUI, 1000);
 }
 
+const monthlyBtn = document.getElementById("billMonthly");
+const yearlyBtn  = document.getElementById("billYearly");
+
+const prices = document.querySelectorAll(".planPriceBig");
+
+function setBilling(mode){
+  prices.forEach(el => {
+    const monthly = parseFloat(el.dataset.monthly);
+    const yearly  = parseFloat(el.dataset.yearly);
+
+    const oldSpan = el.querySelector(".oldPrice");
+    const newSpan = el.querySelector(".newPrice");
+
+    if(mode === "monthly"){
+      oldSpan.textContent = "";
+      newSpan.textContent = `$${monthly.toFixed(2)}`;
+    }
+
+    if(mode === "yearly"){
+      // старая цена = monthly * 12
+      const old = monthly * 12;
+
+      oldSpan.textContent = `$${old.toFixed(2)}`;
+      newSpan.textContent = `$${yearly.toFixed(2)}`;
+    }
+  });
+
+  monthlyBtn.classList.toggle("on", mode === "monthly");
+  yearlyBtn.classList.toggle("on", mode === "yearly");
+}
+
+monthlyBtn.onclick = () => setBilling("monthly");
+yearlyBtn.onclick  = () => setBilling("yearly");
+
+// старт
+setBilling("monthly");
+
+// ===== Account dropdown =====
+const btnAccount = document.getElementById("btnAccount");
+const accountMenu = document.getElementById("accountMenu");
+
+const menuPricing = document.getElementById("menuPricing");
+const menuLogout = document.getElementById("menuLogout");
+
+// открыть/закрыть меню
+btnAccount.addEventListener("click", (e) => {
+  // If not logged in, the Account button behaves like Login.
+  if (!authState.authenticated) {
+    openAuthModal('login');
+    return;
+  }
+  e.stopPropagation();
+  accountMenu.classList.toggle("open");
+});
+
+// закрывать при клике вне
+document.addEventListener("click", (e) => {
+  if (!accountMenu.contains(e.target) && !btnAccount.contains(e.target)) {
+    accountMenu.classList.remove("open");
+  }
+});
+
+// ✅ Pricing click
+menuPricing.addEventListener("click", () => {
+  accountMenu.classList.remove("open");
+
+  // вызвать твой Pricing экран
+  document.getElementById("pricingSection").style.display = "block";
+  document.getElementById("feedView").style.display = "none";
+});
+
+// ✅ Logout click
+menuLogout.addEventListener("click", async () => {
+  accountMenu.classList.remove("open");
+
+  try {
+    // Cookie session logout
+    const res = await fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "include",
+    });
+
+    // 2) если у тебя токены в localStorage/sessionStorage — очищаем на всякий
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    sessionStorage.removeItem("access_token");
+    sessionStorage.removeItem("token");
+
+    if (!res.ok) {
+      // иногда backend возвращает 204 без тела — это ок, но !ok значит 4xx/5xx
+      const txt = await res.text().catch(() => "");
+      console.error("Logout failed:", res.status, txt);
+      alert("Logout failed. Check console.");
+      return;
+    }
+
+    // Update in-memory state + UI
+    authState = { authenticated: false, user: null };
+    billingState = null;
+    updateAuthUI();
+    updatePricingUI();
+
+    alert("Logged out!");
+
+  } catch (e) {
+    console.error(e);
+    alert("Network error while logging out.");
+  }
+});
 
 
 

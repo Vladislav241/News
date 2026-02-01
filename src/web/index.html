@@ -818,6 +818,7 @@
 }
 .authInput:focus{ border-color:#bdbdbd; }
 .authRowBetween{ display:flex; justify-content: space-between; align-items:center; margin-top: 10px; }
+.authRowBetween{ max-width: 510px; margin-left:auto; margin-right:auto; }
 .authLink{ color:#111; opacity: .75; cursor:pointer; text-decoration: none; }
 .authLink:hover{ opacity: 1; text-decoration: underline; }
 .authFoot{
@@ -826,7 +827,7 @@
   text-align:center;
   padding: 8px 30px 26px;
 }
-.authError{ color:#b00020; margin-top: 12px; display:none; }
+.authError{ color:#b00020; margin: 12px auto 0; max-width: 510px; display:none; }
 .authError.isShow{ display:block; }
 
 .authNote{
@@ -835,6 +836,105 @@
   color:#9a9a9a;
   font-size: 10px;
   text-align: left;   /* ✅ начинается от начала кнопки */
+}
+
+/* --------------------
+   Pricing section
+   -------------------- */
+.pricingSection{
+  max-width: 1040px;
+  margin: 64px auto 0;
+  padding: 0 16px 30px;
+}
+.pricingHero{
+  text-align:center;
+  margin: 12px auto 28px;
+}
+.pricingHero h2{
+  font-size: 40px;
+  font-weight: 200;
+  margin: 0 0 10px;
+  letter-spacing: -0.6px;
+}
+.pricingHero p{ margin: 0; color: rgba(15,23,42,.65); font-size: 18px; }
+.billingToggle{
+  display:flex;
+  justify-content:center;
+  margin: 18px 0 28px;
+}
+.billingToggle .togglePill{
+  display:inline-flex;
+  align-items:center;
+  gap: 10px;
+  border: 1px solid rgba(15,23,42,.18);
+  border-radius: 999px;
+  padding: 6px;
+  background: #fff;
+}
+.billingToggle button{
+  border: none;
+  background: transparent;
+  padding: 8px 14px;
+  border-radius: 999px;
+  cursor:pointer;
+  font-weight: 600;
+}
+.billingToggle button.on{ background:#111113; color:#fff; }
+
+.pricingGrid{
+  display:grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+.planCard{
+  border: 1px solid rgba(15,23,42,.16);
+  border-radius: 22px;
+  background:#fff;
+  overflow:hidden;
+}
+.planCard .planTop{
+  padding: 22px 22px 18px;
+  border-bottom: 1px solid rgba(15,23,42,.10);
+  text-align:center;
+}
+.planName{ font-size: 22px; font-weight: 650; margin: 0 0 6px; }
+.planPrice{ font-size: 38px; font-weight: 700; margin: 0; }
+.planSub{ margin-top: 6px; color: rgba(15,23,42,.55); font-size: 14px; }
+
+.planCTA, .planCta{ padding: 0 22px 22px; }
+.planBtn{
+  width:100%;
+  height: 52px;
+  border-radius: 999px;
+  border: 1px solid rgba(15,23,42,.16);
+  background:#fff;
+  cursor:pointer;
+  font-weight: 700;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.planBtn.primary, .planBtn.dark{ background:#111113; border-color:#111113; color:#fff; }
+.planBtn:disabled{ opacity: .6; cursor:not-allowed; }
+.planBadge{
+  position: relative;
+  top: -12px;
+  display:flex;
+  justify-content:center;
+  background:#111113;
+  color:#fff;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.planCard.current{ outline: 2px solid rgba(17,17,19,.20); }
+
+.currentPlanNote{ text-align:center; margin-top: 14px; color: rgba(15,23,42,.65); }
+
+@media (max-width: 900px){
+  .pricingGrid{ grid-template-columns: 1fr; }
 }
 
 /* ОДИНАКОВЫЙ РАЗМЕР для email/password и кнопки */
@@ -930,6 +1030,226 @@
   margin-top: 14px;
 }
 
+
+
+/* ===== Pricing page (standalone view) ===== */
+.pricingPage{max-width:1040px;margin:64px auto 0;padding:0 18px 64px;}
+.pricingHero{text-align:center;margin:26px 0 35px;}
+.pricingHero h2{margin:0 0 10px;font-size:32px;font-weight:400;letter-spacing:-0.02em;}
+.pricingHero p{margin:0;color:#111;font-size:23px;line-height:1.5;}
+.billingToggle{display:flex;justify-content:center;margin:18px 0 50px;}
+.togglePill{background:#fff;border:1px solid rgba(0,0,0,0.18);border-radius:999px;padding:4px;display:flex;gap:4px;}
+.togglePill button{border:0;background:transparent;padding:8px 16px;border-radius:999px;font-weight:600;cursor:pointer;}
+.togglePill button.on{background:#111;color:#fff;}
+.pricingGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;align-items:stretch;margin:0 auto;}
+.planCard{position:relative;border:1px solid rgba(0,0,0,0.22);border-radius:18px;background:#fff;overflow:hidden;cursor:pointer;transition:transform .12s ease,box-shadow .12s ease,border-color .12s ease;}
+.planCard:hover{transform:translateY(-1px);}
+.planCard.isSelected{border-color:rgba(0,0,0,0.55);box-shadow:0 0 0 1px rgba(0,0,0,0.55) inset;}
+.planBadge{position:absolute;left:50%;top:-14px;transform:translateX(-50%);background:#111;color:#fff;padding:6px 18px;border-radius:999px;font-size:13px;font-weight:700;}
+.planHead{text-align:center;padding:28px 18px 18px;border-bottom:1px solid rgba(0,0,0,0.14);}
+.planName{font-size:22px;font-weight:700;margin-bottom:8px;}
+.planPriceBig{font-size:44px;font-weight:400;letter-spacing:-0.02em;padding: 17px;}
+.planBody{padding:30px 18px 22px;}
+.planBody ul{list-style:none;padding:0;;margin:0;text-align:center;display:flex;flex-direction:column;gap:30px;color:rgba(0,0,0,0.72);}
+.planBody b{color:#111;font-weight:750;}
+.pricingCtaRow{display:flex;justify-content:center;margin:18px 0 34px;}
+.pricingMainBtn{background:#111;color:#fff;border:0;border-radius:12px;padding:12px 22px;min-width:220px;font-size:16px;font-weight:700;cursor:pointer;}
+.pricingMainBtn:active{transform:translateY(1px);}
+.pricingTrust{margin:34px 0 14px;text-align:center;letter-spacing:0.34em;color:rgba(0,0,0,0.55);font-size:20px;}
+.pricingCompareWrap{border:1px solid rgba(0,0,0,0.18);border-radius:12px;overflow:hidden;}
+.pricingTable{width:100%;border-collapse:collapse;background:#fff;}
+.pricingTable th,.pricingTable td{padding:14px 16px;border-bottom:1px solid rgba(0,0,0,0.10);text-align:center;}
+.pricingTable th{background:rgba(0,0,0,0.03);font-weight:700;}
+.pricingTable tbody td:first-child{text-align:left;font-weight:500;}
+.pricingTable tbody tr:last-child td{border-bottom:0;}
+@media (max-width:980px){.pricingGrid{grid-template-columns:1fr;}.planHead{padding-top:30px;}}
+/* REMOVE checkmarks in pricing cards */
+.pricingPage .planBody li::before{
+  content: "" !important;
+  display: none !important;
+}
+/* Make pricing cards taller */
+.pricingPage .planCard{
+  min-height: 530px;   /* увеличивай: 520 / 600 / 650 */
+}
+.pricingPage .planCard{
+  display: flex;
+  flex-direction: column;
+   overflow: visible;
+}
+
+.pricingPage .planBody{
+  flex: 1;   /* растягивает середину */
+}
+/* ===== Pricing table: make it look like Figma (photo 2) ===== */
+
+.pricingCompareWrap{
+  border: 1px solid rgba(0,0,0,0.35);
+  border-radius: 34px;
+  overflow: hidden;        /* важно для скругления */
+  background: #fff;
+}
+
+/* чтобы работал border-radius + внутренние линии */
+.pricingTable{
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: #fff;
+}
+
+/* общие ячейки */
+.pricingTable th,
+.pricingTable td{
+   padding: 16px 28px;
+  border-bottom: 1px solid rgba(0,0,0,0.25);
+  text-align: center;
+  vertical-align: middle;
+}
+
+/* вертикальные линии между колонками */
+.pricingTable th:not(:last-child),
+.pricingTable td:not(:last-child){
+  border-right: 1px solid rgba(0,0,0,0.25);
+}
+
+/* шапка */
+.pricingTable thead th{
+  background: transparent;   /* убрать серый фон */
+  font-weight: 400;
+  font-size: 34px;
+}
+
+/* первая колонка (названия строк) */
+.pricingTable tbody td:first-child,
+.pricingTable thead th:first-child{
+  text-align: left;
+}
+
+/* названия строк (Track events / Trust score changes...) */
+.pricingTable tbody td:first-child{
+  font-size: 24px;
+  font-weight: 200;
+}
+
+/* значения внутри (3 / 20 / ✓ / × / Limited...) */
+.pricingTable tbody td{
+  font-size: 18px;  
+  font-weight: 200;
+}
+
+/* последняя строка без нижней линии */
+.pricingTable tbody tr:last-child td{
+  border-bottom: 0;
+}
+/* === FIX: сделать заголовки таблицы НЕ жирными === */
+.pricingTable th{
+  font-weight: 300 !important;      /* перебивает твои 700 */
+  font-synthesis-weight: none;      /* чтобы браузер не "додумывал" жирность */
+}
+/* Если нужно увеличить воздух под кнопкой */
+.pricingCtaRow{
+  margin-bottom: 130px !important;
+}
+.saveTag{
+  font-size: 13px;
+  margin-left: 8px;
+  color: rgba(0,0,0,0.45);
+  font-weight: 400;
+}
+.planPriceBig{
+  display: flex;
+  justify-content: center;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.oldPrice{
+  font-size: 18px;
+  color: rgba(0,0,0,0.35);
+  text-decoration: line-through;
+}
+
+.newPrice{
+  font-size: 44px;
+  font-weight: 400;
+}
+/* ===== Account dropdown ===== */
+.accountWrap{
+  position: relative;
+  display: inline-block;
+}
+
+.accountMenu{
+  position: absolute;
+  top: 120%;
+  right: 0;
+
+  width: 190px;
+  background: white;
+  border: 1px solid rgba(0,0,0,0.15);
+  border-radius: 16px;
+  padding: 10px;
+
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  box-shadow: 0 20px 50px rgba(0,0,0,0.10);
+
+  /* ✅ animation */
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none;
+  transition: all 0.25s ease;
+}
+
+/* ✅ when open */
+.accountMenu.open{
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+/* кнопки внутри */
+.accountMenu button{
+  border: none;
+  background: transparent;
+  text-align: left;
+
+  padding: 12px 14px;
+  border-radius: 12px;
+
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.accountMenu button:hover{
+  background: rgba(0,0,0,0.06);
+}
+
+/* logout красным */
+#menuLogout{
+  color: #b00020;
+}
+
+
+
+.accountPlanPill{
+  margin-left: 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: #111113;
+  color: #fff;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 </style>
 </head>
 <body>
@@ -949,14 +1269,27 @@
           <span>Tracking</span>
           <span id="trackingCount" class="trackBadge">0</span>
         </button>
-        <button id="btnLogin" class="loginBtn" type="button">Login</button>
+      
+
+<!-- ✅ Account dropdown -->
+<div class="accountWrap">
+  <button id="btnAccount" class="loginBtn" type="button">
+    Account <span id="accountPlanPill" class="accountPlanPill" style="display:none;">Pro</span>
+  </button>
+
+  <div id="accountMenu" class="accountMenu">
+    <button id="menuPricing" type="button">Pricing</button>
+    <button id="menuLogout" type="button">Log out</button>
+  </div>
+</div>
+
         <!-- Manual refresh kept for JS compatibility, but hidden in the new design -->
         <button id="btnRefresh" class="btn hiddenCompat" type="button">Refresh</button>
       </div>
     </div>
   </header>
 
-  <div class="wrap">
+  <div id="feedView" class="wrap">
     <div class="panel">
       <div class="searchRow">
         <div class="searchWrap">
@@ -1021,7 +1354,141 @@
 
     <div id="cards" class="cards"></div>
   </div>
+  <!-- Pricing / Subscriptions -->
+  <section id="pricingSection" class="pricingPage" aria-label="Pricing" style="display:none;">
+    <div class="pricingHero">
+      <h2>Track credibility. Stay informed.</h2>
+      <p>Follow important news events and get updates when trust changes.</p>
+    </div>
 
+    <div class="billingToggle">
+  <div class="togglePill" role="tablist" aria-label="Billing interval">
+    <button id="billMonthly" type="button" class="on" aria-selected="true">
+      Monthly
+    </button>
+
+    <button id="billYearly" type="button" aria-selected="false">
+      Yearly <span class="saveTag">Save 20%</span>
+    </button>
+  </div>
+</div>
+
+
+    <div class="pricingGrid" role="list">
+      <div class="planCard" data-plan="free" role="listitem" tabindex="0">
+        <div class="planHead">
+          <div class="planName">Free</div>
+          <div class="planPrice planPriceBig" data-monthly="0.00" data-yearly="0.00">
+  <span class="oldPrice"></span>
+  <span class="newPrice">$0.00</span>
+</div>
+
+        </div>
+        <div class="planBody">
+          <ul>
+            <li>Access to <b>200</b> trending news <br>stories per day</li>
+            <li>Up to <b>3</b> hot stories</li>
+            <li>Track <b>1</b> event at a time</li>
+            <li>Cannot be changed during the day</li>
+            <li>View current trust score</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="planCard popular" data-plan="pro" role="listitem" tabindex="0">
+        <div class="planBadge">Most popular</div>
+        <div class="planHead">
+          <div class="planName">Pro</div>
+          <div class="planPrice planPriceBig" data-monthly="4.99" data-yearly="49.99">
+  <span class="oldPrice"></span>
+  <span class="newPrice">$4.99</span>
+</div>
+
+
+        </div>
+        <div class="planBody">
+          <ul>
+            <li>Access to <b>200</b> trending news <br>stories per day</li>
+            <li>Up to <b>3</b> hot stories</li>
+            <li>Track <b>1</b> event at a time</li>
+            <li>Cannot be changed during the day</li>
+            <li>View current trust score</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="planCard" data-plan="analyst" role="listitem" tabindex="0">
+        <div class="planHead">
+          <div class="planName">Analyst</div>
+          <div class="planPrice planPriceBig" data-monthly="15.99" data-yearly="159.99">
+  <span class="oldPrice"></span>
+  <span class="newPrice">$15.99</span>
+</div>
+
+        </div>
+        <div class="planBody">
+          <ul>
+            <li>Access to <b>200</b> trending news <br>stories per day</li>
+            <li>Up to <b>3</b> hot stories</li>
+            <li>Track <b>1</b> event at a time</li>
+            <li>Cannot be changed during the day</li>
+            <li>View current trust score</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="pricingCtaRow">
+      <button id="pricingMainCta" class="pricingMainBtn" type="button">Get Free</button>
+    </div>
+
+    <div class="pricingTrust">Trusted by journalists, analysts and researchers.</div>
+
+    <div class="pricingCompareWrap">
+      <table class="pricingTable" aria-label="Plan comparison">
+        <thead>
+          <tr>
+            <th style="text-align:left;">Plan</th>
+            <th>Free</th>
+            <th>Pro</th>
+            <th>Analyst</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Track events</td>
+            <td>3</td>
+            <td>20</td>
+            <td>Unlimited</td>
+          </tr>
+          <tr>
+            <td>Trust score changes</td>
+            <td>✓</td>
+            <td>✓</td>
+            <td>✓</td>
+          </tr>
+          <tr>
+            <td>Email alerts</td>
+            <td>×</td>
+            <td>✓</td>
+            <td>✓</td>
+          </tr>
+          <tr>
+            <td>Update history</td>
+            <td>Limited</td>
+            <td>Full</td>
+            <td>Full</td>
+          </tr>
+          <tr>
+            <td>Export</td>
+            <td>Limited</td>
+            <td>Limited</td>
+            <td>Full</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
   <footer>
 
   <!-- ✅ Основной контейнер (ограниченная ширина) -->

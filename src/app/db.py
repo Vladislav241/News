@@ -206,6 +206,23 @@ class Database:
                 );
                 CREATE INDEX IF NOT EXISTS idx_user_favs_user ON user_favorites(user_id);
                 CREATE INDEX IF NOT EXISTS idx_user_favs_cluster ON user_favorites(cluster_id);
+
+                -- -----------------
+                -- Subscriptions / Billing (MVP)
+                -- -----------------
+                CREATE TABLE IF NOT EXISTS user_subscriptions (
+                    user_id INTEGER PRIMARY KEY,
+                    plan TEXT NOT NULL DEFAULT 'free',
+                    status TEXT NOT NULL DEFAULT 'active',
+                    billing_interval TEXT NOT NULL DEFAULT 'monthly',
+                    stripe_customer_id TEXT,
+                    stripe_subscription_id TEXT,
+                    current_period_end TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_user_subs_plan ON user_subscriptions(plan);
                 """
             )
 
@@ -233,6 +250,87 @@ class Database:
             if not self._has_column("favorites", "last_seen_at"):
                 conn.execute("ALTER TABLE favorites ADD COLUMN last_seen_at TEXT;")
 
+            # ---- Subscription migrations ----
+            # Older DBs may not have the subscription table or new columns.
+            # The CREATE TABLE above handles the table; here we patch columns defensively.
+            if not self._has_column("users", "stripe_customer_id"):
+                # Store the Stripe customer ID on the user for convenience.
+                conn.execute("ALTER TABLE users ADD COLUMN stripe_customer_id TEXT;")
+
+            conn.commit()
+
+    # -----------------
+    # Subscriptions helpers
+    # -----------------
+    def get_user_subscription(self, user_id: int) -> Optional[sqlite3.Row]:
+        conn = self.connect()
+        return conn.execute(
+            "SELECT * FROM user_subscriptions WHERE user_id = ?",
+            (int(user_id),),
+        ).fetchone()
+
+    def set_user_subscription(
+        self,
+        user_id: int,
+        plan: str,
+        status: str = "active",
+        billing_interval: str = "monthly",
+        stripe_customer_id: Optional[str] = None,
+        stripe_subscription_id: Optional[str] = None,
+        current_period_end: Optional[str] = None,
+    ) -> None:
+        """Upsert subscription row."""
+        conn = self.connect()
+        now = _utc_now_iso()
+        with self._lock:
+            existing = self.get_user_subscription(user_id)
+            if existing:
+                conn.execute(
+                    """
+                    UPDATE user_subscriptions
+                    SET plan = ?, status = ?, billing_interval = ?,
+                        stripe_customer_id = COALESCE(?, stripe_customer_id),
+                        stripe_subscription_id = COALESCE(?, stripe_subscription_id),
+                        current_period_end = COALESCE(?, current_period_end),
+                        updated_at = ?
+                    WHERE user_id = ?
+                    """,
+                    (
+                        plan,
+                        status,
+                        billing_interval,
+                        stripe_customer_id,
+                        stripe_subscription_id,
+                        current_period_end,
+                        now,
+                        int(user_id),
+                    ),
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO user_subscriptions
+                    (user_id, plan, status, billing_interval, stripe_customer_id, stripe_subscription_id, current_period_end, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        int(user_id),
+                        plan,
+                        status,
+                        billing_interval,
+                        stripe_customer_id,
+                        stripe_subscription_id,
+                        current_period_end,
+                        now,
+                        now,
+                    ),
+                )
+            conn.commit()
+
+    def set_user_stripe_customer_id(self, user_id: int, stripe_customer_id: str) -> None:
+        conn = self.connect()
+        with self._lock:
+            conn.execute("UPDATE users SET stripe_customer_id = ? WHERE id = ?", (stripe_customer_id, int(user_id)))
             conn.commit()
 
     # --------- helpers ----------
