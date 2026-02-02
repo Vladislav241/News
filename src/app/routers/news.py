@@ -216,16 +216,30 @@ def _parse_dt(value):
 def _decorate_cluster_row(c: dict[str, Any], include_sources: bool = True) -> dict[str, Any]:
     cid = int(c["id"])
 
-    sources = db.get_cluster_sources(cid) if include_sources else []
-    latest_pub = db.get_cluster_latest_published_at(cid)
+    # When an item is guest-locked we still want to show *non-sensitive*
+    # metadata (primary source name + outlets count + image). We avoid
+    # returning the full sources list (titles/urls) but we can safely
+    # show aggregate info.
+    sources: list[dict[str, Any]] = []
+    primary_source: str | None = None
+    event_image: str | None = None
 
-    # choose event image: first non-empty article image_url
-    event_image = None
-    for s in sources:
-        u = (s.get("image_url") or "").strip()
-        if u:
-            event_image = u
-            break
+    if include_sources:
+        sources = db.get_cluster_sources(cid)
+        primary_source = (sources[0].get("source_name") if sources else None)
+
+        # choose event image: first non-empty article image_url
+        for s in sources:
+            u = (s.get("image_url") or "").strip()
+            if u:
+                event_image = u
+                break
+    else:
+        brief = db.get_cluster_sources_brief(cid)
+        primary_source = (brief.get("primary_source") or None)
+        event_image = (brief.get("image_url") or None)
+
+    latest_pub = db.get_cluster_latest_published_at(cid)
 
     details = None
     if c.get("score_details_json"):
@@ -252,13 +266,20 @@ def _decorate_cluster_row(c: dict[str, Any], include_sources: bool = True) -> di
     credibility_factors = (details or {}).get("factors") if details else []
 
     # unique sources count by source_key if present else source_name
-    uniq = set()
-    for s in sources:
-        k = (s.get("source_key") or "").strip().lower()
-        if not k:
-            k = (s.get("source_name") or "unknown").strip().lower()
-        uniq.add(k)
-    sources_count = len(uniq)
+    # If sources list is not included (guest-locked), fall back to a brief aggregate.
+    if sources:
+        uniq = set()
+        for s in sources:
+            k = (s.get("source_key") or "").strip().lower()
+            if not k:
+                k = (s.get("source_name") or "unknown").strip().lower()
+            uniq.add(k)
+        sources_count = len(uniq)
+    else:
+        try:
+            sources_count = int((db.get_cluster_sources_brief(cid) or {}).get("sources_count") or 0)
+        except Exception:
+            sources_count = 0
 
     importance = compute_importance(
         cluster_updated_at_iso=(c.get("updated_at") or ""),
@@ -298,6 +319,7 @@ def _decorate_cluster_row(c: dict[str, Any], include_sources: bool = True) -> di
         "updated_at": c.get("updated_at"),
         "latest_published_at": latest_pub,
         "image": event_image,
+        "primary_source": primary_source,
         "sources_count": sources_count,
         "is_trending": _compute_is_trending(c, sources_count),
         "is_new": _compute_is_new(c),
@@ -476,7 +498,13 @@ def _redact_item_for_guest(it: dict[str, Any]) -> dict[str, Any]:
 
 
 @router.get("/api/news/by_ids")
-def news_by_ids(ids: str, user=Depends(get_current_user_optional)) -> dict[str, Any]:
+def news_by_ids(
+    ids: str,
+    user=Depends(get_current_user_optional),
+    interests: str = "",
+    country: str = "world",
+    language: str = "en",
+) -> dict[str, Any]:
     db.ensure_schema()
 
     id_list: list[int] = []
@@ -491,11 +519,37 @@ def news_by_ids(ids: str, user=Depends(get_current_user_optional)) -> dict[str, 
 
     id_list = list(dict.fromkeys(id_list))[:200]
     rows = db.get_clusters_by_ids(id_list)
-    items = [_decorate_cluster_row(r) for r in rows]
+    items = [_decorate_cluster_row(r, include_sources=True) for r in rows]
 
     # Apply paywall for guests.
+    # Guests may see FULL details only for the current feed's top-3 items.
     if user is None:
-        items = [_redact_item_for_guest(it) for it in items]
+        interests_list = [x.strip().lower() for x in (interests or "").split(",") if x.strip()]
+        country = (country or "world").strip().lower()
+        language = (language or "en").strip().lower()
+
+        top3 = db.query_clusters(
+            interests=interests_list,
+            country=country,
+            language=language,
+            since_iso=None,
+            limit=3,
+        )
+        allow_ids = {int(r["id"]) for r in top3}
+
+        redacted: list[dict[str, Any]] = []
+        for it in items:
+            try:
+                cid = int(it.get("cluster_id") or it.get("id") or 0)
+            except Exception:
+                cid = 0
+
+            if cid in allow_ids:
+                redacted.append(it)
+            else:
+                redacted.append(_redact_item_for_guest(it))
+
+        items = redacted
 
     pos = {cid: i for i, cid in enumerate(id_list)}
     items.sort(key=lambda x: pos.get(int(x["cluster_id"]), 10**9))

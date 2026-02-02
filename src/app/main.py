@@ -22,7 +22,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from .db import db
-from .ingest import run_ingest_cycle
+from .ingest import run_ingest_cycle, process_fulltext_queue_once
 from .routers.debug import router as debug_router
 from .routers.health import router as health_router
 from .routers.auth import router as auth_router
@@ -108,6 +108,7 @@ app.mount("/", StaticFiles(directory="src/web", html=True), name="web")
 
 # ---------- Auto refresh loop ----------
 _auto_task: Optional[asyncio.Task] = None
+_fulltext_task: Optional[asyncio.Task] = None
 _ingest_lock = asyncio.Lock()
 
 
@@ -143,6 +144,39 @@ def _get_refresh_interval_seconds() -> int:
 
     return 600
 
+
+
+
+async def _fulltext_loop() -> None:
+    """Background fulltext extractor.
+
+    This keeps ingest fast: users see normal scores immediately, while
+    article-only text is fetched in the background to improve clustering quality.
+    """
+    # small warmup delay
+    await asyncio.sleep(3.0)
+
+    # small, bounded budget per tick
+    while True:
+        try:
+            if not _env_bool("FULLTEXT_WORKER", True):
+                await asyncio.sleep(5.0)
+                continue
+
+            max_jobs = int(os.getenv("FULLTEXT_MAX_JOBS_PER_TICK", "6") or 6)
+            workers = int(os.getenv("FULLTEXT_MAX_WORKERS", "6") or 6)
+
+            # run sync worker in a thread
+            await asyncio.to_thread(process_fulltext_queue_once, max_jobs, workers)
+
+            # short pause; keeps CPU/network stable
+            await asyncio.sleep(float(os.getenv("FULLTEXT_TICK_SECONDS", "2") or 2))
+
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            log.exception("fulltext loop failed: %s", e)
+            await asyncio.sleep(5.0)
 
 async def _auto_refresh_loop() -> None:
     """Periodic ingest so the feed updates server-side (users don't need to press Refresh)."""
@@ -190,6 +224,11 @@ async def _startup_autorefresh() -> None:
         _auto_task = asyncio.create_task(_auto_refresh_loop())
         log.info("auto refresh loop started")
 
+    global _fulltext_task
+    if _fulltext_task is None:
+        _fulltext_task = asyncio.create_task(_fulltext_loop())
+        log.info("fulltext loop started")
+
 
 @app.on_event("shutdown")
 async def _shutdown_autorefresh() -> None:
@@ -198,3 +237,10 @@ async def _shutdown_autorefresh() -> None:
         _auto_task.cancel()
         _auto_task = None
         log.info("auto refresh loop stopped")
+
+
+    global _fulltext_task
+    if _fulltext_task is not None:
+        _fulltext_task.cancel()
+        _fulltext_task = None
+        log.info("fulltext loop stopped")

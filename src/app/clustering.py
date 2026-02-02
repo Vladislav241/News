@@ -4,15 +4,27 @@ from __future__ import annotations
 import hashlib
 import re
 import os
+import json
+import time
+from functools import lru_cache
+
 from datetime import datetime, timezone, timedelta
 
 import numpy as np
+import requests
+
 from dataclasses import dataclass
 from typing import Any
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.decomposition import TruncatedSVD
+
+print("CLUSTER_LLM_ENABLED =", os.getenv("CLUSTER_LLM_ENABLED"))
+print("OPENAI_API_KEY set? =", bool(os.getenv("OPENAI_API_KEY")))
+print("OPENAI_MODEL =", os.getenv("OPENAI_MODEL"))
+print("=================================")
+
 
 # ---- stopwords / normalization ----
 # NOTE: стоп-слова чистим только для EN.
@@ -23,6 +35,114 @@ _STOP_EN = {
     "this", "that", "these", "those", "after", "before", "over", "under", "into",
     "will", "says", "say", "said", "new", "live", "updates", "update", "breaking",
 }
+
+
+# ---- optional LLM arbiter (for borderline cluster merges) ----
+# Enable with: CLUSTER_LLM_ENABLED=1 and set OPENAI_API_KEY.
+# You can also override model with OPENAI_MODEL (default: gpt-5-mini).
+_LLM_ENABLED = os.getenv("CLUSTER_LLM_ENABLED", "").strip() in {"1", "true", "yes", "on"}
+_OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+_OPENAI_MODEL = os.getenv("OPENAI_MODEL", "").strip() or "gpt-5-mini"
+_OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "").strip() or "https://api.openai.com/v1"
+
+# Small in-process cache to avoid paying twice for the same pair.
+# Key = sha1(normalized_a + "||" + normalized_b) with order normalization.
+@lru_cache(maxsize=4096)
+def _llm_same_event_cached(key: str) -> tuple[bool | None, float, str]:
+    # Returns: (same_event or None on failure, confidence, rationale)
+    if (not _LLM_ENABLED) or (not _OPENAI_API_KEY):
+        return (None, 0.0, "llm_disabled_or_no_key")
+
+    url = _OPENAI_BASE_URL.rstrip("/") + "/chat/completions"
+
+    headers = {
+        "Authorization": f"Bearer {_OPENAI_API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    # We keep prompts short: we only need a binary decision.
+    # IMPORTANT: Do NOT send full article HTML. Use already-normalized text snippets.
+    payload = {
+    "model": _OPENAI_MODEL,
+    "messages": [
+        {
+            "role": "system",
+            "content": (
+                "You are a strict news clustering arbiter. "
+                "Decide if two snippets describe the SAME underlying news event (same incident/story), "
+                "not merely the same broad topic. If different events, answer false."
+            ),
+        },
+        {"role": "user", "content": key},
+    ],
+    "temperature": 0,
+    "response_format": {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "same_event_schema",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "same_event": {"type": "boolean"},
+                    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                    "rationale": {"type": "string"},
+                },
+                "required": ["same_event", "confidence", "rationale"],
+                "additionalProperties": False,
+            },
+        },
+    },
+}
+
+
+    try:
+        r = requests.post(url, headers=headers, data=json.dumps(payload), timeout=12)
+        if r.status_code >= 400:
+            # покажем текст ошибки, чтобы сразу понять причину
+            return (None, 0.0, f"llm_http_{r.status_code}:{r.text[:200]}")
+
+        data = r.json()
+
+        # Chat Completions: ответ лежит здесь:
+        out_text = ""
+        try:
+            out_text = data["choices"][0]["message"]["content"]
+        except Exception:
+            out_text = ""
+
+        out_text = (out_text or "").strip()
+        if not out_text:
+            return (None, 0.0, "llm_empty")
+
+        obj = json.loads(out_text)
+        same = bool(obj.get("same_event"))
+        conf = float(obj.get("confidence") or 0.0)
+        rat = str(obj.get("rationale") or "")[:240]
+        return (same, conf, rat)
+
+    except Exception as e:
+        return (None, 0.0, f"llm_exc:{type(e).__name__}")
+
+
+def llm_same_event(snippet_a: str, snippet_b: str) -> tuple[bool | None, float, str]:
+    """Public wrapper: builds a stable cache key and calls the cached arbiter."""
+    a = (snippet_a or "").strip()
+    b = (snippet_b or "").strip()
+    if not a or not b:
+        return (None, 0.0, "llm_empty_input")
+    # order-normalize
+    if a > b:
+        a, b = b, a
+    # Keep size bounded to control cost + latency
+    a = a[:1200]
+    b = b[:1200]
+    key = f"A:\n{a}\n\nB:\n{b}\n\nReturn JSON."
+    h = hashlib.sha1(key.encode("utf-8", errors="ignore")).hexdigest()
+    # Cache key must include the full prompt for correctness but we keep only hash in cache key;
+    # send prompt text itself as the 'key' content to the model.
+    # We map hash->prompt by embedding prompt inside the cached function argument: (hash + '\n' + prompt)
+    return _llm_same_event_cached(h + "\n" + key)
 
 # Common prefixes / tails used by many feeds
 _PREFIX_RE = re.compile(
@@ -316,6 +436,41 @@ def match_cluster(
                     method="tfidf_rejected_low_overlap",
                     debug={**dbg, "threshold": thr, "strict": strict, "ov": ov, "j": j},
                 )
+
+        # Borderline arbiter: when TF-IDF says "match" but evidence is weak,
+        # ask an LLM (optional) to confirm same-event vs same-topic.
+        # This avoids cases like "Trump/Grammys" being merged with "Oil prices" just because of sidebar/related terms.
+        need_llm = False
+        entity_q = set(extract_entities(txt_norm))
+        entity_c = set(extract_entities(c_norm))
+        ent_ov = len(entity_q & entity_c)
+
+        # Only trigger for the grey zone: not super-high similarity AND weak lexical/entity evidence.
+        if sim < max(0.82, thr + 0.20) and (ov < 3 or j < 0.20 or ent_ov == 0):
+            need_llm = True
+
+        if need_llm:
+            print("\n[LLM] ARBITER TRIGGERED")
+            print(" sim =", sim, "thr =", thr)
+            print(" ov =", ov, "j =", j, "ent_ov =", ent_ov)
+            print(" A =", txt_norm[:120])
+            print(" B =", c_norm[:120])
+            same, conf, rat = llm_same_event(txt_norm, c_norm)
+            print("[LLM] RESULT:", same, "conf=", conf, "reason=", rat)
+
+            if same is False:
+                return ClusterMatch(
+                    cluster_id=None,
+                    similarity=sim,
+                    method="llm_rejected",
+                    debug={**dbg, "threshold": thr, "ov": ov, "j": j, "ent_ov": ent_ov, "llm_conf": conf, "llm_reason": rat},
+                )
+            # If LLM fails (same is None), we fall back to the deterministic checks above.
+            if same is True:
+                dbg = {**dbg, "llm_conf": conf, "llm_reason": rat, "ent_ov": ent_ov}
+            else:
+                dbg = {**dbg, "llm": "skipped_or_failed", "ent_ov": ent_ov}
+
 
         return ClusterMatch(cluster_id=cid, similarity=sim, method="tfidf_blend", debug={**dbg, "threshold": thr, "ov": ov, "j": j})
 

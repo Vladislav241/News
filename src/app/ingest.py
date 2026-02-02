@@ -82,6 +82,29 @@ _CUT_MARKERS = [
 ]
 
 
+def _is_headline_like(line: str) -> bool:
+    """Heuristic: detect sidebar/recommended headline lines."""
+    if not line:
+        return False
+    s = line.strip()
+    if len(s) < 25 or len(s) > 140:
+        return False
+    # Too many Title Case words or ALLCAPS chunks
+    words = [w for w in _re.split(r"\s+", s) if w]
+    if len(words) < 4:
+        return False
+    caps = sum(1 for w in words if (w[:1].isupper() and w[1:].islower()))
+    allcaps = sum(1 for w in words if w.isupper() and len(w) >= 3)
+    # headline punctuation patterns
+    if ":" in s or " — " in s or " - " in s:
+        return True
+    if allcaps >= 2:
+        return True
+    if caps / max(1, len(words)) >= 0.6:
+        return True
+    return False
+
+
 def _clean_rss_html(text: str) -> str:
     if not text:
         return ""
@@ -128,12 +151,301 @@ def _clean_rss_html(text: str) -> str:
         t = t[:450].rsplit(" ", 1)[0].strip() + "…"
     return t
 
+
+# =========================================================
+# FULL ARTICLE EXTRACTION (IRONCLAD CLUSTER INPUT)
+# Many sites contaminate RSS descriptions with "Most popular/Related/Recommended"
+# blocks. For clustering we want only the main article body.
+# We therefore (selectively) fetch the article HTML and extract an "article-only"
+# text using multiple strategies: JSON-LD articleBody, <article>/<main> tags,
+# and a scored best-text container fallback.
+# =========================================================
+
+_ARTICLE_CACHE: dict[str, tuple[float, str]] = {}
+_ARTICLE_CACHE_TTL_SEC = 60 * 30  # 30 minutes
+
+def _now_ts() -> float:
+    try:
+        return time.time()
+    except Exception:
+        return 0.0
+
+def _looks_contaminated(text: str) -> bool:
+    if not text:
+        return True
+    low = text.lower()
+    # obvious boilerplate / sidebar markers
+    if any(m in low for m in _CUT_MARKERS):
+        return True
+    if any(m in low for m in ("most popular", "popular", "trending", "you might also", "more stories", "more from", "advertisement")):
+        return True
+    # headline list patterns (often "Related: X / Y / Z")
+    # many title-like chunks separated by newlines or bullets
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if len(lines) >= 3:
+        headlineish = 0
+        for ln in lines[1:]:
+            if _is_headline_like(ln):
+                headlineish += 1
+        if headlineish >= 2:
+            return True
+    return False
+
+def _should_fetch_full_article(source_name: str, desc: str, content: str) -> bool:
+    # Always fetch for sources known to pollute RSS descriptions
+    sn = (source_name or "").lower()
+    if sn in {"the hill", "the guardian world", "the guardian"}:
+        return True
+    t = (desc or "") + " " + (content or "")
+    if _looks_contaminated(t):
+        return True
+    # too short -> RSS may be useless
+    if len((desc or "").strip()) < 120 and len((content or "").strip()) < 200:
+        return True
+    return False
+
+def _sentences(text: str) -> list[str]:
+    t = (text or "").strip()
+    if not t:
+        return []
+    # simple sentence splitter
+    parts = _re.split(r"(?<=[.!?])\s+", t)
+    out = []
+    for s in parts:
+        s = s.strip()
+        if len(s) >= 30:
+            out.append(s)
+        if len(out) >= 5:
+            break
+    return out
+
+def _extract_from_jsonld(soup: BeautifulSoup) -> str | None:
+    scripts = soup.find_all("script", type=_re.compile(r"application/ld\+json", _re.I))
+    for sc in scripts[:20]:
+        raw = (sc.string or sc.get_text() or "").strip()
+        if not raw:
+            continue
+        # some pages have multiple JSON blobs
+        blobs = []
+        try:
+            blobs = [json.loads(raw)]
+        except Exception:
+            # try to recover multiple objects
+            try:
+                raw2 = raw.strip().strip(";")
+                blobs = [json.loads(raw2)]
+            except Exception:
+                continue
+        def walk(obj):
+            if isinstance(obj, dict):
+                yield obj
+                for v in obj.values():
+                    yield from walk(v)
+            elif isinstance(obj, list):
+                for it in obj:
+                    yield from walk(it)
+        for obj in walk(blobs):
+            if not isinstance(obj, dict):
+                continue
+            typ = obj.get("@type") or obj.get("type")
+            if isinstance(typ, list):
+                typ = " ".join([str(x) for x in typ])
+            typ_s = str(typ or "").lower()
+            if any(k in typ_s for k in ("newsarticle","article","report")):
+                body = obj.get("articleBody") or obj.get("text")
+                if isinstance(body, str) and len(body.strip()) >= 400:
+                    return body.strip()
+                desc = obj.get("description")
+                if isinstance(desc, str) and len(desc.strip()) >= 250:
+                    return desc.strip()
+    return None
+
+def _link_text_len(node) -> int:
+    try:
+        return sum(len(a.get_text(" ", strip=True) or "") for a in node.find_all("a"))
+    except Exception:
+        return 0
+
+def _best_container_text(soup: BeautifulSoup) -> str:
+    # Try <article> first
+    candidates = []
+    for tag_name in ("article", "main"):
+        for node in soup.find_all(tag_name):
+            txt = node.get_text(" ", strip=True)
+            if len(txt) >= 400:
+                candidates.append((len(txt), node))
+    if candidates:
+        candidates.sort(key=lambda x: x[0], reverse=True)
+        return candidates[0][1].get_text(" ", strip=True)
+
+    # Fallback: score div/section containers
+    best = ("", -1e18)
+    for node in soup.find_all(["div","section"]):
+        txt = node.get_text(" ", strip=True)
+        tl = len(txt)
+        if tl < 500:
+            continue
+        ltd = _link_text_len(node)
+        # penalize link-heavy blocks (sidebars)
+        score = tl - 4 * ltd
+        # penalize very short average word (menus)
+        words = txt.split()
+        if words:
+            avg = sum(len(w) for w in words) / max(1, len(words))
+            if avg < 4.0:
+                score -= 400
+        # penalize too many list items
+        li = len(node.find_all("li"))
+        if li >= 8:
+            score -= 300
+        if score > best[1]:
+            best = (txt, score)
+    return best[0] if best[0] else soup.get_text(" ", strip=True)
+
+def _fetch_article_text(url: str) -> str:
+    u = (url or "").strip()
+    if not u:
+        return ""
+    # cache
+    h = _url_hash(u)
+    ts = _now_ts()
+    cached = _ARTICLE_CACHE.get(h)
+    if cached and (ts - cached[0]) < _ARTICLE_CACHE_TTL_SEC:
+        return cached[1]
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (NewsAggregator; +https://example.invalid)",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    }
+    try:
+        resp = requests.get(u, timeout=8, headers=headers, allow_redirects=True)
+        if resp.status_code != 200 or not resp.text:
+            return ""
+        html = resp.text
+    except Exception:
+        return ""
+
+    try:
+        soup = BeautifulSoup(html, "lxml")
+        # remove noisy tags
+        for tag in soup(["script","style","noscript","svg","canvas","form","nav","footer","header","aside"]):
+            tag.decompose()
+
+        # JSON-LD articleBody is the cleanest when present
+        jsonld = _extract_from_jsonld(soup)
+        if jsonld:
+            text = jsonld
+        else:
+            # og:description is decent backup, but can be short
+            ogd = soup.find("meta", property="og:description")
+            if ogd and (ogd.get("content") or "").strip():
+                og_text = (ogd.get("content") or "").strip()
+            else:
+                og_text = ""
+            main_text = _best_container_text(soup)
+            # prefer main_text when it's meaningful; otherwise use og_text
+            text = main_text if len(main_text) >= 400 else (og_text or main_text)
+
+        # Final cleanup: cut off promo/related blocks again
+        text = _clean_rss_html(text)
+
+        # guardrail: keep at most ~1800 chars for clustering (prevents boilerplate domination)
+        if len(text) > 1800:
+            text = text[:1800].rsplit(" ", 1)[0].strip() + "…"
+
+        _ARTICLE_CACHE[h] = (ts, text)
+        return text
+    except Exception:
+        return ""
+
+
+# =========================================================
+# BACKGROUND FULLTEXT JOBS (NON-BLOCKING)
+# We never block the ingest cycle on HTML fetching.
+# These jobs run in a separate loop (see main.py) and update articles in-place.
+# =========================================================
+
+def _backoff_seconds(attempts: int) -> int:
+    # 1st fail: 30s, 2nd: 2m, 3rd: 5m, then cap at 20m
+    a = max(1, int(attempts))
+    if a == 1:
+        return 30
+    if a == 2:
+        return 120
+    if a == 3:
+        return 300
+    return min(1200, 300 * a)
+
+
+def process_fulltext_queue_once(max_jobs: int = 8, max_workers: int = 6) -> dict[str, Any]:
+    """Process a small batch of fulltext jobs.
+
+    Returns a tiny stats dict for logging.
+    """
+    db.ensure_schema()
+    max_jobs = int(max(1, min(50, max_jobs)))
+    max_workers = int(max(1, min(16, max_workers)))
+
+    pending = db.list_fulltext_pending(limit=max_jobs)
+    if not pending:
+        return {"picked": 0, "done": 0, "failed": 0}
+
+    # Claim first so concurrent workers don't duplicate work.
+    claimed: list[dict[str, Any]] = []
+    for row in pending:
+        aid = int(row.get('id') or 0)
+        if aid <= 0:
+            continue
+        if db.claim_fulltext_job(aid):
+            claimed.append(row)
+
+    if not claimed:
+        return {"picked": 0, "done": 0, "failed": 0}
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    done = 0
+    failed = 0
+
+    def _work(item: dict[str, Any]) -> tuple[int, str, str, str | None]:
+        aid = int(item.get('id') or 0)
+        url = (item.get('url') or '').strip()
+        if not url:
+            return aid, '', '', 'empty_url'
+        text = _fetch_article_text(url)
+        if not text or len(text) < 200:
+            return aid, '', '', 'no_text'
+        ss = _sentences(text)
+        desc = " ".join(ss[:2]).strip() if ss else ''
+        return aid, desc, text, None
+
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        futs = [ex.submit(_work, it) for it in claimed]
+        for fut in as_completed(futs):
+            try:
+                aid, desc, body, err = fut.result()
+                if not err:
+                    db.mark_fulltext_done(aid, desc, body)
+                    done += 1
+                else:
+                    # attempts are tracked in DB; use current value to compute backoff
+                    art = db.get_article_by_id(int(aid))
+                    attempts = int(art.get('fulltext_attempts') or 0) + 1
+                    db.mark_fulltext_failed(aid, err, _backoff_seconds(attempts))
+                    failed += 1
+            except Exception as e:
+                failed += 1
+
+    return {"picked": len(claimed), "done": done, "failed": failed}
+
+
 from .ai import summarize_cluster
 from .clustering import canonical_cluster_key, match_cluster, normalize_title_for_key
 from .db import db
 from .scoring import compute_credibility
 
 logger = logging.getLogger("news.ingest")
+logger.setLevel(logging.INFO)
 
 DEFAULT_RSS_SOURCES: dict[str, Any] = {
     "world": {
@@ -160,6 +472,49 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
+
+
+# --- liveblog / live updates detection ---
+# Liveblog pages often contain many unrelated topics inside one "article" (especially Guardian live pages).
+# If we cluster them with normal articles, they can "poison" clusters and pull in unrelated stories.
+_LIVEBLOG_URL_RE = _re.compile(r"(/live/|/liveblog/|/live-updates/|/live-updates$)", _re.IGNORECASE)
+_LIVEBLOG_TITLE_RE = _re.compile(r"\b(live updates?|liveblog|live blog|latest news updates)\b", _re.IGNORECASE)
+
+def _is_liveblog(url: str | None, title: str | None) -> bool:
+    u = (url or "").strip().lower()
+    t = (title or "").strip().lower()
+    if not u and not t:
+        return False
+    if u:
+        # strip query/fragments
+        try:
+            u = u.split("#", 1)[0]
+            u = u.split("?", 1)[0]
+        except Exception:
+            pass
+        if _LIVEBLOG_URL_RE.search(u):
+            return True
+        # Guardian live pages are the most problematic
+        if "theguardian.com" in u and "/live/" in u:
+            return True
+    if t and _LIVEBLOG_TITLE_RE.search(t):
+        return True
+    # common feed prefixes
+    if t.startswith("live:") or t.startswith("live -") or t.startswith("live —") or t.startswith("live updates:"):
+        return True
+    return False
+
+def _liveblog_cluster_key(language: str, url: str) -> str:
+    # Use canonical URL (without query/fragment) to ensure a single liveblog gets a single cluster,
+    # but never collides with normal cluster keys.
+    u = (url or "").strip()
+    try:
+        u = u.split("#", 1)[0]
+        u = u.split("?", 1)[0]
+    except Exception:
+        pass
+    base = f"live::{(language or 'en').lower()}::{u.lower()}"
+    return hashlib.sha1(base.encode("utf-8")).hexdigest()
 def _parse_rss_sources() -> dict[str, Any]:
     cfg = db.get_config()
     if cfg.rss_sources_json:
@@ -337,6 +692,21 @@ def _url_hash(url: str) -> str:
     u = (url or "").strip().split("#")[0]
     return hashlib.sha1(u.encode("utf-8")).hexdigest()
 
+def _parse_feed_with_requests(url: str, headers: dict[str, str]) -> Any:
+   # 1) СНАЧАЛА качаем сами (requests гораздо стабильнее)
+    try:
+        r = requests.get(url, headers=headers, timeout=12, allow_redirects=True)
+        r.raise_for_status()
+        parsed = feedparser.parse(r.content)
+
+        # если feedparser всё равно ругается bozo, вернём как есть (часто entries есть)
+        return parsed
+    except Exception:
+        pass
+
+    # 2) Фолбек: старый способ (на случай если requests не смог)
+    return feedparser.parse(url, request_headers=headers)
+
 
 def _fetch_rss_feed(feed: dict[str, str], per_feed: int = 80) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     url = (feed.get("url") or "").strip()
@@ -351,16 +721,20 @@ def _fetch_rss_feed(feed: dict[str, str], per_feed: int = 80) -> tuple[list[dict
     }
 
     try:
-        parsed = feedparser.parse(url, request_headers=headers)
-        bozo = int(getattr(parsed, "bozo", 0) or 0)
-        bozo_exc = None
+        parsed = _parse_feed_with_requests(url, headers)
 
+
+        bozo = int(getattr(parsed, "bozo", 0) or 0)
+        bozo_exc = getattr(parsed, "bozo_exception", None) if bozo else None
         if bozo:
-            bozo_exc = str(getattr(parsed, "bozo_exception", None))
-            logger.warning("RSS bozo for %s: %s", name, bozo_exc)
+            logger.warning("RSS bozo for %s: %s (ignored)", name, bozo_exc)
+
+        entries = list(getattr(parsed, "entries", []) or [])
+        logger.info("RSS %s: bozo=%s entries=%d", name, bozo, len(entries))
+
+        entries = [e for e in entries if e.get("title") and e.get("link")]
 
         out: list[dict[str, Any]] = []
-        entries = list(parsed.entries or [])
 
         for entry in entries[:per_feed]:
             link = (getattr(entry, "link", None) or "").strip()
@@ -368,10 +742,13 @@ def _fetch_rss_feed(feed: dict[str, str], per_feed: int = 80) -> tuple[list[dict
                 continue
 
             title, desc, content = _safe_entry_text(entry)
+            needs_fulltext = _should_fetch_full_article(name, desc, content)
+
             published_iso = _to_iso(
                 getattr(entry, "published_parsed", None)
                 or getattr(entry, "updated_parsed", None)
             )
+
             img_url = _extract_image_url(entry)
 
             out.append(
@@ -379,6 +756,7 @@ def _fetch_rss_feed(feed: dict[str, str], per_feed: int = 80) -> tuple[list[dict
                     "title": title or "(no title)",
                     "description": desc,
                     "content": content,
+                    "needs_fulltext": bool(needs_fulltext),
                     "image_url": img_url,
                     "url": link,
                     "url_hash": _url_hash(link),
@@ -394,7 +772,7 @@ def _fetch_rss_feed(feed: dict[str, str], per_feed: int = 80) -> tuple[list[dict
             "ok": True,
             "entries": len(out),
             "bozo": bozo,
-            "bozo_exception": bozo_exc,
+            "bozo_exception": str(bozo_exc) if bozo_exc else None,
         }
         return out, meta
 
@@ -550,17 +928,27 @@ def run_ingest_cycle() -> dict[str, Any]:
                     "topic": c_topic,
                     "latest_published_at": latest,
                     "entities": c_ents,
+                    "is_liveblog": _is_liveblog(None, (c.get("title") or "")),
                 })
 
             for aid in aids:
                 art = db.get_article_by_id(aid)
                 title = (art.get("title") or "").strip()
                 desc = (art.get("description") or "").strip()
-                content = (art.get("content") or "").strip()[:400]
-                article_text = f"{title} {desc} {content}".strip()
+                # Do not use full `content` for clustering.
+                # Title + cleaned description is the most stable signal and prevents
+                # sidebar/recommended pollution from leaking into cluster similarity.
+                article_text = f"{title} {desc}".strip()
 
-                norm_title = normalize_title_for_key(title, lang)
-                cluster_key = canonical_cluster_key(lang, norm_title or title[:120])
+                # Liveblogs are multi-topic by nature; never allow them to cluster with normal articles.
+                is_liveblog = _is_liveblog(art.get("url"), title)
+
+                if is_liveblog:
+                    cluster_key = _liveblog_cluster_key(lang, (art.get("url") or ""))
+                    norm_title = normalize_title_for_key(title, lang)  # for display only
+                else:
+                    norm_title = normalize_title_for_key(title, lang)
+                    cluster_key = canonical_cluster_key(lang, norm_title or title[:120])
 
                 existing = db.connect().execute(
                     "SELECT id FROM clusters WHERE cluster_key=?",
@@ -581,6 +969,10 @@ def run_ingest_cycle() -> dict[str, Any]:
                     candidates: list[tuple[int, str]] = []
                     for c in candidates_meta:
                         c_topic = (c.get('topic') or 'general').strip().lower()
+
+                        # liveblog isolation: never match liveblog clusters with non-live articles and vice versa
+                        if bool(c.get('is_liveblog')) != bool(is_liveblog):
+                            continue
                         # topic/section gate
                         if c_topic != a_topic and 'general' not in (c_topic, a_topic):
                             continue
@@ -614,15 +1006,16 @@ def run_ingest_cycle() -> dict[str, Any]:
                             country=(art.get("country") or "world").lower(),
                             language=lang,
                         )
-                        candidates.insert(0, (cluster_id, f"{title} {desc} {content}".strip()))
+                        candidates.insert(0, (cluster_id, f"{title} {desc}".strip()))
                         # keep newly created cluster as candidate within the same ingest cycle
                         try:
                             candidates_meta.append({
                                 "cid": cluster_id,
-                                "text": f"{title} {desc} {content}".strip(),
+                                "text": f"{title} {desc}".strip(),
                                 "topic": a_topic,
                                 "latest_published_at": art.get('published_at'),
                                 "entities": a_ents,
+                                "is_liveblog": bool(is_liveblog),
                             })
                         except Exception:
                             pass

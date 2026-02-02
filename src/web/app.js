@@ -52,7 +52,13 @@ async function ensureItemInFeedAndOpen(clusterId) {
 
   // 2) Try to fetch this single item and inject into current feed
   try {
-    const r = await fetch(`${API_BASE}/api/news/by_ids?ids=${encodeURIComponent(String(clusterId))}`);
+    const interests = encodeURIComponent((state.interests || []).join(","));
+    const country = encodeURIComponent(state.country || "world");
+    const language = encodeURIComponent(state.language || "en");
+    const r = await fetch(
+      `${API_BASE}/api/news/by_ids?ids=${encodeURIComponent(String(clusterId))}` +
+        `&interests=${interests}&country=${country}&language=${language}`
+    );
     if (!r.ok) return false;
     const j = await r.json();
     const item = (j?.items && j.items[0]) ? j.items[0] : null;
@@ -108,11 +114,16 @@ async function shareCluster(item) {
   if (!id) return;
 
   const baseUrl = location.origin;
-  const url = `${baseUrl}/share/${id}`;
+  const updatedAt = item?.updated_at || item?.computed_at || item?.created_at || "";
+  const v = updatedAt ? String(Date.parse(updatedAt) || Date.now()) : String(Date.now());
+
+  const url = `${baseUrl}/share/${id}?v=${encodeURIComponent(v)}`;
+
 
   // Best practice: share the URL; social apps render the preview card via OG/Twitter meta tags.
   openShareModal({
     url,
+    v,
     id,
     title: item?.title || 'CHECK news',
     score: item?.score ?? item?.trust_score ?? null,
@@ -137,7 +148,8 @@ function openShareModal(data) {
 
   // Populate UI
   headline.textContent = data.title || 'Share';
-  img.src = `/api/share-image/${encodeURIComponent(data.id)}.png?dpr=2&v=${Date.now()}`;
+  img.src = `/api/share-image/${encodeURIComponent(data.id)}.png?dpr=2&v=${encodeURIComponent(data.v || Date.now())}`;
+
 
   img.onerror = () => {
     // If image generator fails, still allow share
@@ -385,7 +397,7 @@ function isFav(id) { return getFavIds().includes(Number(id)); }
 
 function toggleFav(id) {
   if (!authState.authenticated) {
-    openAuthModal('favorite');
+    openAuthModal('tracking');
     return isFav(id);
   }
   id = Number(id);
@@ -404,7 +416,7 @@ function toggleFav(id) {
 
 function removeFav(id) {
   if (!authState.authenticated) {
-    openAuthModal('favorite');
+    openAuthModal('tracking');
     return false;
   }
   // getFavIds() returns numeric ids; keep comparisons numeric
@@ -1228,6 +1240,11 @@ function renderTags() {
     el.className = "tag" + (state.interests.includes(tag) ? " on" : "");
     el.textContent = tag;
     el.onclick = async () => {
+      // Guests can read the top 3 items, but changing interests requires an account.
+      if (!authState?.authenticated) {
+        openAuthModal('interests');
+        return;
+      }
       if (state.interests.includes(tag)) {
         state.interests = state.interests.filter((x) => x !== tag);
         if (state.interests.length === 0) state.interests = ["general"];
@@ -1347,7 +1364,8 @@ function formatTimeHHMM(iso) {
 function pickPrimarySourceName(item) {
   const s = Array.isArray(item?.sources) ? item.sources : [];
   const name = (s[0]?.source_name || "").trim();
-  return name || "Unknown";
+  const fallback = String(item?.primary_source || "").trim();
+  return name || fallback || "Unknown";
 }
 
 function keywordsFromTitle(title) {
@@ -1723,9 +1741,17 @@ const showTrackingUI = state.mode === 'fav';
          <img class="trackIcon" src="${iconSrc}" alt="Tracking" />
        </div>`;
 
-  // Share button (Feed + Tracking). No functionality for now.
+  // Share button (Feed + Tracking).
   const shareHtml = `<button class="shareBtn" type="button" title="Share" aria-label="Share">
     <img class="shareIcon" src="/static/icons/Share.png" alt="Share" />
+  </button>`;
+
+  // Tracking toggle (replaces the old star button).
+  // Visual contract:
+  // - tracked   => white toggle
+  // - not track => black toggle
+  const trackToggleHtml = `<button class="trackToggle ${favOn ? 'on' : ''}" type="button" title="Tracking" aria-label="Tracking" data-track="${id}">
+    <span class="trackDot"></span>
   </button>`;
 
   // Trending flame badge (server-side; consistent across devices)
@@ -1742,6 +1768,7 @@ const showTrackingUI = state.mode === 'fav';
           <div class="newsTitle">${dragHandleHtml}${escapeHtml(item.title || 'Event')}</div>
           <div class="newsTopRight">
             ${flameHtml}
+            ${trackToggleHtml}
             <div class="scoreBadge ${score < LOW_SCORE_THRESHOLD ? 'dark' : 'light'}">${score} / 100</div>
             ${deltaHtml}
             ${iconHtml}
@@ -1778,29 +1805,62 @@ const showTrackingUI = state.mode === 'fav';
           </div>
         </details>
 
-        <div class="cardActions">
-          <button class="iconBtn favBtn ${favOn ? 'on' : ''}" title="Save" data-fav="${id}">${favOn ? '★' : '☆'}</button>
-        </div>
+        
       </div>
     </details>
     </div>
   `;
 
-  // Guest paywall overlay
+  // Guest access rules:
+  // - Guests can open only the top 3 news items in the Feed.
+  // - No blur/paywall overlay; instead we block opening locked items and show the auth modal.
   const isLocked = (!authState.authenticated && state.mode !== 'fav' && typeof idx === 'number')
     ? (idx >= 3)
     : (!!item.guest_locked && !authState.authenticated && state.mode !== 'fav');
   if (isLocked) {
-    div.classList.add('paywallBlur');
-    const ov = document.createElement('div');
-    ov.className = 'paywallOverlay';
-    ov.innerHTML = `<button class="paywallBtn" type="button">Create an account to continue</button>`;
-    ov.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
+    div.dataset.locked = '1';
+
+    const detailsEl = div.querySelector('details.newsDetails');
+    const summaryEl = div.querySelector('summary.newsSummary');
+
+    const blockOpen = (e) => {
+      if (authState?.authenticated) return false;
+      if (e) {
+        try { e.preventDefault(); } catch (_) {}
+        try { e.stopPropagation(); } catch (_) {}
+      }
+      // Ensure the details is not left open
+      if (detailsEl) detailsEl.open = false;
       openAuthModal('paywall');
-    });
-    div.appendChild(ov);
+      return true;
+    };
+
+    // Mouse / touch
+    if (summaryEl) {
+      summaryEl.addEventListener('click', (e) => {
+        // Allow share clicks even for guests.
+        const t = e?.target;
+        if (t && typeof t.closest === 'function' && t.closest('.shareBtn')) return;
+        // If user is a guest, prevent opening this item.
+        if (!authState?.authenticated) blockOpen(e);
+      }, { capture: true });
+
+      // Keyboard (Enter / Space)
+      summaryEl.addEventListener('keydown', (e) => {
+        if (authState?.authenticated) return;
+        if (e.key === 'Enter' || e.key === ' ') blockOpen(e);
+      }, { capture: true });
+    }
+
+    // Safety: if something toggles it open anyway, close it.
+    if (detailsEl) {
+      detailsEl.addEventListener('toggle', () => {
+        if (!authState?.authenticated && detailsEl.open) {
+          detailsEl.open = false;
+          openAuthModal('paywall');
+        }
+      });
+    }
   }
 
   const imgEl = div.querySelector('img.newsImage');
@@ -1824,14 +1884,28 @@ const showTrackingUI = state.mode === 'fav';
     };
   }
 
-  const favBtn = div.querySelector(`[data-fav="${id}"]`);
-  if (favBtn) {
-    favBtn.onclick = async (e) => {
-      const nowFav = toggleFav(id);
-      e.currentTarget.textContent = nowFav ? '★' : '☆';
-      e.currentTarget.classList.toggle('on', nowFav);
-      qs('favCount').textContent = String(getFavIds().length);
-      if (state.mode === 'fav' && !nowFav) {
+  const trackBtn = div.querySelector(`[data-track="${id}"]`);
+  if (trackBtn) {
+    trackBtn.onclick = async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (!authState?.authenticated) {
+        openAuthModal('tracking');
+        return;
+      }
+
+      const nowOn = toggleFav(id);
+      trackBtn.classList.toggle('on', nowOn);
+
+      const n = getFavIds().length;
+      const favCountEl = document.getElementById('favCount');
+      if (favCountEl) favCountEl.textContent = String(n);
+      const trackingCountEl = document.getElementById('trackingCount');
+      if (trackingCountEl) trackingCountEl.textContent = String(n);
+
+      // If we are currently viewing Tracking and the user removed it, refresh the list.
+      if (state.mode === 'fav' && !nowOn) {
         await fetchFavorites();
       }
     };
@@ -2030,6 +2104,10 @@ if (incremental && state.mode === 'feed' && newFeedEls.length) {
       btn.onclick = (e) => {
         e.preventDefault();
         e.stopPropagation();
+        if (!authState?.authenticated) {
+          openAuthModal('show_more');
+          return;
+        }
         setFeedExpanded(true);
       };
     }
@@ -2080,6 +2158,10 @@ function updateLoadMoreBlock(totalCount) {
     btn.onclick = (e) => {
       e.preventDefault();
       e.stopPropagation();
+      if (!authState?.authenticated) {
+        openAuthModal('show_more');
+        return;
+      }
       setFeedExpanded(true);
     };
   }
@@ -2432,6 +2514,15 @@ function bindUI() {
   };
 
   qs("tabFav").onclick = async () => {
+    if (!authState?.authenticated) {
+      openAuthModal('tracking');
+      return;
+    }
+    // If local email is not verified, keep user on Feed and prompt verification
+    if (authState.user && authState.user.provider === 'local' && !authState.user.email_verified) {
+      openAuthModal('verify_required');
+      return;
+    }
     state.mode = "fav";
     applyTabs();
     await fetchFavorites();

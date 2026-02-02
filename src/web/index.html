@@ -281,7 +281,7 @@
       from{ opacity: 0; transform: translateY(8px); }
       to{ opacity: 1; transform: translateY(0); }
     }
-    .newsTopRight { display:flex; align-items:center; gap: 10px; flex-shrink:0; }
+    .newsTopRight { display:flex; align-items:center; gap: 12px; flex-shrink:0; }
 
     /* Tracking-only UI (delta + green/red icon like in the reference) */
     .delta{ font-weight: 700; font-size: 13px; display:inline-flex; align-items:center; gap:6px; }
@@ -303,6 +303,34 @@
     .newsCard.isLow .trackIconWrap.green{ border-color: rgba(34,197,94,.55); }
     .newsCard.isLow .trackIconWrap.red{ border-color: rgba(239,68,68,.55); }
     .trackIcon{ width: 18px; height: 18px; object-fit: contain; display:block; }
+
+    /* Tracking toggle (replaces the old star button) */
+    .trackToggle{
+      width: 52px;
+      height: 34px;
+      border-radius: 999px;
+      display:flex;
+      align-items:center;
+      justify-content: center;
+      padding: 0 6px;
+      background: transparent;
+      border: 1px solid rgba(15,23,42,.22);
+      cursor: pointer;
+    }
+    .trackToggle .trackDot{
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #111113; /* default = NOT tracked (black) */
+      display:block;
+    }
+    .trackToggle.on .trackDot{
+      background: #fff; /* tracked = white */
+      border: 1px solid rgba(17,17,19,.35);
+    }
+    .newsCard.isLow .trackToggle{ border-color: rgba(255,255,255,.18); }
+    .newsCard.isLow .trackToggle .trackDot{ background: #111113; }
+    .newsCard.isLow .trackToggle.on .trackDot{ background:#fff; border-color: rgba(255,255,255,.35); }
 
     /* Share button (top-right on cards) */
     .shareBtn{
@@ -365,7 +393,7 @@
       font-size: 13px;
       min-width: 86px;
       text-align:center;
-        margin-right: 35px;
+        margin-right: 0px;
     }
     .newsCard.isLow .scoreBadge { background: transparent; border-color: rgba(17,17,19,.14); color: var(--text); }
 

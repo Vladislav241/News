@@ -95,11 +95,13 @@ def _font(size: int, *, family: str = "inter", weight: str = "regular") -> Image
     fonts_dir = _fonts_dir()
 
     inter = {
-        "regular": os.path.join(fonts_dir, "Inter-Regular.ttf"),
-        "medium": os.path.join(fonts_dir, "Inter-Medium.ttf"),
-        "semibold": os.path.join(fonts_dir, "Inter-SemiBold.ttf"),
-        "bold": os.path.join(fonts_dir, "Inter-Bold.ttf"),
-    }
+    "light": os.path.join(fonts_dir, "Inter-Light.ttf"),
+    "regular": os.path.join(fonts_dir, "Inter-Regular.ttf"),
+    "medium": os.path.join(fonts_dir, "Inter-Medium.ttf"),
+    "semibold": os.path.join(fonts_dir, "Inter-SemiBold.ttf"),
+    "bold": os.path.join(fonts_dir, "Inter-Bold.ttf"),
+}
+
     jersey = {
         "regular": os.path.join(fonts_dir, "Jersey25-Regular.ttf"),
     }
@@ -109,7 +111,7 @@ def _font(size: int, *, family: str = "inter", weight: str = "regular") -> Image
         candidates += [jersey.get(weight) or jersey.get("regular")]
     else:
         # default to Inter
-        candidates += [inter.get(weight) or inter.get("regular"), inter.get("bold")]
+           candidates += [inter.get(weight) or inter.get("regular"), inter.get("regular")]
 
     # Extra fallbacks if someone didn't add Inter/Jersey yet
     candidates += [
@@ -239,9 +241,11 @@ def share_image(cluster_id: int, request: Request):
             break
 
     updated_at = score_row.get("computed_at") or meta.get("updated_at") or meta.get("created_at") or ""
+    dt = _parse_dt(updated_at)
+    v = str(int(dt.timestamp())) if dt else str(int(time.time()))
     # Bump the version suffix when the render/layout changes so cached images refresh everywhere.
     # IMPORTANT: bump the suffix whenever layout math changes, otherwise you'll keep seeing cached images.
-    version = f"{meta.get('title','')}|{summary}|{score}|{top_source}|{outlets_count}|{img_url}|{updated_at}|v7"
+    version = f"{meta.get('title','')}|{summary}|{score}|{top_source}|{outlets_count}|{img_url}|{updated_at}|v8"
     out_path = _cache_path(int(cluster_id), version)
 
     # Serve cached file if present
@@ -255,9 +259,10 @@ def share_image(cluster_id: int, request: Request):
     cd = ImageDraw.Draw(canvas)
 
     # Layout: make the photo feel "taller" by removing outer padding and going full-bleed.
-    left_w = int(OG_W * 0.46)
+    left_w = 530
     right_x0 = left_w
     right_w = OG_W - left_w
+
 
     # Left image (full-bleed)
     art = _download_image(img_url)
@@ -292,7 +297,7 @@ def share_image(cluster_id: int, request: Request):
 
     # Use Jersey for the brand wordmark (matches your web UI).
     cd.text((wx, brand_y - 2), "CHECK", font=_font(34, family="jersey", weight="regular"), fill=(15, 15, 15))
-    cd.text((wx, brand_y + 32), "news.", font=_font(34, family="jersey", weight="regular"), fill=(15, 15, 15))
+    cd.text((wx, brand_y + 22), "news.", font=_font(34, family="jersey", weight="regular"), fill=(15, 15, 15))
 
     # Trust pie (black circle with a white missing wedge)
     pie_cx = right_x0 + right_w // 2
@@ -303,15 +308,15 @@ def share_image(cluster_id: int, request: Request):
 
     # Score labels (order & spacing like the mock)
     # Slightly smaller typography so it never collides with the headline block.
-    label_font = _font(30, weight="regular")
-    score_font = _font(58, weight="bold")
-    cd.text((pie_cx, pie_cy + pie_r + 48), "Trust score", font=label_font, fill=(35, 35, 35), anchor="mm")
-    cd.text((pie_cx, pie_cy + pie_r + 108), f"{score}/100", font=score_font, fill=(15, 15, 15), anchor="mm")
+    label_font = _font(40, weight="light")
+    score_font = _font(38, weight="regular")
+    cd.text((pie_cx, pie_cy + pie_r + 45), "Trust score", font=label_font, fill=(35, 35, 35), anchor="mm")
+    cd.text((pie_cx, pie_cy + pie_r + 92), f"{score}/100", font=score_font, fill=(15, 15, 15), anchor="mm")
 
     updated_label = _human_age(_parse_dt(updated_at))
-    updated_y = pie_cy + pie_r + 152
+    updated_y = pie_cy + pie_r + 138
     if updated_label:
-        cd.text((pie_cx, updated_y), updated_label, font=_font(16, weight="regular"), fill=(180, 180, 180), anchor="mm")
+        cd.text((pie_cx, updated_y), updated_label, font=_font(23, weight="regular"), fill=(180, 180, 180), anchor="mm")
     # Headline should always start AFTER the score block.
     headline_start_y = updated_y + 36
 
@@ -323,8 +328,9 @@ def share_image(cluster_id: int, request: Request):
         sources_for_desc = db.get_cluster_sources(int(cluster_id)) or []
         desc_text = (sources_for_desc[0].get("description") if sources_for_desc else "") or ""
 
-    text_x = right_x0 + 52
-    max_text_w = right_w - 104
+    text_x = right_x0 + 34
+    max_text_w = right_w - 68
+
 
     # Bottom reserved space (source line + disclaimer)
     # Keep disclaimer compact... extra vertical room helps long headlines + summaries.
@@ -344,30 +350,41 @@ def share_image(cluster_id: int, request: Request):
     # Start copy below the score block (dynamic, avoids overlaps)
     y = headline_start_y
 
-    # ---------- TEXT BLOCK (title + description) ----------
-    # Fonts
-    title_font = _font(28, weight="bold")
-    body_font  = _font(18, weight="regular")
+        # ---------- TEXT BLOCK (title + description) ----------
+
+    # Base fonts
+    body_font = _font(18, weight="regular")
+    line_h_body = int(body_font.size * 1.35)
+
+    # --- TITLE: always 2 lines if possible, NEVER add "..." ---
+    TARGET_TITLE_LINES = 2
+
+    title_lines = []
+    title_font = None
+
+    for size in (26, 24, 22, 20, 18, 16):
+        tf = _font(size, weight="semibold")
+        lines = _wrap_by_pixels(cd, title, tf, max_text_w)
+
+        # If it fits into 2 lines -> accept
+        if len(lines) <= TARGET_TITLE_LINES:
+            title_font = tf
+            title_lines = lines
+            break
+
+    # If still too long -> force 2 lines by shrinking more AND hard-cut words (without "…")
+    if not title_font:
+        title_font = _font(16, weight="semibold")
+        title_lines = _wrap_by_pixels(cd, title, title_font, max_text_w)
+        title_lines = title_lines[:TARGET_TITLE_LINES]  # no ellipsis for title
 
     line_h_title = int(title_font.size * 1.18)
-    line_h_body  = int(body_font.size * 1.35)
 
-    # Мы хотим ГАРАНТИРОВАТЬ хотя бы 2 строки описания (если оно есть)
-    MIN_DESC_LINES = 2 if (desc_text or "").strip() else 0
-    reserve_desc_px = MIN_DESC_LINES * line_h_body + (8 if MIN_DESC_LINES else 0)
+    # --- Compute space: title is PRIORITY, description gets the leftovers ---
+    title_block_h = len(title_lines) * line_h_title + 10
+    available_for_desc_px = (y_max - (y + title_block_h))
 
-    # Если места мало — режем заголовок сильнее
-    title_lines = _wrap_by_pixels(cd, title, title_font, max_text_w)
-
-    # Сначала пробуем 2 строки заголовка
-    title_lines = _clamp_lines(cd, title_lines, title_font, max_text_w, max_lines=2)
-
-    # Если после 2 строк заголовка не остаётся места под описание — делаем заголовок в 1 строку
-    need_px_for_title_2 = len(title_lines) * line_h_title + 10
-    if y + need_px_for_title_2 + reserve_desc_px > y_max:
-        title_lines = _clamp_lines(cd, title_lines, title_font, max_text_w, max_lines=1)
-
-    # Рисуем заголовок
+    # Draw title (no ellipsis)
     for ln in title_lines:
         if y + line_h_title > y_max:
             break
@@ -375,35 +392,25 @@ def share_image(cluster_id: int, request: Request):
         y += line_h_title
     y += 10
 
- # --- Description: show up to 3 lines, add "…" if truncated OR looks unfinished ---
+    # --- DESCRIPTION: can be truncated with "..." ---
     desc_raw = (desc_text or "").strip()
     desc_lines_all = _wrap_by_pixels(cd, desc_raw, body_font, max_text_w)
 
-    MAX_DESC_LINES = 3
-    avail_px = (y_max - y)
-    max_lines_fit = int(avail_px // line_h_body) if avail_px > 0 else 0
-    lines_to_draw = max(0, min(MAX_DESC_LINES, max_lines_fit))
+    MAX_DESC_LINES = 2
+    lines_fit = int(available_for_desc_px // line_h_body) if available_for_desc_px > 0 else 0
+    lines_to_draw = max(0, min(MAX_DESC_LINES, lines_fit))
 
-    if desc_lines_all:
-        # take only what we can draw
-        drawn = desc_lines_all[: max(1, lines_to_draw)] if lines_to_draw > 0 else [desc_lines_all[0]]
+    if desc_lines_all and lines_to_draw > 0:
+        drawn = desc_lines_all[:lines_to_draw]
 
-        # Need ellipsis if:
-        # 1) we had more lines than we can draw
-        need_ellipsis = len(desc_lines_all) > len(drawn)
-
-        # 2) OR the text looks unfinished (doesn't end with punctuation/ellipsis)
-        if desc_raw and not desc_raw.endswith((".", "!", "?", "…")):
-            need_ellipsis = True
-
-        if need_ellipsis and drawn:
-            # force an ellipsis on the last visible line (and keep it within width)
+        # add ellipsis only if truncated
+        if len(desc_lines_all) > len(drawn):
             drawn[-1] = _ellipsize(cd, drawn[-1] + " …", body_font, max_text_w)
 
-        # draw (we already computed vertical fit, so no extra breaks needed)
         for ln in drawn:
             cd.text((text_x, y), ln, font=body_font, fill=(65, 65, 65))
             y += line_h_body
+
 
 
 
@@ -459,12 +466,19 @@ def share_page(cluster_id: int, request: Request):
     title = meta.get("title") or "CHECK news"
     desc = _safe_text(summary or "Track credibility across sources.", 180)
 
+    # ----- Versioning (чтобы ссылка менялась после обновления новости) -----
+    updated_at = score_row.get("computed_at") or meta.get("updated_at") or meta.get("created_at") or ""
+
+    dt = _parse_dt(updated_at)
+    v = str(int(dt.timestamp())) if dt else str(int(time.time()))
+
+    # ----- URLs (все теперь с ?v=...) -----
     base = _base_url(request)
-    page_url = f"{base}/share/{int(cluster_id)}"
-    # Deep-link into the web app so the article card opens immediately.
-    # We keep /share/{id} as the shared URL because it contains OG meta tags.
-    app_url = f"{base}/?open={int(cluster_id)}&shared=1"
-    img_url = f"{base}/api/share-image/{int(cluster_id)}.png"
+
+    page_url = f"{base}/share/{int(cluster_id)}?v={v}"
+    app_url  = f"{base}/?open={int(cluster_id)}&shared=1"
+    img_url  = f"{base}/api/share-image/{int(cluster_id)}.png?v={v}"
+
 
     html = f"""<!doctype html>
 <html lang="en">

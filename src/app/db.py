@@ -233,6 +233,25 @@ class Database:
             if not self._has_column("articles", "image_url"):
                 conn.execute("ALTER TABLE articles ADD COLUMN image_url TEXT;")
 
+            # --- Fulltext extraction queue (keeps ingest fast) ---
+            if not self._has_column("articles", "needs_fulltext"):
+                conn.execute("ALTER TABLE articles ADD COLUMN needs_fulltext INTEGER NOT NULL DEFAULT 0;")
+
+            if not self._has_column("articles", "fulltext_status"):
+                conn.execute("ALTER TABLE articles ADD COLUMN fulltext_status TEXT;")
+
+            if not self._has_column("articles", "fulltext_attempts"):
+                conn.execute("ALTER TABLE articles ADD COLUMN fulltext_attempts INTEGER NOT NULL DEFAULT 0;")
+
+            if not self._has_column("articles", "fulltext_next_attempt_at"):
+                conn.execute("ALTER TABLE articles ADD COLUMN fulltext_next_attempt_at TEXT;")
+
+            if not self._has_column("articles", "fulltext_error"):
+                conn.execute("ALTER TABLE articles ADD COLUMN fulltext_error TEXT;")
+
+            if not self._has_column("articles", "fulltext_updated_at"):
+                conn.execute("ALTER TABLE articles ADD COLUMN fulltext_updated_at TEXT;")
+
             if not self._has_column("article_summaries", "summary_json"):
                 conn.execute("ALTER TABLE article_summaries ADD COLUMN summary_json TEXT;")
 
@@ -388,8 +407,10 @@ class Database:
             INSERT OR IGNORE INTO articles(
                 title, url, url_hash, source_name, source_key, published_at,
                 content, description, raw_json,
-                topic, country, language, image_url, inserted_at
-            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                topic, country, language, image_url,
+                needs_fulltext, fulltext_status, fulltext_attempts, fulltext_next_attempt_at,
+                fulltext_error, fulltext_updated_at, inserted_at
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 (article.get("title") or "").strip() or "(no title)",
@@ -405,6 +426,12 @@ class Database:
                 (article.get("country") or "world").strip().lower(),
                 (article.get("language") or "en").strip().lower(),
                 (article.get("image_url") or None),
+                int(bool(article.get("needs_fulltext") or 0)),
+                ("pending" if (article.get("needs_fulltext") or 0) else None),
+                0,
+                None,
+                None,
+                None,
                 _utc_now_iso(),
             ),
         )
@@ -422,6 +449,66 @@ class Database:
 
     def update_article_image_url(self, article_id: int, image_url: str) -> None:
         self._exec("UPDATE articles SET image_url=? WHERE id=?", (image_url, int(article_id)))
+
+    # --------- fulltext queue ----------
+    def list_fulltext_pending(self, limit: int = 25) -> list[dict[str, Any]]:
+        """Articles that need fulltext extraction and are ready to be retried."""
+        limit = int(max(1, min(200, limit)))
+        now = _utc_now_iso()
+        rows = self._fetchall(
+            """
+            SELECT id, url, source_name, description, content, fulltext_attempts
+            FROM articles
+            WHERE needs_fulltext=1
+              AND (fulltext_status IS NULL OR fulltext_status IN ('pending','failed'))
+              AND (fulltext_next_attempt_at IS NULL OR fulltext_next_attempt_at <= ?)
+            ORDER BY inserted_at DESC
+            LIMIT ?
+            """,
+            (now, limit),
+        )
+        return rows or []
+
+    def claim_fulltext_job(self, article_id: int) -> bool:
+        """Mark a job as in_progress if it's still pending."""
+        cur = self._exec(
+            """
+            UPDATE articles
+            SET fulltext_status='in_progress', fulltext_updated_at=?
+            WHERE id=? AND needs_fulltext=1 AND (fulltext_status IS NULL OR fulltext_status IN ('pending','failed'))
+            """,
+            (_utc_now_iso(), int(article_id)),
+        )
+        return bool(cur.rowcount)
+
+    def mark_fulltext_done(self, article_id: int, description: str, content: str) -> None:
+        self._exec(
+            """
+            UPDATE articles
+            SET description=?, content=?, needs_fulltext=0,
+                fulltext_status='done', fulltext_error=NULL,
+                fulltext_updated_at=?, fulltext_next_attempt_at=NULL
+            WHERE id=?
+            """,
+            ((description or None), (content or None), _utc_now_iso(), int(article_id)),
+        )
+
+    def mark_fulltext_failed(self, article_id: int, error: str, backoff_seconds: int) -> None:
+        # basic exponential backoff
+        art = self.get_article_by_id(int(article_id))
+        attempts = int(art.get('fulltext_attempts') or 0) + 1
+        # cap next retry
+        from datetime import timedelta
+        next_at = (datetime.now(timezone.utc) + timedelta(seconds=int(backoff_seconds))).replace(microsecond=0).isoformat()
+        self._exec(
+            """
+            UPDATE articles
+            SET fulltext_status='failed', fulltext_attempts=?, fulltext_error=?,
+                fulltext_next_attempt_at=?, fulltext_updated_at=?
+            WHERE id=?
+            """,
+            (attempts, (error or '')[:800], next_at, _utc_now_iso(), int(article_id)),
+        )
 
     # --------- clusters ----------
     def upsert_cluster(self, cluster_key: str, title: str, topic: str, country: str, language: str) -> int:
@@ -514,6 +601,42 @@ class Database:
 
         return [dict(r) for r in rows]
 
+    def get_cluster_sources_brief(self, cluster_id: int) -> dict[str, Any]:
+        """Return non-sensitive source metadata for a cluster.
+
+        This is used for guest-locked cards. We do NOT return the full source
+        list (titles/urls), but we still want to display a stable primary
+        source name, a sources count, and a representative image (if any).
+        """
+        row = self._fetchone(
+            """
+            SELECT
+                COUNT(*) as sources_count,
+                (
+                    SELECT a.source_name
+                    FROM cluster_articles ca2
+                    JOIN articles a ON a.id = ca2.article_id
+                    WHERE ca2.cluster_id = ?
+                    ORDER BY COALESCE(a.published_at, a.inserted_at) DESC, a.id DESC
+                    LIMIT 1
+                ) as primary_source,
+                (
+                    SELECT a.image_url
+                    FROM cluster_articles ca3
+                    JOIN articles a ON a.id = ca3.article_id
+                    WHERE ca3.cluster_id = ?
+                      AND a.image_url IS NOT NULL
+                      AND TRIM(a.image_url) <> ''
+                    ORDER BY COALESCE(a.published_at, a.inserted_at) DESC, a.id DESC
+                    LIMIT 1
+                ) as image_url
+            FROM cluster_articles ca
+            WHERE ca.cluster_id = ?
+            """,
+            (int(cluster_id), int(cluster_id), int(cluster_id)),
+        )
+        return row or {"sources_count": 0, "primary_source": None, "image_url": None}
+
     def get_cluster_meta(self, cluster_id: int) -> dict[str, Any]:
         return self._fetchone("SELECT * FROM clusters WHERE id=?", (cluster_id,)) or {}
 
@@ -596,6 +719,17 @@ class Database:
             if v not in seen:
                 seen.add(v)
                 normalized.append(v)
+
+        # Filter to existing cluster IDs to avoid FK errors when client sends stale ids
+        if normalized:
+            try:
+                placeholders = ",".join(["?"] * len(normalized))
+                rows = self._fetchall(f"SELECT id FROM clusters WHERE id IN ({placeholders})", tuple(normalized))
+                existing = {int(r["id"]) for r in rows}
+                normalized = [cid for cid in normalized if cid in existing]
+            except Exception:
+                # If anything goes wrong, fall back to empty (safe)
+                normalized = []
 
         now = _utc_now_iso()
         # Single transaction
@@ -774,6 +908,17 @@ class Database:
             if v not in seen:
                 seen.add(v)
                 normalized.append(v)
+
+        # Filter to existing cluster IDs to avoid FK errors when client sends stale ids
+        if normalized:
+            try:
+                placeholders = ",".join(["?"] * len(normalized))
+                rows = self._fetchall(f"SELECT id FROM clusters WHERE id IN ({placeholders})", tuple(normalized))
+                existing = {int(r["id"]) for r in rows}
+                normalized = [cid for cid in normalized if cid in existing]
+            except Exception:
+                # If anything goes wrong, fall back to empty (safe)
+                normalized = []
 
         now = _utc_now_iso()
         with self.conn:
