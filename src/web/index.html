@@ -6,8 +6,8 @@
   <title>CHECK news.</title>
 
   <!-- Favicon (prevents noisy /favicon.ico 404s in logs) -->
-  <link rel="icon" href="/static/icons/Logo.png" type="image/png">
-  <link rel="apple-touch-icon" href="/static/icons/Logo.png">
+  <link rel="icon" href="/static/icons/Logo.svg" type="image/png">
+  <link rel="apple-touch-icon" href="/static/icons/Logo.svg">
 
   <!-- Fonts: Jersey 25 (logo) + Inter (UI) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -225,7 +225,53 @@
       padding: 4px 2px;
     }
 
-    .tags { display:flex; flex-wrap:wrap; gap:8px; margin-top: 10px; }
+    .tagsBar{ display:flex; align-items:flex-start; gap:12px; margin-top: 10px; }
+    .tags { display:flex; flex-wrap:wrap; gap:8px; flex:1; min-width:0; }
+
+    /* Miniatures toggle near Interests */
+    .thumbToggleWrap{ display:flex; align-items:center; gap:10px; flex-shrink:0; padding-top: 2px; }
+    .thumbToggleLabel{ font-size: 12px; color: rgba(15,23,42,.62); white-space: nowrap; }
+    .thumbToggle{
+      width: 56px;
+      height: 34px;
+      border-radius: 999px;
+      border: 1px solid rgba(15,23,42,.22);
+      background: transparent;
+      cursor: pointer;
+      position: relative;
+      padding: 0;
+    }
+    .thumbToggleDot{
+      position:absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      left: 6px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #fff;
+      border: 1px solid rgba(17,17,19,.35);
+      transition: left .16s ease, background .16s ease;
+    }
+    .thumbToggle.on .thumbToggleDot{ left: 30px; background:#111113; }
+
+    /* Card mini thumbnails (collapsed view) */
+    .newsSummaryGrid{ display:flex; align-items:stretch; justify-content:space-between; gap:12px; }
+    .newsSummaryText{ flex:1; min-width:0; }
+    .newsThumbWrap{
+      width: 92px;
+      height: 60px;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid var(--stroke);
+      background: rgba(15,23,42,.04);
+      flex-shrink: 0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+    .newsThumb{ width:100%; height:100%; object-fit: cover; display:block; }
+    .newsThumbPh{ width:100%; height:100%; background: linear-gradient(135deg, rgba(15,23,42,.05), rgba(15,23,42,.02)); }
     .tag {
       border: 1px solid transparent;
       background: var(--chip);
@@ -321,11 +367,12 @@
       width: 18px;
       height: 18px;
       border-radius: 50%;
-      background: #111113; /* default = NOT tracked (black) */
+      background: #fff; /* default = NOT tracked (black) */
       display:block;
+       border: 1px solid rgba(17,17,19,.35);
     }
     .trackToggle.on .trackDot{
-      background: #fff; /* tracked = white */
+      background: #111113; /* tracked = white */
       border: 1px solid rgba(17,17,19,.35);
     }
     .newsCard.isLow .trackToggle{ border-color: rgba(255,255,255,.18); }
@@ -387,7 +434,7 @@
 .scoreBadge {
       border: 1px solid rgba(15,23,42,.15);
       background: rgba(255,255,255,.85);
-      border-radius: 12px;
+      border-radius: 30px;
       padding: 6px 10px;
       font-weight: 700;
       font-size: 13px;
@@ -1610,7 +1657,7 @@
     <div class="headerInner">
       <!-- Brand: logo + ONE news. (matches the reference) -->
       <div id="brand" class="brand" aria-label="ONE news" role="button" tabindex="0">
-        <img class="brandLogo" src="/static/icons/Logo.png" alt="Logo" />
+        <img class="brandLogo" src="/static/icons/Logo.svg" alt="Logo" />
 
         <div class="brandText"><div class="top">CHECK</div><div class="bottom">news.</div></div>
       </div>
@@ -1689,7 +1736,15 @@
         </div>
       </div>
 
-      <div class="tags" id="tags"></div>
+      <div class="tagsBar">
+        <div class="tags" id="tags"></div>
+        <div class="thumbToggleWrap" aria-label="Миниатюры">
+          <div class="thumbToggleLabel">Miniatures</div>
+          <button id="thumbToggle" class="thumbToggle" type="button" role="switch" aria-checked="false" title="Показать/скрыть миниатюры">
+            <span class="thumbToggleDot"></span>
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Optional legacy header (tabs, reload, status) kept but visually minimal -->
@@ -1851,7 +1906,7 @@
       <!-- LOGO COLUMN -->
       <div>
         <div class="footerLogo">
-          <img class="footerLogoImg" src="/static/icons/Logo.png" alt="Logo" />
+          <img class="footerLogoImg" src="/static/icons/Logo.svg" alt="Logo" />
           <div class="footerBrandText">
             <div class="top">CHECK</div>
             <div class="bottom">news.</div>
@@ -1909,7 +1964,7 @@
 
   <!-- Tracking: drag cards here to delete (shown only in Tracking tab) -->
   <div id="trashZone" class="trashZone" aria-hidden="true">
-    <img src="/static/icons/Delete.png" alt="Delete" />
+    <img src="/static/icons/Delete.svg" alt="Delete" />
   </div>
 
   <!-- Auth modal -->
@@ -1918,7 +1973,7 @@
       <div class="authModalInner">
         <div class="authBrand">
           <div class="footerLogo">
-            <img class="footerLogoImg" src="/static/icons/Logo.png" alt="Logo" />
+            <img class="footerLogoImg" src="/static/icons/Logo.svg" alt="Logo" />
             <div class="footerBrandText"><div class="top">CHECK</div><div class="bottom">news.</div></div>
           </div>
           <button id="authClose" class="authClose" type="button" aria-label="Close">✕</button>
@@ -1931,14 +1986,14 @@
 
           <div class="authActions">
             <button id="btnGoogle" class="authBtn" type="button">
-              <img class="authIcon" src="/static/icons/Gmail.png" alt="">
+              <img class="authIcon" src="/static/icons/Gmail.svg" alt="">
               <span>Continue with Google</span>
             </button>
 
             <div class="authDivider">or</div>
 
             <button id="btnEmail" class="authBtn" type="button">
-              <img class="authIcon" src="/static/icons/Email.png" alt="">
+              <img class="authIcon" src="/static/icons/Email.svg" alt="">
               <span>Continue with email</span>
             </button>
           </div>

@@ -7,6 +7,8 @@ import os
 import json
 import time
 from functools import lru_cache
+from collections import OrderedDict
+import logging
 
 from datetime import datetime, timezone, timedelta
 
@@ -20,10 +22,82 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.decomposition import TruncatedSVD
 
-print("CLUSTER_LLM_ENABLED =", os.getenv("CLUSTER_LLM_ENABLED"))
-print("OPENAI_API_KEY set? =", bool(os.getenv("OPENAI_API_KEY")))
-print("OPENAI_MODEL =", os.getenv("OPENAI_MODEL"))
-print("=================================")
+logger = logging.getLogger("news.clustering")
+_log = logger  # backwards-compat alias
+if not logger.handlers:
+    logging.basicConfig(level=logging.INFO)
+logger.info("CLUSTER_LLM_ENABLED=%s OPENAI_API_KEY_set=%s OPENAI_MODEL=%s",
+            os.getenv("CLUSTER_LLM_ENABLED"), bool(os.getenv("OPENAI_API_KEY")), os.getenv("OPENAI_MODEL"))
+
+# ---- LLM decision cache (process-local) ----
+# We cache ONLY the final boolean/score/reason by a stable hash, and we log only on cache-miss.
+# This prevents log spam and repeated paid calls when the same pair is evaluated many times.
+_LLM_DECISION_CACHE: "OrderedDict[str, tuple[float, tuple[bool | None, float, str]]]" = OrderedDict()
+_LLM_DECISION_CACHE_MAX = int(os.getenv("CLUSTER_LLM_CACHE_MAX", "2048"))
+_LLM_DECISION_CACHE_TTL_SEC = int(os.getenv("CLUSTER_LLM_CACHE_TTL_SEC", str(6 * 60 * 60)))  # 6h
+
+# Simple rate-limit so a single ingest cycle can't explode into hundreds of LLM calls.
+_LLM_WINDOW_START = 0.0
+_LLM_CALLS_IN_WINDOW = 0
+_LLM_MAX_CALLS_PER_MIN = int(os.getenv("CLUSTER_LLM_MAX_CALLS_PER_MIN", "30"))
+
+def _llm_allow_call() -> bool:
+    """
+    Returns True if an LLM call is allowed right now.
+
+    Conditions:
+    - CLUSTER_LLM_ENABLED must be '1'
+    - OPENAI_API_KEY must be set
+    - simple per-process rate-limit (calls/min)
+
+    This function exists mainly to avoid hard crashes and to protect your budget.
+    """
+    global _LLM_WINDOW_START, _LLM_CALLS_IN_WINDOW
+
+    if os.getenv('CLUSTER_LLM_ENABLED', '0') != '1':
+        return False
+    if not os.getenv('OPENAI_API_KEY'):
+        return False
+
+    now = time.time()
+    if _LLM_WINDOW_START <= 0 or (now - _LLM_WINDOW_START) >= 60.0:
+        _LLM_WINDOW_START = now
+        _LLM_CALLS_IN_WINDOW = 0
+
+    if _LLM_CALLS_IN_WINDOW >= _LLM_MAX_CALLS_PER_MIN:
+        return False
+
+    _LLM_CALLS_IN_WINDOW += 1
+    return True
+
+def _llm_cache_get(h: str) -> tuple[bool | None, float, str] | None:
+    now = time.time()
+    item = _LLM_DECISION_CACHE.get(h)
+    if not item:
+        return None
+    ts, val = item
+    if (now - ts) > _LLM_DECISION_CACHE_TTL_SEC:
+        # expired
+        try:
+            _LLM_DECISION_CACHE.pop(h, None)
+        except Exception:
+            pass
+        return None
+    # refresh LRU
+    try:
+        _LLM_DECISION_CACHE.move_to_end(h)
+    except Exception:
+        pass
+    return val
+
+def _llm_cache_set(h: str, val: tuple[bool | None, float, str]) -> None:
+    try:
+        _LLM_DECISION_CACHE[h] = (time.time(), val)
+        _LLM_DECISION_CACHE.move_to_end(h)
+        while len(_LLM_DECISION_CACHE) > _LLM_DECISION_CACHE_MAX:
+            _LLM_DECISION_CACHE.popitem(last=False)
+    except Exception:
+        pass
 
 
 # ---- stopwords / normalization ----
@@ -137,12 +211,25 @@ def llm_same_event(snippet_a: str, snippet_b: str) -> tuple[bool | None, float, 
     # Keep size bounded to control cost + latency
     a = a[:1200]
     b = b[:1200]
-    key = f"A:\n{a}\n\nB:\n{b}\n\nReturn JSON."
-    h = hashlib.sha1(key.encode("utf-8", errors="ignore")).hexdigest()
-    # Cache key must include the full prompt for correctness but we keep only hash in cache key;
-    # send prompt text itself as the 'key' content to the model.
-    # We map hash->prompt by embedding prompt inside the cached function argument: (hash + '\n' + prompt)
-    return _llm_same_event_cached(h + "\n" + key)
+    prompt = f"A:\n{a}\n\nB:\n{b}\n\nReturn JSON."
+    h = hashlib.sha1(prompt.encode("utf-8", errors="ignore")).hexdigest()
+
+    # 1) Fast in-process memoization (prevents spam + repeated costs)
+    cached = _llm_cache_get(h)
+    if cached is not None:
+        return cached
+
+    # 2) Simple rate-limit (protects your OpenAI budget + avoids log floods)
+    if not _llm_allow_call():
+        out = (None, 0.0, "llm_rate_limited")
+        _llm_cache_set(h, out)
+        return out
+
+    # Only log on cache-miss.
+    _log.info("[LLM] ARBITER TRIGGERED key=%s", h[:8])
+    out = _llm_same_event_cached(prompt)
+    _llm_cache_set(h, out)
+    return out
 
 # Common prefixes / tails used by many feeds
 _PREFIX_RE = re.compile(
@@ -450,13 +537,16 @@ def match_cluster(
             need_llm = True
 
         if need_llm:
-            print("\n[LLM] ARBITER TRIGGERED")
-            print(" sim =", sim, "thr =", thr)
-            print(" ov =", ov, "j =", j, "ent_ov =", ent_ov)
-            print(" A =", txt_norm[:120])
-            print(" B =", c_norm[:120])
+            # Avoid noisy console spam; enable with CLUSTER_LLM_VERBOSE=1
+            if os.getenv("CLUSTER_LLM_VERBOSE", "0") == "1":
+                logger.info("[LLM] ARBITER TRIGGERED sim=%.3f thr=%.3f ov=%d j=%.3f ent_ov=%d", sim, thr, ov, j, ent_ov)
+                logger.info("[LLM] A=%s", txt_norm[:160])
+                logger.info("[LLM] B=%s", c_norm[:160])
+
             same, conf, rat = llm_same_event(txt_norm, c_norm)
-            print("[LLM] RESULT:", same, "conf=", conf, "reason=", rat)
+
+            if os.getenv("CLUSTER_LLM_VERBOSE", "0") == "1":
+                logger.info("[LLM] RESULT same=%s conf=%.2f reason=%s", same, conf, rat)
 
             if same is False:
                 return ClusterMatch(

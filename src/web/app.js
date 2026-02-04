@@ -224,6 +224,7 @@ const FAV_KEY = "news_favs_v1";
 const DEVICE_KEY = "news_device_id_v1";
 const SEEN_KEY = "news_seen_state_v1";
 const FILTERS_KEY = "news_filters_v1";
+const THUMBS_KEY = "news_thumbs_v1";
 
 // UI config
 // If score < LOW_SCORE_THRESHOLD => dark card (as in the provided design). Easy to tweak.
@@ -294,6 +295,9 @@ let state = {
   q: "",
   cooldownUntil: 0,
 
+  // UI preferences
+  showThumbs: false,
+
   filters: {
     onlyConfirmed: false,
     onlyAI: false,
@@ -357,6 +361,20 @@ function saveFilters() {
   localStorage.setItem(FILTERS_KEY, JSON.stringify(state.filters));
 }
 
+function loadThumbPrefs() {
+  try {
+    const raw = localStorage.getItem(THUMBS_KEY);
+    if (raw === null) return;
+    state.showThumbs = raw === '1' || raw === 'true';
+  } catch {}
+}
+
+function saveThumbPrefs() {
+  try {
+    localStorage.setItem(THUMBS_KEY, state.showThumbs ? '1' : '0');
+  } catch {}
+}
+
 function applyFiltersUIToState() {
   state.filters.onlyConfirmed = !!qs("fOnlyConfirmed").checked;
   state.filters.onlyAI = !!qs("fOnlyAI").checked;
@@ -370,6 +388,13 @@ function syncFiltersStateToUI() {
   qs("fOnlyAI").checked = !!state.filters.onlyAI;
   qs("fMinScore").value = String(state.filters.minScore || 0);
   qs("fMinScoreVal").textContent = String(state.filters.minScore || 0);
+}
+
+function syncThumbToggleUI() {
+  const btn = document.getElementById('thumbToggle');
+  if (!btn) return;
+  btn.classList.toggle('on', !!state.showThumbs);
+  btn.setAttribute('aria-checked', state.showThumbs ? 'true' : 'false');
 }
 
 function getFavIds() {
@@ -1706,6 +1731,10 @@ function createCardElement(item, ctx, seen, idx) {
   }
 
   const imageUrl = getNewsImage(item);
+  const showThumb = !!state.showThumbs;
+  const thumbHtml = showThumb
+    ? `<div class="newsThumbWrap">${imageUrl ? `<img class="newsThumb" loading="lazy" alt="" src="${imageUrl}" />` : `<div class="newsThumbPh" aria-hidden="true"></div>`}</div>`
+    : '';
 
   // Tracking-only UI (icon + delta like in the reference)
 //
@@ -1728,12 +1757,12 @@ const showTrackingUI = state.mode === 'fav';
     : `<div class="delta ${deltaDir}">${deltaDir === 'up' ? '▲' : '▼'} ${deltaAbs}</div>`;
 
   const iconSrc = !showTrackingUI
-    ? '/static/icons/Tracking.png'
+    ? '/static/icons/Tracking.svg'
     : (deltaDir === 'down'
-      ? '/static/icons/TrackingRed.png'
+      ? '/static/icons/TrackingRed.svg'
       : (deltaDir === 'up'
-        ? '/static/icons/TrackingGreen.png'
-        : '/static/icons/Tracking.png'));
+        ? '/static/icons/TrackingGreen.svg'
+        : '/static/icons/Tracking.svg'));
   const iconTone = deltaDir === 'down' ? 'red' : (deltaDir === 'up' ? 'green' : 'neutral');
   const iconHtml = !showTrackingUI
     ? ''
@@ -1743,7 +1772,7 @@ const showTrackingUI = state.mode === 'fav';
 
   // Share button (Feed + Tracking).
   const shareHtml = `<button class="shareBtn" type="button" title="Share" aria-label="Share">
-    <img class="shareIcon" src="/static/icons/Share.png" alt="Share" />
+    <img class="shareIcon" src="/static/icons/Share.svg" alt="Share" />
   </button>`;
 
   // Tracking toggle (replaces the old star button).
@@ -1757,25 +1786,30 @@ const showTrackingUI = state.mode === 'fav';
   // Trending flame badge (server-side; consistent across devices)
   const isTrending = !!item.is_trending;
   const flameHtml = isTrending
-    ? `<img class="newFlame" src="/static/icons/new.png" alt="Trending" title="Trending" />`
+    ? `<img class="newFlame" src="/static/icons/new.svg" alt="Trending" title="Trending" />`
     : '';
 
   div.innerHTML = `
     <div class="cardInner">
     <details class="newsDetails">
       <summary class="newsSummary">
-        <div class="newsTopRow">
-          <div class="newsTitle">${dragHandleHtml}${escapeHtml(item.title || 'Event')}</div>
-          <div class="newsTopRight">
-            ${flameHtml}
-            ${trackToggleHtml}
-            <div class="scoreBadge ${score < LOW_SCORE_THRESHOLD ? 'dark' : 'light'}">${score} / 100</div>
-            ${deltaHtml}
-            ${iconHtml}
-            ${shareHtml}
+        <div class="newsSummaryGrid">
+          <div class="newsSummaryText">
+            <div class="newsTopRow">
+              <div class="newsTitle">${dragHandleHtml}${escapeHtml(item.title || 'Event')}</div>
+              <div class="newsTopRight">
+                ${flameHtml}
+                ${trackToggleHtml}
+                <div class="scoreBadge ${score < LOW_SCORE_THRESHOLD ? 'dark' : 'light'}">${score} / 100</div>
+                ${deltaHtml}
+                ${iconHtml}
+                ${shareHtml}
+              </div>
+            </div>
+            <div class="newsMeta">${metaLine}</div>
           </div>
+          ${thumbHtml}
         </div>
-        <div class="newsMeta">${metaLine}</div>
       </summary>
 
       <div class="newsOpenBody">
@@ -1969,7 +2003,7 @@ function updateCardElement(el, item, ctx, seen) {
       if (topRight) {
         const img = document.createElement('img');
         img.className = 'newFlame';
-        img.src = '/static/icons/new.png';
+        img.src = '/static/icons/new.svg';
         img.alt = 'Trending';
         img.title = 'Trending';
         // Put it before score badge for the same layout
@@ -2596,6 +2630,23 @@ function bindUI() {
       }
     });
   }
+
+  // Mini thumbnails toggle (near Interests)
+  const thumbToggle = document.getElementById('thumbToggle');
+  if (thumbToggle) {
+    syncThumbToggleUI();
+    thumbToggle.onclick = () => {
+      state.showThumbs = !state.showThumbs;
+      saveThumbPrefs();
+      syncThumbToggleUI();
+      // Re-render current list (no network)
+      if (state.mode === 'feed') {
+        renderCards(lastFeedItems, { incremental: false });
+      } else if (state.mode === 'fav') {
+        renderCards(lastFavItems, { incremental: false });
+      }
+    };
+  }
 }
 
 
@@ -2613,6 +2664,7 @@ async function autoUpdateTick(trigger) {
 async function main() {
   loadPrefs();
   loadFilters();
+  loadThumbPrefs();
 
   // Capture deep-link request early (before auth/feed fetch)
   const dl = readDeepLinkParams();
@@ -2631,6 +2683,7 @@ async function main() {
 
   bindUI();
   renderTags();
+  syncThumbToggleUI();
   applyTabs();
 
   // initial load
