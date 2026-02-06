@@ -197,6 +197,43 @@ def _safe_entry_text(entry: Any) -> tuple[str, str, str]:
     return title, _clean_rss_html(desc), _clean_rss_html(content)
 
 
+def _guess_title_from_url(url: str) -> str:
+    """Fallback title when RSS entry title is missing/broken."""
+    u = (url or "").strip()
+    if not u:
+        return ""
+    try:
+        u = u.split("#", 1)[0].split("?", 1)[0]
+        parts = [p for p in u.split("/") if p]
+        if not parts:
+            return ""
+        slug = parts[-1]
+        if slug.lower() in {"rss", "feed"} and len(parts) >= 2:
+            slug = parts[-2]
+        slug = slug.replace("-", " ").replace("_", " ").strip()
+        slug = _re.sub(r"\s+", " ", slug)
+        return slug[:180].strip()
+    except Exception:
+        return ""
+
+
+def _guess_title_from_desc(desc: str) -> str:
+    """Fallback title from description/summary."""
+    d = (desc or "").strip()
+    if not d:
+        return ""
+    d = d.replace("\n", " ").replace("\r", " ")
+    d = _re.sub(r"\s+", " ", d).strip()
+    cut = None
+    for sep in [". ", "…", " - ", " — ", " | "]:
+        idx = d.find(sep)
+        if idx != -1:
+            cut = idx if cut is None else min(cut, idx)
+    if cut is not None and cut > 20:
+        d = d[:cut].strip()
+    return d[:180].strip()
+
+
 # =========================================================
 # LIVEBLOG ISOLATION
 # =========================================================
@@ -696,6 +733,8 @@ def _fetch_rss_feed(feed: dict[str, str], per_feed: int = 80) -> tuple[list[dict
                 continue
 
             title, desc, content = _safe_entry_text(entry)
+            if not title:
+                title = _guess_title_from_url(link) or _guess_title_from_desc(desc) or "Untitled"
             needs_fulltext = _should_fetch_full_article(name, desc, content)
 
             published_iso = _to_iso(getattr(entry, "published_parsed", None) or getattr(entry, "updated_parsed", None))
@@ -885,7 +924,16 @@ def run_ingest_cycle() -> dict[str, Any]:
                     cluster_key = _liveblog_cluster_key(lang, (art.get("url") or ""))
                 else:
                     norm_title = normalize_title_for_key(title, lang)
-                    cluster_key = canonical_cluster_key(lang, norm_title or title[:120])
+                    if not norm_title:
+                        # Broken feeds sometimes omit <title>. Never allow an empty cluster key.
+                        norm_title = normalize_title_for_key(desc, lang)
+                    if not norm_title:
+                        norm_title = normalize_title_for_key(_guess_title_from_url(art.get("url") or ""), lang)
+                    if not norm_title:
+                        # Absolute last resort: stable per-URL key (prevents cross-topic merges).
+                        u = (art.get("url") or "").split("#", 1)[0].split("?", 1)[0]
+                        norm_title = "url:" + hashlib.sha1(u.encode("utf-8", errors="ignore")).hexdigest()[:16]
+                    cluster_key = canonical_cluster_key(lang, norm_title)
 
                 existing = db.connect().execute(
                     "SELECT id FROM clusters WHERE cluster_key=?",

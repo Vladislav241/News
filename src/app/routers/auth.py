@@ -80,6 +80,7 @@ def me(user=Depends(get_current_user_optional)):
             "id": user["id"],
             "email": user["email"],
             "email_verified": bool(int(user.get("email_verified") or 0)),
+            "email_alerts_enabled": bool(int(user.get("email_alerts_enabled") or 0)),
             "provider": user.get("provider") or "local",
             "created_at": user.get("created_at"),
             "last_login": user.get("last_login"),

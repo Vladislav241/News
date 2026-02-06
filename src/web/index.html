@@ -1650,6 +1650,54 @@
 }
 
 
+
+/* Tracking settings bar */
+.trackingSettings{
+  margin-top: 10px;
+  padding: 14px 16px;
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  background: #fff;
+}
+.trackingSettingsTitle{
+  font-size: 14px;
+  font-weight: 600;
+}
+.trackingSettingsSub{
+  font-size: 12px;
+  color: rgba(0,0,0,0.55);
+  margin-top: 2px;
+}
+
+/* iOS-like switch */
+.switch{ position: relative; display:inline-block; width: 44px; height: 26px; flex: 0 0 auto; }
+.switch input{ opacity:0; width:0; height:0; }
+.slider{
+  position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0;
+  background: rgba(0,0,0,0.15);
+  transition: .2s;
+  border-radius: 999px;
+}
+.slider:before{
+  position:absolute; content:"";
+  height: 22px; width: 22px;
+  left: 2px; top: 2px;
+  background: #fff;
+  transition: .2s;
+  border-radius: 999px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+}
+.switch input:checked + .slider{
+  background: #111;
+}
+.switch input:checked + .slider:before{
+  transform: translateX(18px);
+}
+
 </style>
 </head>
 <body>
@@ -1759,6 +1807,17 @@
     </div>
     <div id="lastUpdated" class="muted" style="margin-top:8px;"></div>
     <div id="trackingHint" class="muted" style="margin-top:10px; display:none;">Tip: drag a card onto the 🗑️ to remove it from Tracking.</div>
+
+    <div id="trackingSettings" class="trackingSettings" style="display:none;">
+      <div class="trackingSettingsLeft">
+        <div class="trackingSettingsTitle">Email notifications</div>
+        <div class="trackingSettingsSub">Send me an email when any tracked event changes</div>
+      </div>
+      <label class="switch">
+        <input id="emailAlertsToggle" type="checkbox" />
+        <span class="slider"></span>
+      </label>
+    </div>
 
     <div id="cards" class="cards"></div>
   </div>

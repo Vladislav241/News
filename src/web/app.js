@@ -1315,6 +1315,7 @@ function updateTrackingHint() {
   el.style.display = show ? 'block' : 'none';
 }
 updateTrackingHint();
+  updateEmailAlertsUI();
 }
 
 function updateTrashZone() {
@@ -2863,3 +2864,58 @@ menuLogout.addEventListener("click", async () => {
 
 
 main();
+
+
+let _emailAlertsInit = false;
+let _emailAlertsLast = null;
+
+async function updateEmailAlertsUI(){
+  const wrap = qs('trackingSettings');
+  const toggle = qs('emailAlertsToggle');
+  if (!wrap || !toggle) return;
+
+  const inTracking = (state.mode === 'fav');
+  const loggedIn = !!(authState && authState.user && authState.user.email);
+
+  wrap.style.display = (inTracking && loggedIn) ? 'flex' : 'none';
+  if (!(inTracking && loggedIn)) return;
+
+  // init listener once
+  if (!_emailAlertsInit){
+    _emailAlertsInit = true;
+    toggle.addEventListener('change', async () => {
+      const enabled = !!toggle.checked;
+      try{
+        const r = await fetch('/api/alerts/email', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          credentials:'include',
+          body: JSON.stringify({ enabled })
+        });
+        const data = await r.json().catch(()=>({}));
+        _emailAlertsLast = !!data.enabled;
+        toggle.checked = _emailAlertsLast;
+      }catch(e){
+        // revert UI on error
+        if (_emailAlertsLast !== null) toggle.checked = _emailAlertsLast;
+      }
+    });
+  }
+
+  // if we already have value from /api/auth/me
+  if (typeof authState.user.email_alerts_enabled !== 'undefined'){
+    toggle.checked = !!authState.user.email_alerts_enabled;
+    _emailAlertsLast = !!toggle.checked;
+  }
+
+  // refresh from server (cheap)
+  try{
+    const r = await fetch('/api/alerts/email', { credentials:'include' });
+    const data = await r.json().catch(()=>({}));
+    const enabled = !!data.enabled;
+    _emailAlertsLast = enabled;
+    toggle.checked = enabled;
+  }catch(e){
+    // ignore
+  }
+}

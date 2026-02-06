@@ -217,6 +217,127 @@ def _cache_path(cluster_id: int, version: str) -> str:
     h = hashlib.sha1(version.encode("utf-8")).hexdigest()[:10]
     return os.path.join(CACHE_DIR, f"share_{cluster_id}_{h}.png")
 
+
+# -----------------------------
+# Tracking update email card
+# -----------------------------
+EMAIL_W, EMAIL_H = 1200, 1500  # high-res for email (will be scaled down by clients)
+
+def _load_font(name: str, size: int) -> ImageFont.FreeTypeFont:
+    fp = os.path.join(_fonts_dir(), name)
+    try:
+        return ImageFont.truetype(fp, size=size)
+    except Exception:
+        return ImageFont.load_default()
+
+def _rounded_rect(draw: ImageDraw.ImageDraw, xy, r: int, fill, outline=None, width: int = 1):
+    # PIL>=8 supports rounded_rectangle
+    try:
+        draw.rounded_rectangle(xy, radius=r, fill=fill, outline=outline, width=width)
+    except Exception:
+        # fallback: plain rect
+        draw.rectangle(xy, fill=fill, outline=outline, width=width)
+
+def _render_tracking_update_image(
+    *,
+    title: str,
+    primary_source: str,
+    old_score: int,
+    new_score: int,
+    outlets: int,
+    direction: str,
+    base_url: str,
+) -> bytes:
+    """Return PNG bytes for the 'trust score changed' email card."""
+    W, H = EMAIL_W, EMAIL_H
+    img = Image.new("RGB", (W, H), (255, 255, 255))
+    d = ImageDraw.Draw(img)
+
+    # Fonts
+    f_logo = _load_font("Inter-Bold.ttf", 52)
+    f_h1 = _load_font("Inter-Regular.ttf", 56)
+    f_h1b = _load_font("Inter-Bold.ttf", 56)
+    f_sub = _load_font("Inter-Regular.ttf", 28)
+    f_card_title = _load_font("Inter-Bold.ttf", 34)
+    f_small = _load_font("Inter-Regular.ttf", 22)
+    f_score_label = _load_font("Inter-Regular.ttf", 26)
+    f_score = _load_font("Inter-Bold.ttf", 70)
+    f_btn = _load_font("Inter-Bold.ttf", 34)
+    f_muted = _load_font("Inter-Regular.ttf", 20)
+
+    # Header logo (simple text logo)
+    # Draw a small black block + text to mimic branding
+    d.rectangle([W//2 - 260, 110, W//2 - 210, 160], fill=(0,0,0))
+    d.text((W//2 - 190, 102), "CHECK", font=f_logo, fill=(0,0,0))
+    d.text((W//2 - 60, 148), "news.", font=_load_font("Inter-Bold.ttf", 44), fill=(0,0,0))
+
+    # Headline
+    y = 260
+    # "Trust score " + bold word + " for a tracked event"
+    x0 = 120
+    d.text((x0, y), "Trust score ", font=f_h1, fill=(0,0,0))
+    w1 = d.textlength("Trust score ", font=f_h1)
+    word = "increased" if direction == "up" else "decreased"
+    d.text((x0 + w1, y), word, font=f_h1b, fill=(0,0,0))
+    w2 = d.textlength(word, font=f_h1b)
+    d.text((x0 + w1 + w2, y), " for a tracked event", font=f_h1, fill=(0,0,0))
+
+    d.text((x0, y+80), "New information has strengthened confidence in this event.", font=f_sub, fill=(40,40,40))
+
+    # Outer card
+    card_x1, card_y1 = 90, 430
+    card_x2, card_y2 = W-90, H-220
+    _rounded_rect(d, [card_x1, card_y1, card_x2, card_y2], r=32, fill=(255,255,255), outline=(220,220,220), width=2)
+
+    # Inner preview block (light gray)
+    inner_x1, inner_y1 = card_x1+70, card_y1+170
+    inner_x2, inner_y2 = card_x2-70, card_y1+650
+    _rounded_rect(d, [inner_x1, inner_y1, inner_x2, inner_y2], r=28, fill=(250,250,250), outline=(235,235,235), width=2)
+
+    d.text((card_x1+70, card_y1+70), "ARTICLE PREVIEW", font=f_small, fill=(170,170,170))
+
+    # Title + source inside preview
+    t = _safe_text(title, 90)
+    d.text((inner_x1+50, inner_y1+50), t, font=f_card_title, fill=(0,0,0))
+    d.text((inner_x2-260, inner_y1+130), _safe_text(primary_source, 22), font=f_small, fill=(130,130,130))
+
+    # Divider line
+    d.line([inner_x1+40, inner_y1+170, inner_x2-40, inner_y1+170], fill=(220,220,220), width=2)
+
+    # Trust score block
+    cx = (inner_x1+inner_x2)//2
+    d.text((cx-70, inner_y1+210), "Trust score", font=f_score_label, fill=(0,0,0))
+    # Scores
+    d.text((cx-210, inner_y1+270), str(int(old_score)), font=f_score, fill=(0,0,0))
+    d.text((cx-30, inner_y1+300), "→", font=_load_font("Inter-Regular.ttf", 70), fill=(120,160,150))
+    d.text((cx+60, inner_y1+270), str(int(new_score)), font=f_score, fill=(0,0,0))
+    d.text((cx-40, inner_y1+370+20), f"{int(outlets)} outlets", font=f_small, fill=(120,120,120))
+
+    # Explanation
+    expl = "The trust score decreased as new sources introduced conflicting or incomplete information related to this event."
+    if direction == "up":
+        expl = "The trust score increased as new sources strengthened confidence in this event."
+    d.text((card_x1+70, inner_y2+70), expl, font=f_small, fill=(40,40,40))
+
+    # Button
+    btn_w, btn_h = 760, 96
+    btn_x1 = (W - btn_w)//2
+    btn_y1 = inner_y2 + 180
+    _rounded_rect(d, [btn_x1, btn_y1, btn_x1+btn_w, btn_y1+btn_h], r=28, fill=(0,0,0))
+    label = "View update"
+    tw = d.textlength(label, font=f_btn)
+    d.text((btn_x1 + (btn_w-tw)//2, btn_y1+26), label, font=f_btn, fill=(255,255,255))
+
+    # Footer
+    foot_y = H-150
+    d.text((W//2 - 250, foot_y), "You’re receiving this email because you’re tracking this event.", font=f_muted, fill=(150,150,150))
+    d.line([220, foot_y+50, W-220, foot_y+50], fill=(220,220,220), width=1)
+    d.text((W//2 - 420, foot_y+80), "CHECK news is an informational service and does not provide factual determinations.", font=f_muted, fill=(170,170,170))
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", optimize=True)
+    return buf.getvalue()
+
 @router.get("/api/share-image/{cluster_id}.png")
 def share_image(cluster_id: int, request: Request):
     meta = db.get_cluster_meta(int(cluster_id))

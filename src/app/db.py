@@ -173,6 +173,7 @@ class Database:
                     email TEXT NOT NULL UNIQUE,
                     hashed_password TEXT,
                     email_verified INTEGER NOT NULL DEFAULT 0,
+                    email_alerts_enabled INTEGER NOT NULL DEFAULT 0,
                     provider TEXT NOT NULL DEFAULT 'local',
                     provider_id TEXT,
                     created_at TEXT NOT NULL,
@@ -276,6 +277,19 @@ class Database:
                 # Store the Stripe customer ID on the user for convenience.
                 conn.execute("ALTER TABLE users ADD COLUMN stripe_customer_id TEXT;")
 
+
+            # ---- Email alerts (global per user + per tracked cluster notification state) ----
+            if not self._has_column("users", "email_alerts_enabled"):
+                conn.execute("ALTER TABLE users ADD COLUMN email_alerts_enabled INTEGER NOT NULL DEFAULT 0;")
+
+            if not self._has_column("user_favorites", "last_notified_score"):
+                conn.execute("ALTER TABLE user_favorites ADD COLUMN last_notified_score INTEGER;")
+            if not self._has_column("user_favorites", "last_notified_sources_count"):
+                conn.execute("ALTER TABLE user_favorites ADD COLUMN last_notified_sources_count INTEGER;")
+            if not self._has_column("user_favorites", "last_notified_at"):
+                conn.execute("ALTER TABLE user_favorites ADD COLUMN last_notified_at TEXT;")
+            if not self._has_column("user_favorites", "last_notified_fingerprint"):
+                conn.execute("ALTER TABLE user_favorites ADD COLUMN last_notified_fingerprint TEXT;")
             conn.commit()
 
     # -----------------
@@ -1078,5 +1092,68 @@ class Database:
 
         return {"cutoff": cutoff, "deleted_clusters": deleted_clusters}
 
+
+
+
+
+    # -----------------
+    # Email alerts (global toggle + notification state)
+    # -----------------
+    def get_user_email_alerts_enabled(self, user_id: int) -> bool:
+        row = self._fetchone("SELECT email_alerts_enabled FROM users WHERE id=?", (int(user_id),))
+        return bool(int((row or {}).get("email_alerts_enabled") or 0))
+
+    def set_user_email_alerts_enabled(self, user_id: int, enabled: bool) -> None:
+        self._exec("UPDATE users SET email_alerts_enabled=? WHERE id=?", (1 if enabled else 0, int(user_id)))
+
+    def get_email_alert_targets(self, limit: int = 200) -> list[dict[str, Any]]:
+        """Return tracked clusters for users who enabled global email alerts."""
+        limit = int(max(1, min(1000, limit)))
+        require_verified = (os.getenv("REQUIRE_EMAIL_VERIFIED") or "1").strip().lower() in ("1", "true", "yes")
+
+        where = [
+            "u.email_alerts_enabled = 1",
+            "u.email IS NOT NULL",
+        ]
+        if require_verified:
+            where.append("u.email_verified = 1")
+
+        sql = f"""
+            SELECT
+                uf.user_id,
+                u.email as user_email,
+                u.email_verified as user_email_verified,
+                uf.cluster_id,
+                uf.last_notified_score,
+                uf.last_notified_sources_count,
+                uf.last_notified_at,
+                uf.last_notified_fingerprint
+            FROM user_favorites uf
+            JOIN users u ON u.id = uf.user_id
+            WHERE {" AND ".join(where)}
+            ORDER BY COALESCE(uf.last_notified_at, '') ASC
+            LIMIT ?
+        """
+        rows = self.connect().execute(sql, (limit,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def mark_email_alert_notified(
+        self,
+        user_id: int,
+        cluster_id: int,
+        score: int,
+        sources_count: int,
+        fingerprint: str,
+        notified_at: Optional[str] = None,
+    ) -> None:
+        notified_at = notified_at or _utc_now_iso()
+        self._exec(
+            """
+            UPDATE user_favorites
+            SET last_notified_score=?, last_notified_sources_count=?, last_notified_at=?, last_notified_fingerprint=?
+            WHERE user_id=? AND cluster_id=?
+            """,
+            (int(score), int(sources_count), notified_at, (fingerprint or "")[:120], int(user_id), int(cluster_id)),
+        )
 
 db = Database()

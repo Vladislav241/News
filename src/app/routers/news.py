@@ -675,3 +675,23 @@ def refresh(request: Request) -> dict[str, Any]:
     _REFRESH_STATE["last_ts_by_ip"][client_ip] = now
     stats = run_ingest_cycle()
     return {"status": "ok", "ingest": stats, "cooldown_seconds": REFRESH_COOLDOWN_SECONDS}
+
+
+# -----------------
+# Global email alerts (one toggle for all tracked events)
+# -----------------
+@router.get("/api/alerts/email")
+def get_email_alerts(user=Depends(require_user)):
+    enabled = db.get_user_email_alerts_enabled(int(user["id"]))
+    return {"enabled": bool(enabled)}
+
+@router.post("/api/alerts/email")
+async def set_email_alerts(request: Request, user=Depends(require_user)):
+    payload = {}
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    enabled = bool(payload.get("enabled"))
+    db.set_user_email_alerts_enabled(int(user["id"]), enabled)
+    return {"enabled": enabled}
