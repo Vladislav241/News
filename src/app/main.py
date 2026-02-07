@@ -23,17 +23,24 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from .db import db
 from .ingest import run_ingest_cycle, process_fulltext_queue_once
-from .routers.debug import router as debug_router
+from .notify import notify_loop
+#from .routers.debug import router as debug_router
 from .routers.health import router as health_router
 from .routers.auth import router as auth_router
 from .routers.news import router as news_router
 from .routers.billing import router as billing_router
 from .routers.share import router as share_router
+from .routers.alerts import router as alerts_router
 from .auth.deps import csrf_origin_check
+from .routers import debug
 
 log = logging.getLogger("news.autorefresh")
 
 app = FastAPI(title="NEWS")
+
+from .routers.debug import router as debug_router
+
+#  app.include_router(debug_router)
 
 # GZip responses (helps a lot on slow/cheap hosts)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -99,6 +106,7 @@ def favicon():
 app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(news_router)
+app.include_router(alerts_router)
 app.include_router(billing_router)
 app.include_router(share_router)
 app.include_router(debug_router)
@@ -108,6 +116,8 @@ app.mount("/", StaticFiles(directory="src/web", html=True), name="web")
 
 # ---------- Auto refresh loop ----------
 _auto_task: Optional[asyncio.Task] = None
+_notify_task: Optional[asyncio.Task] = None
+
 _fulltext_task: Optional[asyncio.Task] = None
 _ingest_lock = asyncio.Lock()
 
@@ -229,6 +239,11 @@ async def _startup_autorefresh() -> None:
         _fulltext_task = asyncio.create_task(_fulltext_loop())
         log.info("fulltext loop started")
 
+    global _notify_task
+    if _notify_task is None:
+        _notify_task = asyncio.create_task(notify_loop())
+        log.info("notify loop started")
+
 
 @app.on_event("shutdown")
 async def _shutdown_autorefresh() -> None:
@@ -244,3 +259,9 @@ async def _shutdown_autorefresh() -> None:
         _fulltext_task.cancel()
         _fulltext_task = None
         log.info("fulltext loop stopped")
+
+    global _notify_task
+    if _notify_task is not None:
+        _notify_task.cancel()
+        _notify_task = None
+        log.info("notify loop stopped")

@@ -1,186 +1,408 @@
 from __future__ import annotations
 
-import asyncio
-import hashlib
 import os
+import asyncio
+import logging
+import hashlib
+import base64
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
+from urllib.parse import quote
 
 from .db import db
 from .emailer import send_email
 
-
-def _public_base_url() -> str:
-    return (os.getenv("PUBLIC_BASE_URL") or "http://127.0.0.1:8000").strip().rstrip("/")
+log = logging.getLogger("news.notify")
 
 
-def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc).replace(microsecond=0)
 
 
-def _safe_int(v: Any, default: int = 0) -> int:
+def _parse_dt(s: Optional[str]) -> Optional[datetime]:
+    if not s:
+        return None
     try:
-        return int(v)
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
     except Exception:
-        return default
+        return None
 
 
-def _email_html(payload: dict[str, Any]) -> str:
-    """Simple, email-client friendly HTML that matches your screenshot vibe."""
+def _base_url() -> str:
+    # Prefer explicit public URL
+    env = (os.getenv("APP_BASE_URL") or os.getenv("PUBLIC_BASE_URL") or "").strip()
+    if env:
+        return env.rstrip("/")
+    # Project default (your Render app). You can override with APP_BASE_URL.
+    return "https://news-app-qxvw.onrender.com"
 
-    brand = "CHECK news."
-    title = payload.get("title") or "Tracked event"
-    source = payload.get("source") or ""
-    score_from = payload.get("score_from")
-    score_to = payload.get("score_to")
-    outlets = payload.get("outlets")
-    note = payload.get("note")
-    action_url = payload.get("action_url") or _public_base_url()
 
-    # Minimal inline CSS for broad email support
-    return f"""<!doctype html>
+def _min_interval_seconds() -> int:
+    try:
+        return int((os.getenv("EMAIL_NOTIFY_MIN_SECONDS") or "600").strip())
+    except Exception:
+        return 600
+
+
+def _logo_data_uri() -> str:
+    """Embed Logo.svg directly into the email so it works even on localhost."""
+    # Try both known locations in this repo.
+    candidates = [
+        os.path.join("src", "web", "static", "icons", "LogoEmail.svg"),
+        os.path.join("src", "web", "icons", "LogoEmail.svg"),
+    ]
+    for p in candidates:
+        try:
+            with open(p, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode("ascii")
+            return f"data:image/svg+xml;base64,{b64}"
+        except Exception:
+            continue
+    # Fallback: empty (email client will just show alt text)
+    return ""
+
+def _arrow_data_uri() -> str:
+    candidates = [
+        os.path.join("web", "icons", "Arrow.svg"),              # <-- ВОТ ТВОЙ ПУТЬ по скрину
+        os.path.join("src", "web", "icons", "Arrow.svg"),
+        os.path.join("src", "web", "static", "icons", "Arrow.svg"),
+    ]
+    for p in candidates:
+        try:
+            with open(p, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode("ascii")
+            return f"data:image/svg+xml;base64,{b64}"
+        except Exception:
+            continue
+    log.warning("Arrow.svg not found in candidates=%s", candidates)
+    return ""
+
+
+
+def _build_email_html(
+    *,
+    cluster_id: int,
+    title: str,
+    primary_source: str,
+    old_score: int,
+    new_score: int,
+    outlets: int,
+) -> tuple[str, str]:
+    """Return (subject, html)"""
+    base = _base_url()
+
+    if new_score > old_score:
+        direction = "increased"
+        expl = "strengthened confidence in this event."
+    elif new_score < old_score:
+        direction = "decreased"
+        expl = "reduced confidence in this event."
+    else:
+        direction = "updated"
+        expl = "recalculated confidence in this event."
+
+    subject = f"CHECK news — Trust score {direction}: {old_score} → {new_score}"
+    view_url = f"{base}/share/{cluster_id}"
+
+    # Styling notes:
+    # - Table layout + inline styles for Gmail/Outlook reliability
+    # - Inter font if available, with safe fallbacks
+    # - Green longer arrow between scores
+    logo_uri = _logo_data_uri()
+    arrow_uri = _arrow_data_uri()
+
+    # Only the word (increased/decreased/updated) is bold in the title line.
+    title_line = f'Trust score <span style="font-weight:300;">{direction}</span> for a tracked event'
+
+    # Green arrow: long line + arrow head
+    arrow_html = f'''
+  <img src="{arrow_uri}"
+      alt="→"
+      style="
+        display:inline-block;
+        vertical-align:middle;
+        height:24px;
+        margin:0 16px;
+        position:relative;
+        top:-10px;
+      ">
+  '''
+
+
+    safe_title = (title or "").strip() or "Tracked event"
+    safe_source = (primary_source or "").strip()
+
+    html = f"""<!doctype html>
 <html>
-  <body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
-    <div style="max-width:700px;margin:0 auto;padding:40px 18px;">
-      <div style="text-align:center;margin-bottom:24px;">
-        <div style="display:inline-block;font-weight:800;letter-spacing:0.5px;font-size:22px;">{brand}</div>
-      </div>
+  <head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>{subject}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;600;800&display=swap" rel="stylesheet">
+  </head>
+  <body style="margin:0;padding:0;background:#ffffff;font-family:Inter,Arial,sans-serif;color:#0b0b0b;">
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#ffffff;">
+      <tr>
+        <td align="center" style="padding:32px 12px;">
+          <table width="720" cellpadding="0" cellspacing="0" role="presentation" style="max-width:720px;width:100%;">
+            <!-- Header -->
+            <tr>
+              <td align="center" style="padding:10px 0 66px;">
+                <img src="{logo_uri}" alt="CHECK news" style="height:55px;display:block;border:0;"/>
+              </td>
+            </tr>
 
-      <div style="background:#ffffff;border-radius:18px;padding:34px 26px;box-shadow:0 10px 30px rgba(0,0,0,0.08);">
-        <div style="text-align:center;font-size:34px;font-weight:700;line-height:1.2;">
-          Trust score <span style="font-weight:900;">{payload.get('headline_emphasis','changed')}</span>
-        </div>
-        <div style="text-align:center;margin-top:10px;color:#475569;font-size:15px;">{payload.get('subheadline','New information has changed confidence in this event.')}</div>
+            <!-- Title -->
+            <tr>
+              <td align="center" style="padding:0 0 10px;">
+                <div style="font-size:34px;line-height:1.12;font-weight:200;letter-spacing:-0.6px;">
+                  {title_line}
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td align="center" style="padding:0 0 26px;">
+                <div style="font-size:20px;line-height:1.4;color:#6b6b6b;">
+                  New information has {expl}
+                </div>
+              </td>
+            </tr>
 
-        <div style="margin-top:28px;background:#f8fafc;border-radius:18px;padding:22px;">
-          <div style="color:#94a3b8;font-size:12px;letter-spacing:1px;text-transform:uppercase;">Article preview</div>
+            <!-- Card (outer + inner) -->
+            <tr>
+              <td style="padding:0 10px;">
+                <!-- OUTER CARD -->
+                <table width="100%" cellpadding="0" cellspacing="0" role="presentation"
+                  style="border:1px solid #e5e5e5;border-radius:22px;background:#ffffff;">
+                  <tr>
+                    <td style="padding:22px;">
+                     <div style="font-size:14px;letter-spacing:0.12em;color:#a1a1a1;font-weight:300;">
+                              ARTICLE PREVIEW
+                            </div>
 
-          <div style="margin-top:14px;background:#ffffff;border-radius:18px;padding:22px;box-shadow:0 10px 24px rgba(0,0,0,0.08);">
-            <div style="font-size:18px;font-weight:800;line-height:1.25;">{title}</div>
-            <div style="margin-top:8px;color:#94a3b8;font-size:12px;">{source}</div>
-            <div style="height:1px;background:#e2e8f0;margin:16px 0;"></div>
+                      <!-- INNER CARD (shadow) -->
+                      <table width="100%" cellpadding="0" cellspacing="0" role="presentation"
+                        style="margin-top:14px;background:#ffffff;border-radius:18px;box-shadow:0 10px 28px rgba(0,0,0,0.10);">
+                        <tr>
+                          <td style="padding:22px 22px 18px;">
 
-            <div style="text-align:center;color:#64748b;font-size:13px;">Trust score</div>
-            <div style="text-align:center;margin-top:6px;font-size:56px;font-weight:900;letter-spacing:-1px;">
-              {score_from} <span style="color:#94a3b8;font-weight:700;font-size:44px;vertical-align:6px;">→</span> {score_to}
-            </div>
-            <div style="text-align:center;margin-top:6px;color:#94a3b8;font-size:13px;">{outlets} outlets</div>
-          </div>
 
-          <div style="margin-top:16px;color:#475569;font-size:13px;line-height:1.35;">{note}</div>
+                           <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin-top:14px;">
+                            <tr>
+                              <!-- Title -->
+                              <td align="left" style="
+                                font-size:25px;
+                                line-height:1.25;
+                                font-weight:400;
+                                letter-spacing:-0.3px;
+                                padding-right:12px;
+                              ">
+                                {safe_title}
+                              </td>
+                            </tr>
+                            <tr>
+                              <!-- Source right -->
+                              <td align="right" style="
+                                padding-top:8px;
+                                font-size:18px;
+                                color:#7a7a7a;
+                                white-space:nowrap;
+                              ">
+                                {safe_source}
+                              </td>
+                            </tr>
+                          </table>
 
-          <div style="text-align:center;margin-top:22px;">
-            <a href="{action_url}" style="display:inline-block;background:#0b0b0c;color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:14px;font-weight:800;">View update</a>
-          </div>
-        </div>
 
-        <div style="margin-top:22px;text-align:center;color:#94a3b8;font-size:12px;">You’re receiving this email because you’re tracking this event.</div>
-        <div style="margin-top:16px;text-align:center;color:#94a3b8;font-size:11px;line-height:1.4;">
-          CHECK news is an informational service and does not provide factual determinations.<br/>
-          Trust scores are based on automated analysis of publicly available sources and may change.
-        </div>
-      </div>
-    </div>
+                            <!-- Divider line -->
+                            <div style="margin:18px 0 18px;height:1px;background:#e8e8e8;"></div>
+
+                            <div style="margin-top:0;text-align:center;font-size:18px;color:#7a7a7;font-weight:300;">
+                              Trust score
+                            </div>
+
+                            <div style="margin-top:10px;text-align:center;">
+                              <span style="font-size:42px;line-height:1;font-weight:800;">{new_score}</span>
+                              {arrow_html}
+                              <span style="font-size:42px;line-height:1;font-weight:800;">{new_score}</span>
+                            </div>
+
+                            <div style="margin-top:12px;text-align:center;font-size:18px;color:#7a7a7a;">
+                              {outlets} outlets
+                            </div>
+
+                          </td>
+                        </tr>
+                      </table>
+
+                      <div style="margin-top:18px;font-size:16px;line-height:1.5;color:#3f3f3f;">
+                        The trust score {direction} as additional independent sources confirmed key details of this event.
+                      </div>
+
+                      <div style="margin-top:22px;text-align:center;">
+                        <a href="{view_url}"
+                          style="display:inline-block;background:#000;color:#fff;text-decoration:none;
+                                  padding:13px 175px;border-radius:12px;font-weight:800;font-size:20px;">
+                          View update
+                        </a>
+                      </div>
+
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+
+            <!-- Footer -->
+            <tr>
+              <td align="center" style="padding:28px 14px 0;color:#8a8a8a;font-size:13px;line-height:1.5;">
+                You’re receiving this email because you’re tracking this event.
+
+                <!-- Divider -->
+                <div style="margin:20px 0;height:1px;background:#e5e5e5; max-width:610px;"></div>
+
+                <div>
+                  CHECK news is an informational service and does not provide factual determinations.<br>
+                  Trust scores are based on automated analysis of publicly available sources<br> and may change as new information becomes available.
+                </div>
+              </td>
+            </tr>
+
+
+          </table>
+        </td>
+      </tr>
+    </table>
   </body>
 </html>"""
+    return subject, html
 
 
-def _make_fingerprint(cluster_id: int, score: int, sources_count: int, updated_at: str | None) -> str:
-    raw = f"{cluster_id}|{score}|{sources_count}|{updated_at or ''}".encode("utf-8")
-    return hashlib.sha1(raw).hexdigest()[:20]
+async def notify_loop() -> None:
+    """Background loop: send emails when tracked events change score."""
+    interval = int((os.getenv("EMAIL_NOTIFY_POLL_SECONDS") or "120").strip() or "120")
+    log.info("notify loop started (poll=%ss)", interval)
 
-
-def _build_payload(user_email: str, cluster: dict[str, Any], score_from: int, score_to: int, outlets: int) -> dict[str, Any]:
-    title = (cluster.get("title") or "Tracked event").strip()
-    topic = (cluster.get("topic") or "general").strip()
-    updated_at = cluster.get("updated_at")
-
-    note = "The trust score changed as new sources introduced conflicting or incomplete information related to this event."
-    if score_to > score_from:
-        note = "The trust score increased as new sources strengthened confidence in this event."
-    elif score_to < score_from:
-        note = "The trust score decreased as new sources introduced conflicting or incomplete information related to this event."
-
-    return {
-        "headline_emphasis": "increased" if score_to > score_from else ("decreased" if score_to < score_from else "changed"),
-        "subheadline": "New information has changed confidence in this event.",
-        "title": title,
-        "source": f"Topic: {topic} · Updated {updated_at or ''}",
-        "score_from": score_from,
-        "score_to": score_to,
-        "outlets": outlets,
-        "note": note,
-        "action_url": f"{_public_base_url()}/?tracking=1&cluster={int(cluster.get('id') or 0)}",
-    }
+    while True:
+        try:
+            await _notify_once()
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            log.exception("notify loop error: %s", e)
+        await asyncio.sleep(interval)
 
 
 async def _notify_once() -> None:
-    db.connect()
     db.ensure_schema()
 
     targets = db.get_email_alert_targets(limit=200)
     if not targets:
         return
 
+    base = _base_url()
+    min_int = _min_interval_seconds()
+    now = _utc_now()
+
+    # Fetch clusters in one query
+    ids = [int(r["cluster_id"]) for r in targets]
+    clusters = {int(c["id"]): c for c in db.get_clusters_by_ids(ids)}
+
     for t in targets:
-        user_id = int(t["user_id"])
-        user_email = (t.get("user_email") or "").strip()
-        if not user_email:
+        uid = int(t["user_id"])
+        cid = int(t["cluster_id"])
+        email = (t.get("user_email") or "").strip()
+
+        # Require verified for local accounts if REQUIRE_EMAIL_VERIFIED is on
+        enforce = (os.getenv("REQUIRE_EMAIL_VERIFIED") or "").strip().lower() in ("1","true","yes")
+        if enforce and not bool(int(t.get("user_email_verified") or 0)):
             continue
 
-        cluster_id = int(t["cluster_id"])
-
-        cluster = db.get_cluster_meta(cluster_id)
-        if not cluster:
+        c = clusters.get(cid)
+        if not c:
             continue
-
-        score_row = db.get_score(cluster_id) or {}
-        score_now = _safe_int(score_row.get("credibility_score"), 0)
-
-        sources = db.get_cluster_sources(cluster_id)
-        outlets_now = len(sources)
-
-        fingerprint = _make_fingerprint(cluster_id, score_now, outlets_now, cluster.get("updated_at"))
-        last_fp = (t.get("last_notified_fingerprint") or "").strip()
-
-        # First run: set baseline without sending anything
-        if not last_fp:
-            db.mark_email_alert_notified(user_id, cluster_id, score_now, outlets_now, fingerprint, _utc_now_iso())
-            continue
-
-        if last_fp == fingerprint:
-            continue
-
-        last_score = t.get("last_notified_score")
-        score_from = _safe_int(last_score, score_now)
-
-        payload = _build_payload(user_email, cluster, score_from, score_now, outlets_now)
-        html = _email_html(payload)
-
-        subject = f"CHECK news: Trust score {payload['headline_emphasis']} ({score_from} → {score_now})"
-        text = f"{payload['title']}\nTrust score: {score_from} -> {score_now}\nOutlets: {outlets_now}\n{payload['action_url']}"
 
         try:
-            send_email(user_email, subject, text=text, html=html)
-            db.mark_email_alert_notified(user_id, cluster_id, score_now, outlets_now, fingerprint, _utc_now_iso())
-        except Exception as e:
-            print("notify email error:", e)
+            new_score = int(c.get("credibility_score") or 0)
+        except Exception:
+            new_score = 0
 
-
-async def notify_loop(stop_event: asyncio.Event) -> None:
-    poll = int(os.getenv("EMAIL_ALERT_POLL_SECONDS", "120"))
-    poll = max(30, min(3600, poll))
-
-    print(f"INFO:news.notify:notify loop started (poll={poll}s)")
-
-    while not stop_event.is_set():
+        brief = db.get_cluster_sources_brief(cid) or {}
         try:
-            await _notify_once()
-        except Exception as e:
-            print("ERROR:news.notify:notify loop error:", e)
-        try:
-            await asyncio.wait_for(stop_event.wait(), timeout=poll)
-        except asyncio.TimeoutError:
-            pass
+            outlets = int(brief.get("sources_count") or 0)
+        except Exception:
+            outlets = 0
+        primary_source = str(brief.get("primary_source") or "").strip()
+        title = str(c.get("title") or "").strip()
 
-    print("INFO:news.notify:notify loop stopped")
+        # Compute fingerprint (stable per update)
+        fp_src = f"{cid}|{c.get('updated_at') or ''}|{new_score}|{outlets}"
+        fingerprint = hashlib.sha1(fp_src.encode("utf-8")).hexdigest()[:24]
+
+        prev_fp = (t.get("last_notified_fingerprint") or "").strip()
+        prev_score = t.get("last_notified_score")
+        prev_sources = t.get("last_notified_sources_count")
+        last_at = _parse_dt(t.get("last_notified_at"))
+
+        # First-time: snapshot only (no email)
+        if prev_score is None:
+            db.update_email_alert_notified_state(
+                uid, cid,
+                new_score=new_score,
+                new_sources_count=outlets,
+                fingerprint=fingerprint,
+                notified_at_iso=now.isoformat(),
+            )
+            continue
+
+        try:
+            old_score = int(prev_score)
+        except Exception:
+            old_score = new_score
+
+        # No change? (also protects against duplicates)
+        if new_score == old_score and fingerprint == prev_fp:
+            continue
+
+        # Rate limit
+        if last_at and last_at.tzinfo is None:
+            last_at = last_at.replace(tzinfo=timezone.utc)
+        if last_at and (now - last_at).total_seconds() < min_int:
+            log.info(
+                "skip notify (rate-limit) user=%s cluster=%s last=%s min=%ss",
+                uid,
+                cid,
+                last_at.isoformat(),
+                min_int,
+            )
+            continue
+
+        # Build + send
+        subject, html = _build_email_html(
+            cluster_id=cid,
+            title=title,
+            primary_source=primary_source,
+            old_score=old_score,
+            new_score=new_score,
+            outlets=outlets,
+        )
+        ok = send_email(
+            to_email=email,
+            subject=subject,
+            html=html,
+            text=f"Trust score {old_score} -> {new_score}. View: {base}/share/{cid}",
+        )
+        if ok:
+            log.info("email sent user=%s cluster=%s to=%s", uid, cid, email)
+        else:
+            log.warning("email NOT sent user=%s cluster=%s to=%s", uid, cid, email)
+        log.info("notify send user=%s cluster=%s to=%s ok=%s", uid, cid, email, ok)
+        if ok:
+            db.update_email_alert_notified_state(
+                uid, cid,
+                new_score=new_score,
+                new_sources_count=outlets,
+                fingerprint=fingerprint,
+                notified_at_iso=now.isoformat(),
+            )

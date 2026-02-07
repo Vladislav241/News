@@ -173,7 +173,6 @@ class Database:
                     email TEXT NOT NULL UNIQUE,
                     hashed_password TEXT,
                     email_verified INTEGER NOT NULL DEFAULT 0,
-                    email_alerts_enabled INTEGER NOT NULL DEFAULT 0,
                     provider TEXT NOT NULL DEFAULT 'local',
                     provider_id TEXT,
                     created_at TEXT NOT NULL,
@@ -201,6 +200,14 @@ class Database:
                     last_seen_score INTEGER,
                     last_seen_sources_count INTEGER,
                     last_seen_at TEXT,
+
+                    -- Per-event email alerts (opt-in)
+                    email_alerts_enabled INTEGER NOT NULL DEFAULT 0,
+                    last_notified_score INTEGER,
+                    last_notified_sources_count INTEGER,
+                    last_notified_at TEXT,
+                    last_notified_fingerprint TEXT,
+
                     PRIMARY KEY (user_id, cluster_id),
                     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
                     FOREIGN KEY(cluster_id) REFERENCES clusters(id) ON DELETE CASCADE
@@ -270,6 +277,22 @@ class Database:
             if not self._has_column("favorites", "last_seen_at"):
                 conn.execute("ALTER TABLE favorites ADD COLUMN last_seen_at TEXT;")
 
+            # ---- Tracking email alerts (per-user, per-event) ----
+            if not self._has_column("user_favorites", "email_alerts_enabled"):
+                conn.execute("ALTER TABLE user_favorites ADD COLUMN email_alerts_enabled INTEGER NOT NULL DEFAULT 0;")
+
+            if not self._has_column("user_favorites", "last_notified_score"):
+                conn.execute("ALTER TABLE user_favorites ADD COLUMN last_notified_score INTEGER;")
+
+            if not self._has_column("user_favorites", "last_notified_sources_count"):
+                conn.execute("ALTER TABLE user_favorites ADD COLUMN last_notified_sources_count INTEGER;")
+
+            if not self._has_column("user_favorites", "last_notified_at"):
+                conn.execute("ALTER TABLE user_favorites ADD COLUMN last_notified_at TEXT;")
+
+            if not self._has_column("user_favorites", "last_notified_fingerprint"):
+                conn.execute("ALTER TABLE user_favorites ADD COLUMN last_notified_fingerprint TEXT;")
+
             # ---- Subscription migrations ----
             # Older DBs may not have the subscription table or new columns.
             # The CREATE TABLE above handles the table; here we patch columns defensively.
@@ -277,19 +300,6 @@ class Database:
                 # Store the Stripe customer ID on the user for convenience.
                 conn.execute("ALTER TABLE users ADD COLUMN stripe_customer_id TEXT;")
 
-
-            # ---- Email alerts (global per user + per tracked cluster notification state) ----
-            if not self._has_column("users", "email_alerts_enabled"):
-                conn.execute("ALTER TABLE users ADD COLUMN email_alerts_enabled INTEGER NOT NULL DEFAULT 0;")
-
-            if not self._has_column("user_favorites", "last_notified_score"):
-                conn.execute("ALTER TABLE user_favorites ADD COLUMN last_notified_score INTEGER;")
-            if not self._has_column("user_favorites", "last_notified_sources_count"):
-                conn.execute("ALTER TABLE user_favorites ADD COLUMN last_notified_sources_count INTEGER;")
-            if not self._has_column("user_favorites", "last_notified_at"):
-                conn.execute("ALTER TABLE user_favorites ADD COLUMN last_notified_at TEXT;")
-            if not self._has_column("user_favorites", "last_notified_fingerprint"):
-                conn.execute("ALTER TABLE user_favorites ADD COLUMN last_notified_fingerprint TEXT;")
             conn.commit()
 
     # -----------------
@@ -787,7 +797,8 @@ class Database:
         with self.connect() as conn:
             rows = conn.execute(
                 """
-                SELECT cluster_id, created_at, last_seen_score, last_seen_sources_count, last_seen_at
+                SELECT cluster_id, created_at, last_seen_score, last_seen_sources_count, last_seen_at,
+                   email_alerts_enabled, last_notified_score, last_notified_sources_count, last_notified_at, last_notified_fingerprint
                 FROM favorites
                 WHERE device_id = ?
                 ORDER BY created_at DESC
@@ -846,7 +857,7 @@ class Database:
     def create_user_local(self, email: str, hashed_password: str) -> int:
         now = _utc_now_iso()
         cur = self._exec(
-            "INSERT INTO users(email, hashed_password, email_verified, provider, created_at) VALUES(?, ?, 0, 'local', ?)",
+            "INSERT INTO users(email, hashed_password, email_verified, provider, created_at) VALUES(?, ?, 1, 'local', ?)",
             ((email or "").strip().lower(), hashed_password, now),
         )
         return int(cur.lastrowid)
@@ -957,13 +968,20 @@ class Database:
         )
         return [int(r["cluster_id"]) for r in rows]
 
+    def is_cluster_user_favorited(self, user_id: int, cluster_id: int) -> bool:
+        row = self._fetchone(
+            "SELECT 1 as x FROM user_favorites WHERE user_id=? AND cluster_id=? LIMIT 1",
+            (int(user_id), int(cluster_id)),
+        )
+        return bool(row)
     def delete_user_favorite(self, user_id: int, cluster_id: int) -> None:
         self._exec("DELETE FROM user_favorites WHERE user_id=? AND cluster_id=?", (int(user_id), int(cluster_id)))
 
     def get_user_favorites_with_state(self, user_id: int) -> list[dict[str, Any]]:
         rows = self._fetchall(
             """
-            SELECT cluster_id, created_at, last_seen_score, last_seen_sources_count, last_seen_at
+            SELECT cluster_id, created_at, last_seen_score, last_seen_sources_count, last_seen_at,
+                   email_alerts_enabled, last_notified_score, last_notified_sources_count, last_notified_at, last_notified_fingerprint
             FROM user_favorites
             WHERE user_id=?
             ORDER BY created_at DESC
@@ -986,6 +1004,159 @@ class Database:
                 [(u[1], u[2], u[3], uid, u[0]) for u in updates],
             )
             conn.commit()
+
+
+    def set_user_favorite_email_alert(
+        self,
+        user_id: int,
+        cluster_id: int,
+        enabled: bool,
+        *,
+        current_score: Optional[int] = None,
+        current_sources_count: Optional[int] = None,
+    ) -> None:
+        """Enable/disable per-event email alerts.
+
+        When enabling, we snapshot the current state as 'last_notified_*' so the user
+        doesn't get an immediate email for the current score; only for *future changes*.
+        """
+        uid = int(user_id)
+        cid = int(cluster_id)
+        en = 1 if enabled else 0
+        now = _utc_now_iso()
+        with self._lock:
+            if enabled:
+                self.connect().execute(
+                    """
+                    UPDATE user_favorites
+                    SET email_alerts_enabled = 1,
+                        last_notified_score = COALESCE(?, last_notified_score),
+                        last_notified_sources_count = COALESCE(?, last_notified_sources_count),
+                        last_notified_at = COALESCE(?, last_notified_at)
+                    WHERE user_id = ? AND cluster_id = ?
+                    """,
+                    (current_score, current_sources_count, now, uid, cid),
+                )
+            else:
+                self.connect().execute(
+                    """
+                    UPDATE user_favorites
+                    SET email_alerts_enabled = 0
+                    WHERE user_id = ? AND cluster_id = ?
+                    """,
+                    (uid, cid),
+                )
+            self.connect().commit()
+
+    def get_email_alert_targets(self, limit: int = 200) -> list[dict[str, Any]]:
+        """Return tracked events that have email alerts enabled, with user email."""
+        rows = self._fetchall(
+            """
+            SELECT
+                uf.user_id,
+                uf.cluster_id,
+                uf.email_alerts_enabled,
+                uf.last_notified_score,
+                uf.last_notified_sources_count,
+                uf.last_notified_at,
+                uf.last_notified_fingerprint,
+                u.email as user_email,
+                u.email_verified as user_email_verified
+            FROM user_favorites uf
+            JOIN users u ON u.id = uf.user_id
+            WHERE uf.email_alerts_enabled = 1
+            ORDER BY COALESCE(uf.last_notified_at, uf.created_at) ASC
+            LIMIT ?
+            """,
+            (int(limit),),
+        )
+        return rows
+
+    def update_email_alert_notified_state(
+        self,
+        user_id: int,
+        cluster_id: int,
+        *,
+        new_score: int,
+        new_sources_count: int,
+        fingerprint: str,
+        notified_at_iso: Optional[str] = None,
+    ) -> None:
+        uid = int(user_id)
+        cid = int(cluster_id)
+        ts = (notified_at_iso or _utc_now_iso())
+        with self._lock:
+            self.connect().execute(
+                """
+                UPDATE user_favorites
+                SET last_notified_score = ?,
+                    last_notified_sources_count = ?,
+                    last_notified_at = ?,
+                    last_notified_fingerprint = ?
+                WHERE user_id = ? AND cluster_id = ?
+                """,
+                (int(new_score), int(new_sources_count), ts, str(fingerprint), uid, cid),
+            )
+            self.connect().commit()
+
+
+    # -----------------
+    # Email alerts (global toggle)
+    # -----------------
+    def get_user_email_alerts_enabled(self, user_id: int) -> bool:
+        row = self._fetchone(
+            "SELECT 1 as x FROM user_favorites WHERE user_id=? AND email_alerts_enabled=1 LIMIT 1",
+            (int(user_id),),
+        )
+        return bool(row)
+
+    def set_user_email_alerts_enabled_all(self, user_id: int, enabled: bool) -> None:
+        """Enable/disable email alerts for *all* tracked events for a user.
+
+        When enabling, we baseline the last_notified_* fields to the current state
+        so the user doesn't get an immediate email for old changes.
+        """
+        uid = int(user_id)
+        en = 1 if enabled else 0
+        now = _utc_now_iso()
+
+        self._exec("UPDATE user_favorites SET email_alerts_enabled=? WHERE user_id=?", (en, uid))
+
+        if not enabled:
+            return
+
+        rows = self._fetchall("SELECT cluster_id FROM user_favorites WHERE user_id=?", (uid,))
+        cluster_ids = [int(r["cluster_id"]) for r in rows]
+        if not cluster_ids:
+            return
+
+        updates = []
+        for cid in cluster_ids:
+            score_row = self.get_score(cid) or {}
+            score = int(score_row.get("credibility_score") or 0)
+            sources_count = len(self.get_cluster_sources(cid) or [])
+            fingerprint = f"{score}|{sources_count}"
+            # Do NOT set last_notified_at here, so the next real change is not
+            # blocked by the notify loop's minimum interval.
+            updates.append((score, sources_count, None, fingerprint, uid, cid))
+
+        with self.connect() as conn:
+            conn.executemany(
+                """
+                UPDATE user_favorites
+                SET last_notified_score=?,
+                    last_notified_sources_count=?,
+                    last_notified_at=?,
+                    last_notified_fingerprint=?
+                WHERE user_id=? AND cluster_id=?
+                """,
+                updates,
+            )
+            conn.commit()
+
+
+    def set_user_email_alerts_enabled(self, user_id: int, enabled: bool):
+            return self.set_user_email_alerts_enabled_all(user_id, enabled)
 
     # --------- API query ----------
     def query_clusters(
@@ -1092,68 +1263,5 @@ class Database:
 
         return {"cutoff": cutoff, "deleted_clusters": deleted_clusters}
 
-
-
-
-
-    # -----------------
-    # Email alerts (global toggle + notification state)
-    # -----------------
-    def get_user_email_alerts_enabled(self, user_id: int) -> bool:
-        row = self._fetchone("SELECT email_alerts_enabled FROM users WHERE id=?", (int(user_id),))
-        return bool(int((row or {}).get("email_alerts_enabled") or 0))
-
-    def set_user_email_alerts_enabled(self, user_id: int, enabled: bool) -> None:
-        self._exec("UPDATE users SET email_alerts_enabled=? WHERE id=?", (1 if enabled else 0, int(user_id)))
-
-    def get_email_alert_targets(self, limit: int = 200) -> list[dict[str, Any]]:
-        """Return tracked clusters for users who enabled global email alerts."""
-        limit = int(max(1, min(1000, limit)))
-        require_verified = (os.getenv("REQUIRE_EMAIL_VERIFIED") or "1").strip().lower() in ("1", "true", "yes")
-
-        where = [
-            "u.email_alerts_enabled = 1",
-            "u.email IS NOT NULL",
-        ]
-        if require_verified:
-            where.append("u.email_verified = 1")
-
-        sql = f"""
-            SELECT
-                uf.user_id,
-                u.email as user_email,
-                u.email_verified as user_email_verified,
-                uf.cluster_id,
-                uf.last_notified_score,
-                uf.last_notified_sources_count,
-                uf.last_notified_at,
-                uf.last_notified_fingerprint
-            FROM user_favorites uf
-            JOIN users u ON u.id = uf.user_id
-            WHERE {" AND ".join(where)}
-            ORDER BY COALESCE(uf.last_notified_at, '') ASC
-            LIMIT ?
-        """
-        rows = self.connect().execute(sql, (limit,)).fetchall()
-        return [dict(r) for r in rows]
-
-    def mark_email_alert_notified(
-        self,
-        user_id: int,
-        cluster_id: int,
-        score: int,
-        sources_count: int,
-        fingerprint: str,
-        notified_at: Optional[str] = None,
-    ) -> None:
-        notified_at = notified_at or _utc_now_iso()
-        self._exec(
-            """
-            UPDATE user_favorites
-            SET last_notified_score=?, last_notified_sources_count=?, last_notified_at=?, last_notified_fingerprint=?
-            WHERE user_id=? AND cluster_id=?
-            """,
-            (int(score), int(sources_count), notified_at, (fingerprint or "")[:120], int(user_id), int(cluster_id)),
-        )
 
 db = Database()
