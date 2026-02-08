@@ -1914,6 +1914,86 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
   /* Cards spacing */
   .newsCard{ border-radius: 16px; }
 }
+/* === Interests / tags layout fix (mobile) === */
+
+/* База: пусть бар умеет переноситься и держит toggle справа */
+.tagsBar{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;              /* важно */
+}
+
+.tags{
+  flex: 1 1 240px;              /* можно сжиматься/расти */
+  min-width: 0;
+  display:flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* Чипы: чтобы выглядели «пиллами» и не растягивались на всю ширину */
+.tag{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width: auto;                  /* важно: не 100% */
+  max-width: 100%;
+  white-space: nowrap;
+}
+
+/* Toggle справа */
+.thumbToggleWrap{
+  flex: 0 0 auto;
+  margin-left: auto;            /* прижимаем вправо */
+  padding-top: 0;
+}
+
+/* На очень узких (типа iPhone SE) делаем 2 колонки чипов как на фото 2 */
+@media (max-width: 420px){
+  .tags{
+    display:grid;
+    grid-template-columns: repeat(2, max-content); /* 2 колонки «по контенту» */
+    gap: 10px;
+    align-content: start;
+  }
+
+  /* если вдруг не влазит — пусть чипы могут переносить текст */
+  .tag{ white-space: normal; }
+}
+/* === Mobile: move all card controls to the RIGHT === */
+@media (max-width: 520px){
+  .newsTopRow{
+    display: flex;
+    align-items: center;
+  }
+
+  /* ВЕСЬ блок с 🔥 toggle score ↗ уезжает вправо */
+  .newsTopRight{
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+}
+/* === Interests: free-flow chips (NOT strict rows) === */
+.tags{
+  display: flex;
+  flex-wrap: wrap;        /* 🔥 ключ */
+  gap: 10px 12px;         /* вертикаль / горизонталь */
+  align-items: flex-start;
+}
+
+/* Чипы не тянутся и имеют разную ширину */
+.tag{
+  width: auto;
+  white-space: nowrap;
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-size: 14px;
+}
 
 </style>
 </head>
