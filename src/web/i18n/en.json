@@ -1,0 +1,138 @@
+{
+  "ui": {
+    "language": "Language",
+    "country": "Country",
+    "interests": "Interests",
+    "search": "Search",
+    "favorites": "Favorites",
+    "feed": {
+      "label": "Feed",
+      "meta": "Feed: {time} — events: {count} (new on top)",
+      "hidden": "Hidden {count} news",
+      "show_more": "Show more (+{count})",
+      "shown": "Showing {count} news",
+      "hide": "Hide"
+    },
+    "settings": "Settings",
+    "show_thumbs": "Show thumbnails",
+    "hide_thumbs": "Hide thumbnails",
+    "updated": "Updated",
+    "new": "New",
+    "loading": "Loading…",
+    "no_results": "No results",
+    "try_again": "Try again",
+    "close": "Close",
+    "save": "Save",
+    "cancel": "Cancel",
+    "sign_in": "Sign in",
+    "sign_up": "Sign up",
+    "logout": "Log out",
+    "email": "Email",
+    "password": "Password",
+    "continue_with": "Continue with",
+    "or": "or",
+    "guest_locked": "Create an account to view full details.",
+    "login_required_interests": "Sign in to change interests.",
+    "copy_link": "Copy link",
+    "copied": "Copied!",
+    "share": "Share",
+    "why_score": "Why this score?",
+    "ai_summary": "AI Summary",
+    "unconfirmed": "Unconfirmed",
+    "loading_feed": "Loading feed...",
+    "error_api_news": "Error /api/news",
+    "search_placeholder": "Search news or sources",
+    "apply": "Apply",
+    "miniatures": "Miniatures",
+    "toggle_thumbs_title": "Show/hide thumbnails",
+    "tip_drag_remove": "Tip: drag a card onto the 🗑️ to remove it from Tracking.",
+    "email_notifications": "Email notifications",
+    "email_notifications_sub": "Send me an email when any tracked event changes",
+    "feed_status_prefix": "Feed",
+    "events": "events",
+    "back": "< Back",
+    "continue_with_google": "Continue with Google",
+    "continue_with_email": "Continue with email",
+    "email_address": "Email address",
+    "drag_to_delete": "Drag to delete"
+  },
+  "interests": {
+    "general": "General",
+    "business": "Business",
+    "technology": "Technology",
+    "politics": "Politics",
+    "science": "Science",
+    "sports": "Sports",
+    "health": "Health"
+  },
+  "score": {
+    "limited": "Score explanation is limited due to insufficient data",
+    "summary": {
+      "high": "High score: confirmed by multiple sources and/or reliable media.",
+      "medium": "Medium score: some confirmation exists, but it is still limited or sources vary in quality.",
+      "low": "Low score: few independent confirmations and/or weaker source reputation.",
+      "has_negatives": "Some factors reduce the score."
+    },
+    "factor": {
+      "confirmation": {
+        "name": "Confirmation by sources",
+        "desc": {
+          "one": "Only one source found so far — limited confirmation.",
+          "two": "There are 2 independent sources — confirmation starts to form.",
+          "many": "Confirmed by {n} independent sources.",
+          "many_strong": "Confirmed by {n} independent sources — strong signal."
+        }
+      },
+      "reputation": {
+        "name": "Source reputation",
+        "desc": "Average weight: {avg}, max: {max}."
+      },
+      "diversity": {
+        "name": "Source diversification",
+        "desc": "Share of strong/medium/weak (normalized): {share}."
+      },
+      "clickbait": {
+        "name": "Clickbait / emotional language",
+        "desc": "The headline uses emotional or manipulative wording."
+      }
+    }
+  },
+  "pricing": {
+    "hero_title": "Track credibility. Stay informed.",
+    "hero_sub": "Follow important news events and get updates when trust changes.",
+    "monthly": "Monthly",
+    "yearly": "Yearly",
+    "save_20": "Save 20%",
+    "most_popular": "Most popular"
+  },
+  "auth": {
+    "title": "Create an account to continue",
+    "sub": "Track news credibility, save events, and get updates when trust changes.",
+    "note": "No spam. We only send updates for events you track.",
+    "password_hint": "At least 8 characters",
+    "login_signup": "Login / Sign up",
+    "forgot": "Forgot password?",
+    "reset_title": "Reset your password",
+    "reset_sub": "Enter your email and we’ll send a reset link.",
+    "send_reset": "Send reset link",
+    "new_password_title": "Create a new password",
+    "new_password_sub": "Choose a strong password (letters + digits).",
+    "new_password_label": "New password",
+    "update_password": "Update password",
+    "foot": "By continuing, you agree to CHECK news’ <span style=\"color:#111;\">Terms of Service</span> and <span style=\"color:#111;\">Privacy Policy</span>."
+  },
+  "share": {
+    "title": "Share this event",
+    "sub": "Share a news event you find important or relevant.",
+    "preview_label": "ARTICLE PREVIEW",
+    "on_x": "Share on X",
+    "on_threads": "Share on Threads",
+    "no_thanks": "No thanks!",
+    "tweet_prefix": "Trust score •"
+  },
+  "card": {
+    "source_diffs": "Source differences",
+    "key_facts": "Key facts",
+    "uncertainties": "Uncertainties"
+  }
+}

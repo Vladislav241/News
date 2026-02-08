@@ -231,7 +231,25 @@ class Database:
                     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
                 );
                 CREATE INDEX IF NOT EXISTS idx_user_subs_plan ON user_subscriptions(plan);
-                """
+                
+
+                -- -----------------
+                -- Text translations cache (DeepL / UI language)
+                -- -----------------
+                CREATE TABLE IF NOT EXISTS text_translations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    scope TEXT NOT NULL,
+                    scope_id INTEGER NOT NULL,
+                    field TEXT NOT NULL,
+                    target_lang TEXT NOT NULL,
+                    src_hash TEXT NOT NULL,
+                    translated TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(scope, scope_id, field, target_lang, src_hash)
+                );
+                CREATE INDEX IF NOT EXISTS idx_text_trans_scope ON text_translations(scope, scope_id);
+                CREATE INDEX IF NOT EXISTS idx_text_trans_lang ON text_translations(target_lang);
+"""
             )
 
             # ---- MIGRATIONS ----
@@ -1169,10 +1187,17 @@ class Database:
     ) -> list[dict[str, Any]]:
         interests_norm = [i.strip().lower() for i in interests if i.strip()]
         country = (country or "").strip().lower()
-        language = (language or "en").strip().lower()
+        language = (language or "all").strip().lower()
 
-        where = ["c.language=?"]
-        params: list[Any] = [language]
+        where = []
+        params: list[Any] = []
+        if language and language not in {"all", "*"}:
+            where.append("c.language=?")
+            params.append(language)
+
+        if not where:
+            where.append("1=1")
+
 
         if country:
             where.append("(c.country=? OR c.country='world')")

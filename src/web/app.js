@@ -54,11 +54,13 @@ async function ensureItemInFeedAndOpen(clusterId) {
   try {
     const interests = encodeURIComponent((state.interests || []).join(","));
     const country = encodeURIComponent(state.country || "world");
-    const language = encodeURIComponent(state.language || "en");
+    const language = "all";
+    const uiLang = encodeURIComponent(state.language || "en");
     const r = await fetch(
       `${API_BASE}/api/news/by_ids?ids=${encodeURIComponent(String(clusterId))}` +
-        `&interests=${interests}&country=${country}&language=${language}`
+        `&interests=${interests}&country=${country}&language=${language}&ui_lang=${uiLang}`
     );
+
     if (!r.ok) return false;
     const j = await r.json();
     const item = (j?.items && j.items[0]) ? j.items[0] : null;
@@ -226,6 +228,102 @@ const SEEN_KEY = "news_seen_state_v1";
 const FILTERS_KEY = "news_filters_v1";
 const THUMBS_KEY = "news_thumbs_v1";
 
+// ----------------------
+// i18n (UI + AI summaries)
+// ----------------------
+const SUPPORTED_LANGS = ["en", "de", "fr", "ru", "uk"]; // "uk" == Ukrainian (UA label in UI)
+
+function normalizeLang(code) {
+  const raw = String(code || "").trim().toLowerCase();
+  if (!raw) return "en";
+  const base = raw.split("-")[0];
+  if (base === "ua") return "uk";
+  if (SUPPORTED_LANGS.includes(base)) return base;
+  // common fallbacks
+  if (base === "gb") return "en";
+  return "en";
+}
+
+function detectBrowserLang() {
+  const langs = (navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language]).filter(Boolean);
+  for (const l of langs) {
+    const n = normalizeLang(l);
+    if (SUPPORTED_LANGS.includes(n)) return n;
+  }
+  return "en";
+}
+
+let I18N_LANG = "en";
+let I18N_DICT = null;
+
+async function loadI18n(lang) {
+  const n = normalizeLang(lang);
+  if (I18N_DICT && I18N_LANG === n) return;
+  try {
+    const r = await fetch(`${API_BASE}/static/i18n/${encodeURIComponent(n)}.json`, { cache: "no-store" });
+    if (!r.ok) throw new Error("i18n fetch failed");
+    I18N_DICT = await r.json();
+    I18N_LANG = n;
+    document.documentElement.setAttribute("lang", n);
+  } catch (e) {
+    // hard fallback to EN if file missing
+    if (n !== "en") return loadI18n("en");
+  }
+}
+
+function t(key, fallback = "") {
+  try {
+    const parts = String(key).split(".");
+    let cur = I18N_DICT;
+    for (const p of parts) cur = cur?.[p];
+    if (typeof cur === "string") return cur;
+  } catch {}
+  return fallback || key;
+}
+
+function applyI18nToDOM() {
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    const k = el.getAttribute("data-i18n");
+    if (!k) return;
+    el.textContent = t(k, el.textContent || "");
+  });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
+    const k = el.getAttribute("data-i18n-placeholder");
+    if (!k) return;
+    el.setAttribute("placeholder", t(k, el.getAttribute("placeholder") || ""));
+  });
+}
+
+async function setLanguage(lang, { persist = true, refetch = true } = {}) {
+  state.language = normalizeLang(lang);
+
+  // UI texts
+  await loadI18n(state.language);
+  applyI18nToDOM();
+
+  // Update controls
+  const sel = document.getElementById("language");
+  if (sel) sel.value = state.language;
+
+  // Re-render UI bits
+  renderTags();
+  syncThumbToggleUI();
+
+  if (persist) savePrefs();
+
+  // ✅ Главное: язык влияет на перевод заголовков/summary на сервере -> надо перезапросить ленту
+  if (refetch) {
+    setFeedExpanded(false);
+    // чтобы точно не было "инкрементального" мусора
+    lastFeedItems = [];
+    feedRenderedSet = new Set();
+    feedRenderedOrder = [];
+    await fetchFeed({ reset: true });
+  }
+}
+
+
+
 // UI config
 // If score < LOW_SCORE_THRESHOLD => dark card (as in the provided design). Easy to tweak.
 const LOW_SCORE_THRESHOLD = 70;
@@ -307,6 +405,115 @@ let state = {
 
 function qs(id) { return document.getElementById(id); }
 function setStatus(text) { qs("status").textContent = text || ""; }
+
+// =========================
+// Premium mode transition (Feed <-> Tracking) + swipe navigation
+// =========================
+let __modeAnimating = false;
+
+function _sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
+
+function beginModeTransition(toMode){
+  const wrap = qs('feedView');
+  if(!wrap) return;
+  wrap.classList.remove('page-in','page-transition','to-feed','to-tracking');
+  wrap.classList.add('page-transition', (toMode === 'fav') ? 'to-tracking' : 'to-feed');
+}
+
+function endModeTransition(){
+  const wrap = qs('feedView');
+  if(!wrap) return;
+  // Trigger "page-in" animation
+  wrap.classList.add('page-in');
+  window.setTimeout(()=>{
+    wrap.classList.remove('page-in','page-transition','to-feed','to-tracking');
+  }, 340);
+}
+
+async function switchMode(targetMode){
+  if(__modeAnimating) return;
+  if(state.mode === targetMode) return;
+
+  __modeAnimating = true;
+
+  try{
+    // 1) “page out” анимация
+    beginModeTransition(targetMode);
+    await _sleep(140);
+
+    // 2) меняем режим
+    state.mode = targetMode;
+
+    // 3) ВАЖНО: переносим cards туда, где они должны быть
+    // Если у тебя нет новых mounts (cardsMountFeed/cardsMountTracking) — просто пропусти.
+    // Но если ты делал разметку как я писал раньше — это MUST.
+    const cards = document.getElementById("cards");
+    const feedMount = document.getElementById("cardsMountFeed");
+    const trackMount = document.getElementById("cardsMountTracking");
+
+    if (cards && feedMount && trackMount) {
+      if (targetMode === "fav") trackMount.appendChild(cards);
+      else feedMount.appendChild(cards);
+    }
+
+    // 4) обновляем UI + грузим данные
+    applyTabs();
+
+    if(targetMode === 'fav'){
+      await fetchFavorites();
+    } else {
+      await fetchFeed({ quiet: true });
+    }
+
+    // 5) “page in” анимация
+    endModeTransition();
+
+    // 6) скролл вверх
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  } finally {
+    window.setTimeout(()=>{ __modeAnimating = false; }, 180);
+  }
+}
+
+
+function setupSwipeNavigation(){
+  const wrap = qs('feedView');
+  if(!wrap) return;
+
+  let startX = 0, startY = 0, dx = 0, dy = 0, active = false;
+
+  wrap.addEventListener('touchstart', (e)=>{
+    if(!e.touches || !e.touches[0]) return;
+    active = true;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    dx = dy = 0;
+  }, { passive: true });
+
+  wrap.addEventListener('touchmove', (e)=>{
+    if(!active || !e.touches || !e.touches[0]) return;
+    dx = e.touches[0].clientX - startX;
+    dy = e.touches[0].clientY - startY;
+  }, { passive: true });
+
+  wrap.addEventListener('touchend', ()=>{
+    if(!active) return;
+    active = false;
+
+    // Horizontal swipe only (avoid interfering with scroll)
+    if(Math.abs(dx) < 70) return;
+    if(Math.abs(dx) < Math.abs(dy)) return;
+
+    if(dx < 0){
+      // swipe left -> Tracking
+      switchMode('fav');
+    }else{
+      // swipe right -> Feed
+      switchMode('feed');
+    }
+  }, { passive: true });
+}
 
 function escapeHtml(s) {
   return (s || "").replace(/[&<>"']/g, (c) => ({
@@ -391,10 +598,14 @@ function syncFiltersStateToUI() {
 }
 
 function syncThumbToggleUI() {
-  const btn = document.getElementById('thumbToggle');
+  const btn = document.getElementById("thumbToggle");
   if (!btn) return;
-  btn.classList.toggle('on', !!state.showThumbs);
-  btn.setAttribute('aria-checked', state.showThumbs ? 'true' : 'false');
+  btn.classList.toggle("on", !!state.showThumbs);
+  btn.setAttribute("aria-checked", state.showThumbs ? "true" : "false");
+  const label = document.querySelector(".thumbToggleLabel");
+  if (label) {
+    label.textContent = state.showThumbs ? t("ui.hide_thumbs","Hide thumbnails") : t("ui.show_thumbs","Show thumbnails");
+  }
 }
 
 function getFavIds() {
@@ -970,10 +1181,10 @@ function bindPricingUI(){
   // Clicking the logo/title returns to the feed
   const brand = document.getElementById('brand');
   if(brand){
-    brand.addEventListener('click', (e)=>{
+    brand.addEventListener('click', async (e)=>{
       e.preventDefault();
       setPage('feed');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      await switchMode('feed');
     });
   }
 
@@ -1263,7 +1474,7 @@ function renderTags() {
   [...new Set(DEFAULT_INTERESTS)].forEach((tag) => {
     const el = document.createElement("div");
     el.className = "tag" + (state.interests.includes(tag) ? " on" : "");
-    el.textContent = tag;
+    el.textContent = t(`interests.${tag}`, tag);
     el.onclick = async () => {
       // Guests can read the top 3 items, but changing interests requires an account.
       if (!authState?.authenticated) {
@@ -1467,11 +1678,105 @@ function getAiSummaryState(item) {
     return { status: "empty", text: "" };
   }
   // Default: generating / not ready yet.
-  return { status: "loading", text: "AI summary is being generated" };
+  return { status: "loading", text: t("ui.loading","Loading…") };
+}
+
+function fmtI18n(key, params, fallback) {
+  let s = t(key, fallback || "");
+  if (!params || typeof params !== "object") return s;
+  for (const [k, v] of Object.entries(params)) {
+    s = s.replaceAll(`{${k}}`, String(v));
+  }
+  return s;
+}
+
+function translateScoreExplanationText(expl, factors) {
+  const e = String(expl || "").trim();
+  if (!e) return e;
+
+  // Only translate known RU templates; otherwise return as-is.
+  // Summary tiers
+  if (/^Высокий балл:/i.test(e)) {
+    return fmtI18n("score.summary.high", null, "High score: confirmed by multiple sources and/or reliable media.");
+  }
+  if (/^Средний балл:/i.test(e)) {
+    return fmtI18n("score.summary.medium", null, "Medium score: some confirmation exists, but it is still limited or sources vary in quality.");
+  }
+  if (/^Низкий балл:/i.test(e)) {
+    return fmtI18n("score.summary.low", null, "Low score: few independent confirmations and/or weaker source reputation.");
+  }
+
+  // If it contains the "negatives" suffix in RU
+  if (/Есть факторы, которые снижают/i.test(e)) {
+    // Replace only the suffix part if possible
+    const base = e.replace(/\s*Есть факторы, которые снижают[^.]*\.?/i, "").trim();
+    const baseT = translateScoreExplanationText(base, factors);
+    const suffix = fmtI18n("score.summary.has_negatives", null, "Some factors reduce the score.");
+    return (baseT ? `${baseT} ${suffix}` : suffix).trim();
+  }
+
+  return e;
+}
+
+function translateFactor(f) {
+  const name = String(f?.name || "").trim();
+  const desc = String(f?.description || "").trim();
+  const impact = Number(f?.impact || 0);
+
+  // Names
+  const nameMap = {
+    "Подтверждение источниками": "score.factor.confirmation.name",
+    "Репутация источников": "score.factor.reputation.name",
+    "Диверсификация источников": "score.factor.diversity.name",
+    "Кликбейт/эмоциональная лексика": "score.factor.clickbait.name",
+  };
+
+  let outName = name;
+  if (nameMap[name]) outName = t(nameMap[name], name);
+
+  // Descriptions (RU patterns -> params)
+  let outDesc = desc;
+
+  if (/^Пока найден только один источник/i.test(desc)) {
+    outDesc = t("score.factor.confirmation.desc.one", "Only one source found so far — limited confirmation.");
+  } else if (/^Есть 2 независимых источника/i.test(desc)) {
+    outDesc = t("score.factor.confirmation.desc.two", "There are 2 independent sources — confirmation starts to form.");
+  } else {
+    const m = desc.match(/Новость подтверждена\s+(\d+)\s+независимыми источниками(\s+—\s+сильный сигнал\.)?/i);
+    if (m) {
+      const n = m[1];
+      const strong = !!m[2];
+      outDesc = fmtI18n(
+        strong ? "score.factor.confirmation.desc.many_strong" : "score.factor.confirmation.desc.many",
+        { n },
+        strong ? "Confirmed by {n} independent sources — strong signal." : "Confirmed by {n} independent sources."
+      );
+    }
+  }
+
+  const mRep = desc.match(/Средний вес:\s*([0-9.]+),\s*макс\.:\s*([0-9.]+)\./i);
+  if (mRep) {
+    outDesc = fmtI18n("score.factor.reputation.desc", { avg: mRep[1], max: mRep[2] }, "Average weight: {avg}, max: {max}.");
+  }
+
+  const mDiv = desc.match(/Доля сильных\/средних\/слабых \(нормировано\):\s*([0-9.]+)\./i);
+  if (mDiv) {
+    outDesc = fmtI18n("score.factor.diversity.desc", { share: mDiv[1] }, "Share of strong/medium/weak (normalized): {share}.");
+  }
+
+  if (/Заголовок содержит эмоциональные/i.test(desc)) {
+    outDesc = t("score.factor.clickbait.desc", "The headline uses emotional or manipulative wording.");
+  }
+
+  return { name: outName, description: outDesc, impact };
 }
 
 function getWhyScoreState(item) {
-  const expl = String(item?.credibility_explanation || "").trim();
+  if (item?.guest_locked && !authState?.authenticated) {
+    return { status: "locked", text: t("ui.guest_locked","Create an account to view full details.") };
+  }
+  const explRaw = String(item?.credibility_explanation || "").trim();
+  const expl = (I18N_LANG && I18N_LANG !== 'ru') ? translateScoreExplanationText(explRaw, item?.credibility_factors) : explRaw;
   const factors = Array.isArray(item?.credibility_factors) ? item.credibility_factors : [];
 
   if (!expl && factors.length === 0) {
@@ -1481,7 +1786,7 @@ function getWhyScoreState(item) {
   // If scoring isn't really computed yet, show limited explanation.
   const notComputed = /скоринг\s+еще\s+не\s+рассчитан/i.test(expl);
   if (notComputed && factors.length === 0) {
-    return { status: "empty", text: "Score explanation is limited due to insufficient data" };
+    return { status: "empty", text: t("score.limited", "Score explanation is limited due to insufficient data") };
   }
 
   return { status: "ready", text: expl };
@@ -1636,9 +1941,10 @@ function createCardElement(item, ctx, seen, idx) {
 
   const factorsHtml = (item.credibility_factors || [])
     .map((f) => {
-      const name = escapeHtml(f.name || '');
-      const desc = escapeHtml(f.description || '');
-      const impact = Number(f.impact || 0);
+      const tf = (I18N_LANG && I18N_LANG !== 'ru') ? translateFactor(f) : { name: (f?.name||''), description: (f?.description||''), impact: Number(f?.impact||0) };
+      const name = escapeHtml(tf.name || '');
+      const desc = escapeHtml(tf.description || '');
+      const impact = Number(tf.impact || 0);
       const sign = impact > 0 ? '+' : '';
       return `<div class="factor"><div><span class="impact">${sign}${impact}</span> — <b>${name}</b></div><div class="muted">${desc}</div></div>`;
     })
@@ -1649,22 +1955,22 @@ function createCardElement(item, ctx, seen, idx) {
   let summaryHtml = '';
   if (aiState.status === 'ready') {
     summaryHtml = `<div class="aiSummaryBlock" data-status="ready">
-      <div class="aiSummaryTitle">AI Summary</div>
+      <div class="aiSummaryTitle">${t("ui.ai_summary","AI Summary")}</div>
       <div class="aiSummaryText">${escapeHtml(aiState.text)}</div>
     </div>`;
   } else if (aiState.status === 'loading') {
     summaryHtml = `<div class="aiSummaryBlock" data-status="loading">
-      <div class="aiSummaryTitle">AI Summary</div>
+      <div class="aiSummaryTitle">${t("ui.ai_summary","AI Summary")}</div>
       <div class="aiSummaryText"><span class="muted">${escapeHtml(aiState.text)}</span></div>
     </div>`;
   } else if (aiState.status === 'locked') {
     summaryHtml = `<div class="aiSummaryBlock" data-status="locked">
-      <div class="aiSummaryTitle">AI Summary</div>
+      <div class="aiSummaryTitle">${t("ui.ai_summary","AI Summary")}</div>
       <div class="aiSummaryText"><span class="muted">${escapeHtml(aiState.text)}</span></div>
     </div>`;
   }
 
-  const unconfirmed = sourcesCount <= 1 ? `<span class="chip chipDanger">Unconfirmed</span>` : '';
+  const unconfirmed = sourcesCount <= 1 ? `<span class="chip chipDanger">${t("ui.unconfirmed","Unconfirmed")}</span>` : '';
   const changeBadges = '';
 
   // --- Why this score?
@@ -1673,19 +1979,19 @@ function createCardElement(item, ctx, seen, idx) {
   if (whyState.status === 'ready') {
     const expl = whyState.text
       ? `<div class="muted">${escapeHtml(whyState.text)}</div>`
-      : `<div class="muted">Score explanation is limited due to insufficient data</div>`;
+      : `<div class="muted">${t("score.limited","Score explanation is limited due to insufficient data")}</div>`;
     whyHtml = `
         <details class="accordion">
-          <summary class="accordionSummary">Why this score?</summary>
+          <summary class="accordionSummary">${t("ui.why_score","Why this score?")}</summary>
           <div class="accordionBody">
             ${expl}
-            <div class="factors">${factorsHtml || '<div class="muted">Score explanation is limited due to insufficient data</div>'}</div>
+            <div class="factors">${factorsHtml || '<div class="muted">${t("score.limited","Score explanation is limited due to insufficient data")}</div>'}</div>
           </div>
         </details>`;
   } else if (whyState.status === 'empty' && whyState.text) {
     whyHtml = `
         <details class="accordion">
-          <summary class="accordionSummary">Why this score?</summary>
+          <summary class="accordionSummary">${t("ui.why_score","Why this score?")}</summary>
           <div class="accordionBody"><div class="muted">${escapeHtml(whyState.text)}</div></div>
         </details>`;
   }
@@ -2118,16 +2424,18 @@ if (incremental && state.mode === 'feed' && newFeedEls.length) {
 
     const hint = document.createElement('div');
     hint.className = 'loadMoreHint';
-    hint.textContent = feedExpanded
-      ? `Показано ${total} новостей`
-      : `Скрыто ${hiddenCountNow} новостей`;
+   hint.textContent = feedExpanded
+  ? t("ui.feed.shown").replace("{count}", total)
+  : t("ui.feed.hidden").replace("{count}", hiddenCountNow);
+
 
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'loadMoreBtn';
 
     if (feedExpanded) {
-      btn.textContent = 'Скрыть';
+      btn.textContent = t("ui.feed.hide");
+
       btn.onclick = (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -2135,7 +2443,9 @@ if (incremental && state.mode === 'feed' && newFeedEls.length) {
         window.scrollTo({ top: 0, behavior: 'smooth' });
       };
     } else {
-      btn.textContent = `Показать ещё (+${hiddenCountNow})`;
+      btn.textContent = t("ui.feed.show_more")
+  .replace("{count}", hiddenCountNow);
+
       btn.onclick = (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -2181,7 +2491,8 @@ function updateLoadMoreBlock(totalCount) {
   btn.className = 'loadMoreBtn';
 
   if (feedExpanded) {
-    btn.textContent = 'Скрыть';
+    btn.textContent = t("ui.feed.hide");
+
     btn.onclick = (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -2189,7 +2500,9 @@ function updateLoadMoreBlock(totalCount) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     };
   } else {
-    btn.textContent = `Показать ещё (+${hiddenCountNow})`;
+    btn.textContent = t("ui.feed.show_more")
+  .replace("{count}", hiddenCountNow);
+
     btn.onclick = (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -2284,10 +2597,12 @@ async function fetchFeed(opts) {
   const url =
     `${API_BASE}/api/news?interests=${interests}` +
     `&country=${encodeURIComponent(state.country)}` +
-    `&language=${encodeURIComponent(state.language)}` +
+    `&language=all` +
+    `&ui_lang=${encodeURIComponent(state.language || "en")}` +
     (q ? `&q=${q}` : "");
 
-  const feedKey = `${state.country}|${state.language}|${(state.interests || []).join(",")}|${(state.q || "").trim()}`;
+
+  const feedKey = `${state.country}|${(state.interests || []).join(",")}|${(state.q || "").trim()}`;
 
   const keyChanged = (typeof currentFeedKey === "string") && (currentFeedKey !== feedKey);
   const shouldReset = forceReset || !currentFeedKey || keyChanged;
@@ -2295,12 +2610,12 @@ async function fetchFeed(opts) {
   // On first load (or after key reset), suppress NEW badges and avoid animations.
   const suppressNewBadges = !hasInitialFeedLoaded || shouldReset;
 
-  if (!quiet) setStatus("Загрузка ленты...");
+  if (!quiet) setStatus(t("ui.loading_feed","Loading feed..."));
 
   // Allow the caller to abort (we use this to prevent overlapping requests on slow hosts like Render)
   const res = await fetch(url, signal ? { signal } : undefined);
   if (!res.ok) {
-    if (!quiet) setStatus(`Ошибка /api/news: ${res.status}`);
+    if (!quiet) setStatus(`${t("ui.error_api_news","Error /api/news")}: ${res.status}`);
     return;
   }
 
@@ -2333,8 +2648,10 @@ async function fetchFeed(opts) {
 
   const lastUpdatedEl = qs("lastUpdated");
   if (lastUpdatedEl) {
-    lastUpdatedEl.textContent =
-      `Лента: ${new Date().toLocaleString()} — событий: ${items.length} (новые сверху)`;
+    lastUpdatedEl.textContent = t("ui.feed.meta")
+  .replace("{time}", new Date().toLocaleString())
+  .replace("{count}", items.length);
+
   }
 
   if (!quiet) setStatus("");
@@ -2412,7 +2729,7 @@ function tickCooldownUI() {
   if (state.cooldownUntil > now) {
     const left = Math.ceil((state.cooldownUntil - now) / 1000);
     btn.disabled = true;
-    setStatus(`Обновление доступно через ${left}с`);
+    setStatus(`${t("ui.try_again","Try again")} (${left}s)`);
   } else {
     if (btn.disabled) {
       btn.disabled = false;
@@ -2423,7 +2740,7 @@ function tickCooldownUI() {
 
 async function refreshBackend() {
   // "Refresh" now means "reload my feed". Ingest happens server-side on a schedule.
-  setStatus("Обновляю ленту...");
+  setStatus(t("ui.loading","Loading…"));
   if (state.mode === "feed") await fetchFeed();
   else await fetchFavorites();
 }
@@ -2435,7 +2752,9 @@ function bindUI() {
   // Apply country/language immediately (we keep the hidden Save button for compatibility).
   qs("btnSave").onclick = async () => {
     state.country = qs("country").value;
-    state.language = qs("language").value;
+    // setLanguage() also persists + refetches
+    await setLanguage(qs("language").value, { persist: false, refetch: true });
+
     setFeedExpanded(false);
     savePrefs();
     if (state.mode === "feed") await fetchFeed();
@@ -2444,7 +2763,7 @@ function bindUI() {
 
   // In the new UI we auto-apply on change.
   qs("country").onchange = qs("btnSave").onclick;
-  qs("language").onchange = qs("btnSave").onclick;
+  qs("language").onchange = async () => { await setLanguage(qs("language").value); };
 
   // filters init (controls are currently hidden in the new layout, but must keep working)
   syncFiltersStateToUI();
@@ -2488,7 +2807,9 @@ function bindUI() {
   const btnTracking = document.getElementById("btnTracking");
   if (btnTracking) {
     btnTracking.onclick = async () => {
-      if(window.__setMainPage) window.__setMainPage('feed');
+      // Ensure we are on the main (non-pricing) page
+      if (window.__setMainPage) window.__setMainPage('feed');
+
       if (!authState.authenticated) {
         openAuthModal('tracking');
         return;
@@ -2499,15 +2820,11 @@ function bindUI() {
         return;
       }
 
-      state.mode = "fav";
-      applyTabs();
-      await fetchFavorites();
-      // scroll to top so user sees list instantly
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      await switchMode('fav');
     };
   }
 
-  // Header Login / Account button
+  // Header Login / Account button Account button
   const btnLogin = document.getElementById('btnLogin');
   if (btnLogin) {
     btnLogin.onclick = async () => {
@@ -2542,26 +2859,22 @@ function bindUI() {
   }
 
   qs("tabFeed").onclick = async () => {
-    state.mode = "feed";
-    setFeedExpanded(false);
-    applyTabs();
-    await fetchFeed();
-  };
+  setFeedExpanded(false);
+  await switchMode("feed");
+};
 
-  qs("tabFav").onclick = async () => {
-    if (!authState?.authenticated) {
-      openAuthModal('tracking');
-      return;
-    }
-    // If local email is not verified, keep user on Feed and prompt verification
-    if (authState.user && authState.user.provider === 'local' && !authState.user.email_verified) {
-      openAuthModal('verify_required');
-      return;
-    }
-    state.mode = "fav";
-    applyTabs();
-    await fetchFavorites();
-  };
+qs("tabFav").onclick = async () => {
+  if (!authState?.authenticated) {
+    openAuthModal('tracking');
+    return;
+  }
+  if (authState.user && authState.user.provider === 'local' && !authState.user.email_verified) {
+    openAuthModal('verify_required');
+    return;
+  }
+  await switchMode("fav");
+};
+
 
   const searchEl = qs("search");
   qs("btnSearch").onclick = async () => {
@@ -2663,9 +2976,17 @@ async function autoUpdateTick(trigger) {
 }
 
 async function main() {
+  const hadPrefs = !!localStorage.getItem(STORAGE_KEY);
   loadPrefs();
   loadFilters();
   loadThumbPrefs();
+
+  // Auto language on first visit (browser preference)
+  if (!hadPrefs) {
+    state.language = detectBrowserLang();
+  }
+  await loadI18n(state.language);
+  applyI18nToDOM();
 
   // Capture deep-link request early (before auth/feed fetch)
   const dl = readDeepLinkParams();
@@ -2748,6 +3069,9 @@ async function main() {
 
   // cooldown UI tick (UI only; keep it light)
   setInterval(tickCooldownUI, 1000);
+
+  // Enable premium swipe navigation between Feed and Tracking
+  setupSwipeNavigation();
 }
 
 const monthlyBtn = document.getElementById("billMonthly");

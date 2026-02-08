@@ -95,9 +95,9 @@ def favicon():
     """Avoid noisy 404s in the browser console."""
     # The project stores icons directly under src/web/icons
     # (and /static is mounted to src/web).
-    path = os.path.join("src", "web", "icons", "Logo.png")
+    path = os.path.join("src", "web", "icons", "Logo.svg")
     if os.path.exists(path):
-        return FileResponse(path, media_type="image/png")
+        return FileResponse(path, media_type="image/svg")
     # Fallback: return a 404 if the file isn't there
     return Response(status_code=404)
 

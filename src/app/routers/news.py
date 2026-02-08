@@ -12,8 +12,10 @@ from ..db import db
 from ..auth.deps import get_current_user_optional, require_user
 from ..ingest import run_ingest_cycle
 from ..scoring import compute_importance, compute_credibility
+from ..translate import translate_feed_items
 
 import threading
+import asyncio
 
 router = APIRouter()
 
@@ -111,6 +113,7 @@ def _feed_cache_key(
     interests: str,
     country: str,
     language: str,
+    ui_lang: str,
     since: str | None,
     q: str | None,
     limit: int,
@@ -121,7 +124,7 @@ def _feed_cache_key(
     sn = (since or "").strip()
     inorm = (interests or "general").strip().lower()
     v = (variant or "guest").strip().lower()
-    return f"v3|{bucket}|v={v}|i={inorm}|c={country}|l={language}|since={sn}|q={qn}|limit={limit}"
+    return f"v4|{bucket}|v={v}|i={inorm}|c={country}|l={language}|ui={ui_lang}|since={sn}|q={qn}|limit={limit}"
 
 _REFRESH_STATE: dict[str, Any] = {"last_ts_by_ip": {}}
 REFRESH_COOLDOWN_SECONDS = 180
@@ -365,11 +368,12 @@ def save_preferences(p: Preferences) -> dict:
 
 
 @router.get("/api/news")
-def get_news(
+async def get_news(
     user=Depends(get_current_user_optional),
+    ui_lang: str = "en",
     interests: str = "",
     country: str = "world",
-    language: str = "en",
+    language: str = "all",
     since: Optional[str] = None,
     limit: int = 120,
     q: Optional[str] = None,
@@ -379,16 +383,19 @@ def get_news(
     interests_list = [x.strip().lower() for x in (interests or "").split(",") if x.strip()]
     interests_norm = ",".join(sorted(set(interests_list)))
     country = (country or "world").strip().lower()
-    language = (language or "en").strip().lower()
+    language = (language or "all").strip().lower()
     limit_n = max(1, min(400, int(limit)))
 
     # NOTE: bucketed snapshots make the feed deterministic across devices.
     # The helper is called _snapshot_bucket() in this file.
     bucket = _snapshot_bucket()
+    ui_lang = (ui_lang or "en").strip().lower()
+
     cache_key = _feed_cache_key(
         interests=interests_norm,
         country=(country or "world").strip().lower(),
         language=(language or "en").strip().lower(),
+        ui_lang=ui_lang,
         since=since,
         q=q,
         limit=limit_n,
@@ -460,6 +467,18 @@ def get_news(
         reverse=True,
     )
 
+    # UI-language translation (content only). Never affects clustering/summary generation.
+# Translate for ANY ui_lang (including EN), but translate_feed_items will skip items
+# that are already in the UI language.
+    if ui_lang and ui_lang.strip():
+        try:
+            items = await translate_feed_items(items, ui_lang)
+        except Exception as e:
+            print("[TRANSLATE] failed:", repr(e))
+            # fail-open: keep originals
+            pass
+
+
     snapshot_at = datetime.fromtimestamp(
         bucket * FEED_SNAPSHOT_SECONDS, tz=timezone.utc
     ).isoformat()
@@ -498,12 +517,13 @@ def _redact_item_for_guest(it: dict[str, Any]) -> dict[str, Any]:
 
 
 @router.get("/api/news/by_ids")
-def news_by_ids(
+async def news_by_ids(
     ids: str,
     user=Depends(get_current_user_optional),
+    ui_lang: str = "en",
     interests: str = "",
     country: str = "world",
-    language: str = "en",
+    language: str = "all",
 ) -> dict[str, Any]:
     db.ensure_schema()
 
@@ -526,7 +546,7 @@ def news_by_ids(
     if user is None:
         interests_list = [x.strip().lower() for x in (interests or "").split(",") if x.strip()]
         country = (country or "world").strip().lower()
-        language = (language or "en").strip().lower()
+        language = (language or "all").strip().lower()
 
         top3 = db.query_clusters(
             interests=interests_list,
@@ -553,6 +573,15 @@ def news_by_ids(
 
     pos = {cid: i for i, cid in enumerate(id_list)}
     items.sort(key=lambda x: pos.get(int(x["cluster_id"]), 10**9))
+
+    if ui_lang and ui_lang.strip():
+        try:
+            items = await translate_feed_items(items, ui_lang)
+        except Exception as e:
+            print("[TRANSLATE] failed:", repr(e))
+            pass
+
+
 
     return {"status": "ok", "count": len(items), "items": items}
 

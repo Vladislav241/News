@@ -15,6 +15,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700&family=Jersey+25&display=swap" rel="stylesheet">
 
 
+  <link rel="stylesheet" href="/static/premium-animations.css">
+
   <style>
     :root{
       /* Clean flat look closer to the Figma reference */
@@ -66,14 +68,15 @@
 
     /* used in footer */
     .brandMark { width: 22px; height: 22px; background: #0b0b0f; border-radius: 3px; }
-    .brandText { font-family: "Jersey 25", Inter, system-ui; font-size: 22px; line-height: 1; letter-spacing: .6px; }
-    .brandText .top { font-size: 26px; }
-    .brandText .bottom { font-size: 24px; }
+    .brandText { font-family: "Jersey 25", Inter, system-ui; font-size: 24px; line-height: 0.64; letter-spacing: .6px; margin-bottom: -3px; }
+    .brandText .top { font-size: 32px; }
+    .brandText .bottom { font-size: 30px; }
 
 .tagline{
   flex: 0 0 auto;      /* НЕ растягиваем */
   text-align: left;
   margin-left: 12px;   /* расстояние от лого */
+  margin-bottom: -20px;
   font-size: 18px;
   letter-spacing: .08em;
   color: rgba(15,23,42,.28);
@@ -120,7 +123,7 @@
       min-width: 22px;
       height: 22px;
       padding: 0 6px;
-      border-radius: 7px;
+      border-radius: 30px;
       background: #0b0b0f;
       color: #fff;
       display:inline-flex;
@@ -230,7 +233,7 @@
 
     /* Miniatures toggle near Interests */
     .thumbToggleWrap{ display:flex; align-items:center; gap:10px; flex-shrink:0; padding-top: 2px; }
-    .thumbToggleLabel{ font-size: 12px; color: rgba(15,23,42,.62); white-space: nowrap; }
+    .thumbToggleLabel{ font-size: 12px; color: rgb(0, 0, 0); white-space: nowrap; }
     .thumbToggle{
       width: 56px;
       height: 34px;
@@ -360,7 +363,7 @@
       justify-content: center;
       padding: 0 6px;
       background: transparent;
-      border: 1px solid rgba(15,23,42,.22);
+      border: 1px solid rgba(0, 0, 0, 0.6);
       cursor: pointer;
     }
     .trackToggle .trackDot{
@@ -369,11 +372,11 @@
       border-radius: 50%;
       background: #fff; /* default = NOT tracked (black) */
       display:block;
-       border: 1px solid rgba(17,17,19,.35);
+       border: 1px solid rgba(0, 0, 0, 0.6);
     }
     .trackToggle.on .trackDot{
       background: #111113; /* tracked = white */
-      border: 1px solid rgba(17,17,19,.35);
+      border: 1px solid rgba(0, 0, 0, 0.6);
     }
     .newsCard.isLow .trackToggle{ border-color: rgba(255,255,255,.18); }
     .newsCard.isLow .trackToggle .trackDot{ background: #111113; }
@@ -388,9 +391,10 @@
       align-items:center;
       justify-content:center;
       background: transparent;
-      border: 1px solid rgba(15,23,42,.22);
+      border: 0px solid rgba(15,23,42,.22);
       cursor: pointer;
       padding: 0;
+      margin-left: -13px;
     }
     .shareBtn:hover{ filter: brightness(.98); }
     .newsCard.isLow .shareBtn{ border-color: rgba(255,255,255,.18); }
@@ -437,7 +441,7 @@
       border-radius: 30px;
       padding: 6px 10px;
       font-weight: 700;
-      font-size: 13px;
+      font-size: 14px;
       min-width: 86px;
       text-align:center;
         margin-right: 0px;
@@ -626,9 +630,89 @@
       .footerGrid { grid-template-columns: 1fr 1fr; }
     }
     @media (max-width: 520px) {
-      .footerGrid { grid-template-columns: 1fr; }
+      .footerGrid { grid-template-columns: 1fr 1fr; gap: 14px; }
+      .footerGrid > div:first-child{ grid-column: 1 / -1; }
     }
   
+
+
+    /* ===== Mobile polish (cards + footer + pricing) ===== */
+    @media (max-width: 520px){
+      /* Card summary: prevent ultra-narrow titles when thumbnails are ON */
+      .newsSummary{ padding: 12px 12px 10px; }
+      .newsTitle{ font-size: 15px; line-height: 1.25; word-break: break-word; hyphens: auto; }
+      .newsMeta{ font-size: 12.5px; }
+      .newsTopRow{ flex-wrap: wrap; gap: 10px; }
+      .newsTopRight{ width: 100%; justify-content: flex-start; gap: 10px; }
+
+      /* Controls: slightly smaller */
+      .trackToggle{ width: 46px; height: 30px; }
+      .trackToggle .trackDot{ width: 16px; height: 16px; }
+      .scoreBadge{ min-width: 74px; padding: 5px 9px; font-size: 13px; }
+      .openBtn, .shareBtn{ width: 40px; height: 30px; border-radius: 10px; }
+
+      /* Thumbnail block moves below text so title has full width */
+      .newsSummaryGrid{ flex-direction: column; align-items: stretch; }
+      .newsThumbWrap{ width: 100%; height: 110px; border-radius: 14px; }
+
+      /* Footer: remove excessive empty space */
+      footer{ padding: 22px 0 14px; }
+      .footerDivider{ margin-top: 22px; margin-bottom: 16px; }
+      .copyright{ padding: 14px 0; }
+      .footerInner{ padding: 0 14px; }
+      .footerLogo{ margin-bottom: 6px; }
+      .footerColTitle{ font-size: 16px; margin-bottom: 6px; }
+      .footerLinks{ gap: 5px; }
+      .footerLinks a{ font-size: 16px; line-height: 1.35; }
+
+      /* Pricing: mobile-fit (no horizontal cut-off) */
+      .pricingPage{ margin-top: 34px; padding: 0 14px 34px; }
+      .pricingTrust{ font-size: 14px; letter-spacing: .18em; }
+
+      .pricingCompareWrap{
+        border-radius: 18px;
+        overflow: hidden; /* keep rounded corners clean */
+      }
+      .pricingTable{
+        width: 100%;
+        min-width: 0;
+        table-layout: fixed; /* forces columns to fit */
+      }
+      .pricingTable th, .pricingTable td{
+        padding: 10px 8px;
+      }
+      .pricingTable thead th{
+        font-size: 18px;
+        letter-spacing: -0.01em;
+      }
+      .pricingTable thead th:first-child,
+      .pricingTable tbody td:first-child{
+        width: 44%;
+        text-align: left;
+      }
+      .pricingTable tbody td:first-child{
+        font-size: 13.5px;
+        line-height: 1.25;
+        white-space: normal;
+      }
+      .pricingTable tbody td{
+        font-size: 12.5px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* Disable sticky column on mobile (it makes the table feel "cropped") */
+      .pricingTable thead th:first-child,
+      .pricingTable tbody td:first-child{
+        position: static;
+        left: auto;
+        z-index: auto;
+        background: transparent;
+      }
+/* Don't add huge gaps on mobile */
+      .pricingCtaRow{ margin-bottom: 36px !important; }
+    }
 /* --- Load more (collapsed feed) --- */
 .loadMoreWrap{display:flex;flex-direction:column;align-items:center;gap:10px;margin:18px 0 6px;}
 .loadMoreHint{color:var(--muted);font-size:14px;}
@@ -1232,6 +1316,64 @@
   color: rgba(0,0,0,0.45);
   font-weight: 400;
 }
+
+/* ===== Mobile plan switch (no JS) for pricing comparison ===== */
+.pricingCompareMobile{display:none;}
+.pricingCompareDesktop{display:block;}
+
+.planSwitch{
+  display:flex;
+  gap:8px;
+  justify-content:center;
+  padding:14px 14px 8px;
+}
+.pricingCompareMobile > .planSel{position:absolute;opacity:0;pointer-events:none;}
+.planSwitch label{
+  user-select:none;
+  border:1px solid rgba(0,0,0,0.22);
+  border-radius:999px;
+  padding:8px 14px;
+  font-weight:650;
+  font-size:14px;
+  cursor:pointer;
+  background:#fff;
+  color:#111;
+  line-height:1;
+}
+
+/* active pill */
+#planSelFree:checked ~ .planSwitch label[for="planSelFree"],
+#planSelPro:checked ~ .planSwitch label[for="planSelPro"],
+#planSelAnalyst:checked ~ .planSwitch label[for="planSelAnalyst"]{
+  background:#111;
+  color:#fff;
+  border-color:#111;
+}
+
+.pricingOne{width:100%;border-collapse:separate;border-spacing:0;background:#fff;}
+.pricingOne th,.pricingOne td{
+  padding:14px 16px;
+  border-bottom:1px solid rgba(0,0,0,0.20);
+  font-size:16px;
+}
+.pricingOne th{width:58%;text-align:left;font-weight:500;color:#111;}
+.pricingOne td{text-align:right;font-weight:450;color:rgba(0,0,0,0.80);}
+.pricingOne tr:last-child th,.pricingOne tr:last-child td{border-bottom:0;}
+
+.onePlan{display:none;padding:0 0 8px;}
+#planSelFree:checked ~ .onePlanFree{display:block;}
+#planSelPro:checked ~ .onePlanPro{display:block;}
+#planSelAnalyst:checked ~ .onePlanAnalyst{display:block;}
+
+@media (max-width:720px){
+  /* hide wide table entirely */
+  .pricingCompareDesktop{display:none;}
+  .pricingCompareMobile{display:block;}
+
+  /* tighten table wrapper on mobile */
+  .pricingCompareWrap{border-radius:26px;}
+  .pricingTrust{letter-spacing:0.22em;font-size:18px;}
+}
 .planPriceBig{
   display: flex;
   justify-content: center;
@@ -1698,8 +1840,84 @@
   transform: translateX(18px);
 }
 
+
+/* ===== Premium Motion + Mobile Pack (inline fallback) ===== */
+html, body { overflow-x: hidden; }
+
+/* Transition classes added by /static/premium-animations.js */
+#feedView{
+  will-change: opacity, transform, filter;
+}
+#feedView.vt-enter{ animation: vtEnter .55s cubic-bezier(.22,1,.36,1) both; }
+#feedView.vt-leave{ animation: vtLeave .28s cubic-bezier(.4,0,.2,1) both; }
+@keyframes vtEnter{
+  from{opacity:0; transform: translateY(12px) scale(.985); filter: blur(2px);}
+  to{opacity:1; transform:none; filter:none;}
+}
+@keyframes vtLeave{
+  from{opacity:1; transform:none; filter:none;}
+  to{opacity:0; transform: translateY(-8px) scale(.99); filter: blur(1px);}
+}
+
+/* Tap feedback for mobile */
+button, .btn, .trackBtn, .loginBtn { -webkit-tap-highlight-color: transparent; }
+button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scale(.98); }
+
+/* ===== Mobile / small screens ===== */
+@media (max-width: 640px){
+  .wrap{ max-width: 100%; padding: 12px 12px 0; }
+  .headerInner{
+    padding: 14px 12px;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .brandLogo{ width: 34px; height: 34px; }
+  .brandText .top{ font-size: 26px; }
+  .brandText .bottom{ font-size: 24px; }
+  .tagline{ display:none; }
+  .headerRight{ gap: 8px; margin-left: auto; }
+  .trackBtn{
+    font-size: 15px;
+    padding: 8px 10px;
+    gap: 8px;
+  }
+  .loginBtn{
+    padding: 7px 10px;
+    border-radius: 12px;
+    font-size: 14px;
+  }
+
+  .panel{ padding: 12px; border-radius: 14px; }
+  .searchWrap{
+    max-width: 100%;
+    padding: 12px 14px;
+    gap: 10px;
+  }
+  .searchIcon{ width: 22px; height: 22px; }
+  .searchWrap input{
+    font-size: 16px; /* prevents iOS zoom */
+  }
+  .searchWrap input::placeholder{ font-size: 16px; }
+}
+
+/* Extra-tight phones */
+@media (max-width: 420px){
+  .trackBtn span:first-child{ display:none; } /* keep only badge on tiny screens */
+  .trackBtn{ padding: 8px 10px; }
+}
+
+
+@media (max-width: 640px){
+  .filtersRow{ flex-wrap: wrap; gap: 10px; }
+  .field{ min-width: 0; }
+  select, input, button{ max-width: 100%; }
+  /* Cards spacing */
+  .newsCard{ border-radius: 16px; }
+}
+
 </style>
 </head>
+
 <body>
   <header>
     <div class="headerInner">
@@ -1742,17 +1960,17 @@
       <div class="searchRow">
         <div class="searchWrap">
           <div class="searchIcon" aria-hidden="true"></div>
-          <input id="search" type="text" placeholder="Search news or sources" />
+          <input id="search" type="text" placeholder="Search news or sources" data-i18n-placeholder="ui.search_placeholder" />
         </div>
 
         <!-- Kept for compatibility with existing logic -->
-        <button id="btnSearch" class="btn hiddenCompat" type="button">Search</button>
-        <button id="btnSave" class="btn hiddenCompat" type="button">Save</button>
+        <button id="btnSearch" class="btn hiddenCompat" type="button" data-i18n="ui.search">Search</button>
+        <button id="btnSave" class="btn hiddenCompat" type="button" data-i18n="ui.save">Save</button>
       </div>
 
       <div class="filtersRow">
         <div class="field">
-          <div class="fieldLabel">Country</div>
+          <div class="fieldLabel" data-i18n="ui.country">Country</div>
           <select id="country">
             <option value="world">World</option>
             <option value="us">US</option>
@@ -1764,12 +1982,12 @@
         </div>
 
         <div class="field">
-          <div class="fieldLabel">Language</div>
+          <div class="fieldLabel" data-i18n="ui.language">Language</div>
           <select id="language">
             <option value="en">EN</option>
             <option value="de">DE</option>
             <option value="fr">FR</option>
-            <option value="uk">UK</option>
+            <option value="uk">UA</option>
             <option value="ru">RU</option>
           </select>
         </div>
@@ -1780,15 +1998,15 @@
           <input type="checkbox" id="fOnlyAI" />
           <input id="fMinScore" type="range" min="0" max="100" step="5" value="0" />
           <span id="fMinScoreVal">0</span>
-          <button id="btnApplyFilters" class="btn" type="button">Apply</button>
+          <button id="btnApplyFilters" class="btn" type="button" data-i18n="ui.apply">Apply</button>
         </div>
       </div>
 
       <div class="tagsBar">
         <div class="tags" id="tags"></div>
         <div class="thumbToggleWrap" aria-label="Миниатюры">
-          <div class="thumbToggleLabel">Miniatures</div>
-          <button id="thumbToggle" class="thumbToggle" type="button" role="switch" aria-checked="false" title="Показать/скрыть миниатюры">
+          <div class="thumbToggleLabel" data-i18n="ui.miniatures">Miniatures</div>
+          <button id="thumbToggle" class="thumbToggle" type="button" role="switch" aria-checked="false" title="Show/hide thumbnails" data-i18n-title="ui.toggle_thumbs_title">
             <span class="thumbToggleDot"></span>
           </button>
         </div>
@@ -1806,12 +2024,12 @@
       <button id="btnReload" class="btn hiddenCompat" type="button">Reload</button>
     </div>
     <div id="lastUpdated" class="muted" style="margin-top:8px;"></div>
-    <div id="trackingHint" class="muted" style="margin-top:10px; display:none;">Tip: drag a card onto the 🗑️ to remove it from Tracking.</div>
+    <div id="trackingHint" class="muted" style="margin-top:10px; display:none;" data-i18n="ui.tip_drag_remove">Tip: drag a card onto the 🗑️ to remove it from Tracking.</div>
 
     <div id="trackingSettings" class="trackingSettings" style="display:none;">
       <div class="trackingSettingsLeft">
-        <div class="trackingSettingsTitle">Email notifications</div>
-        <div class="trackingSettingsSub">Send me an email when any tracked event changes</div>
+        <div class="trackingSettingsTitle" data-i18n="ui.email_notifications">Email notifications</div>
+        <div class="trackingSettingsSub" data-i18n="ui.email_notifications_sub">Send me an email when any tracked event changes</div>
       </div>
       <label class="switch">
         <input id="emailAlertsToggle" type="checkbox" />
@@ -1824,18 +2042,18 @@
   <!-- Pricing / Subscriptions -->
   <section id="pricingSection" class="pricingPage" aria-label="Pricing" style="display:none;">
     <div class="pricingHero">
-      <h2>Track credibility. Stay informed.</h2>
-      <p>Follow important news events and get updates when trust changes.</p>
+      <h2 data-i18n="pricing.hero_title">Track credibility. Stay informed.</h2>
+      <p data-i18n="pricing.hero_sub">Follow important news events and get updates when trust changes.</p>
     </div>
 
     <div class="billingToggle">
   <div class="togglePill" role="tablist" aria-label="Billing interval">
     <button id="billMonthly" type="button" class="on" aria-selected="true">
-      Monthly
+      <span data-i18n="pricing.monthly">Monthly</span>
     </button>
 
     <button id="billYearly" type="button" aria-selected="false">
-      Yearly <span class="saveTag">Save 20%</span>
+      <span data-i18n="pricing.yearly">Yearly</span> <span class="saveTag" data-i18n="pricing.save_20">Save 20%</span>
     </button>
   </div>
 </div>
@@ -1863,7 +2081,7 @@
       </div>
 
       <div class="planCard popular" data-plan="pro" role="listitem" tabindex="0">
-        <div class="planBadge">Most popular</div>
+        <div class="planBadge" data-i18n="pricing.most_popular">Most popular</div>
         <div class="planHead">
           <div class="planName">Pro</div>
           <div class="planPrice planPriceBig" data-monthly="4.99" data-yearly="49.99">
@@ -1912,48 +2130,105 @@
     <div class="pricingTrust">Trusted by journalists, analysts and researchers.</div>
 
     <div class="pricingCompareWrap">
-      <table class="pricingTable" aria-label="Plan comparison">
-        <thead>
-          <tr>
-            <th style="text-align:left;">Plan</th>
-            <th>Free</th>
-            <th>Pro</th>
-            <th>Analyst</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>Track events</td>
-            <td>3</td>
-            <td>20</td>
-            <td>Unlimited</td>
-          </tr>
-          <tr>
-            <td>Trust score changes</td>
-            <td>✓</td>
-            <td>✓</td>
-            <td>✓</td>
-          </tr>
-          <tr>
-            <td>Email alerts</td>
-            <td>×</td>
-            <td>✓</td>
-            <td>✓</td>
-          </tr>
-          <tr>
-            <td>Update history</td>
-            <td>Limited</td>
-            <td>Full</td>
-            <td>Full</td>
-          </tr>
-          <tr>
-            <td>Export</td>
-            <td>Limited</td>
-            <td>Limited</td>
-            <td>Full</td>
-          </tr>
-        </tbody>
-      </table>
+
+      <!-- Mobile: show ONE plan at a time (no JS) -->
+      <div class="pricingCompareMobile" aria-label="Plan comparison mobile">
+        <!-- hidden radios (CSS-only switch) -->
+        <input class="planSel" type="radio" name="planSel" id="planSelFree" checked>
+        <input class="planSel" type="radio" name="planSel" id="planSelPro">
+        <input class="planSel" type="radio" name="planSel" id="planSelAnalyst">
+
+        <div class="planSwitch" role="tablist" aria-label="Select plan">
+          <label for="planSelFree" role="tab" aria-controls="planFree">Free</label>
+          <label for="planSelPro" role="tab" aria-controls="planPro">Pro</label>
+          <label for="planSelAnalyst" role="tab" aria-controls="planAnalyst">Analyst</label>
+        </div>
+
+        <div class="onePlan onePlanFree" id="planFree">
+          <table class="pricingOne" aria-label="Free plan features">
+            <tbody>
+              <tr><th>Plan</th><td>Free</td></tr>
+              <tr><th>Track events</th><td>3</td></tr>
+              <tr><th>Trust score changes</th><td>✓</td></tr>
+              <tr><th>Email alerts</th><td>×</td></tr>
+              <tr><th>Update history</th><td>Limited</td></tr>
+              <tr><th>Export</th><td>Limited</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="onePlan onePlanPro" id="planPro">
+          <table class="pricingOne" aria-label="Pro plan features">
+            <tbody>
+              <tr><th>Plan</th><td>Pro</td></tr>
+              <tr><th>Track events</th><td>20</td></tr>
+              <tr><th>Trust score changes</th><td>✓</td></tr>
+              <tr><th>Email alerts</th><td>✓</td></tr>
+              <tr><th>Update history</th><td>Full</td></tr>
+              <tr><th>Export</th><td>Limited</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="onePlan onePlanAnalyst" id="planAnalyst">
+          <table class="pricingOne" aria-label="Analyst plan features">
+            <tbody>
+              <tr><th>Plan</th><td>Analyst</td></tr>
+              <tr><th>Track events</th><td>Unlimited</td></tr>
+              <tr><th>Trust score changes</th><td>✓</td></tr>
+              <tr><th>Email alerts</th><td>✓</td></tr>
+              <tr><th>Update history</th><td>Full</td></tr>
+              <tr><th>Export</th><td>Full</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Desktop/tablet: full comparison table -->
+      <div class="pricingCompareDesktop">
+        <table class="pricingTable" aria-label="Plan comparison">
+          <thead>
+            <tr>
+              <th style="text-align:left;">Plan</th>
+              <th>Free</th>
+              <th>Pro</th>
+              <th>Analyst</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Track events</td>
+              <td>3</td>
+              <td>20</td>
+              <td>Unlimited</td>
+            </tr>
+            <tr>
+              <td>Trust score changes</td>
+              <td>✓</td>
+              <td>✓</td>
+              <td>✓</td>
+            </tr>
+            <tr>
+              <td>Email alerts</td>
+              <td>×</td>
+              <td>✓</td>
+              <td>✓</td>
+            </tr>
+            <tr>
+              <td>Update history</td>
+              <td>Limited</td>
+              <td>Full</td>
+              <td>Full</td>
+            </tr>
+            <tr>
+              <td>Export</td>
+              <td>Limited</td>
+              <td>Limited</td>
+              <td>Full</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </section>
   <footer>
@@ -2035,99 +2310,99 @@
             <img class="footerLogoImg" src="/static/icons/Logo.svg" alt="Logo" />
             <div class="footerBrandText"><div class="top">CHECK</div><div class="bottom">news.</div></div>
           </div>
-          <button id="authClose" class="authClose" type="button" aria-label="Close">✕</button>
+          <button id="authClose" class="authClose" type="button" aria-label="Close" data-i18n-aria="ui.close">✕</button>
         </div>
 
         <!-- Step 1: choose method -->
         <div id="authStepChoose">
-          <div id="authTitle" class="authTitle">Create an account to continue</div>
-          <div class="authSub">Track news credibility, save events, and get updates when trust changes.</div>
+          <div id="authTitle" class="authTitle" data-i18n="auth.title">Create an account to continue</div>
+          <div class="authSub" data-i18n="auth.sub">Track news credibility, save events, and get updates when trust changes.</div>
 
           <div class="authActions">
             <button id="btnGoogle" class="authBtn" type="button">
               <img class="authIcon" src="/static/icons/Gmail.svg" alt="">
-              <span>Continue with Google</span>
+              <span data-i18n="ui.continue_with_google">Continue with Google</span>
             </button>
 
-            <div class="authDivider">or</div>
+            <div class="authDivider" data-i18n="ui.or">or</div>
 
             <button id="btnEmail" class="authBtn" type="button">
               <img class="authIcon" src="/static/icons/Email.svg" alt="">
-              <span>Continue with email</span>
+              <span data-i18n="ui.continue_with_email">Continue with email</span>
             </button>
           </div>
 
-          <div class="authNote">No spam. We only send updates for events you track.</div>
+          <div class="authNote" data-i18n="auth.note">No spam. We only send updates for events you track.</div>
         </div>
 
         <!-- Step 2: email form -->
         <div id="authStepEmail" style="display:none;">
-          <div id="authEmailTitle" class="authTitle">Create an account to continue</div>
-<div class="authSub">Track news credibility, save events, and get updates when trust changes.</div>
-          <div class="authFieldLabel">Email address</div>
-          <input id="authEmail" class="authInput" type="email" placeholder="Email" autocomplete="email" />
+          <div id="authEmailTitle" class="authTitle" data-i18n="auth.title">Create an account to continue</div>
+<div class="authSub" data-i18n="auth.sub">Track news credibility, save events, and get updates when trust changes.</div>
+          <div class="authFieldLabel" data-i18n="ui.email_address">Email address</div>
+          <input id="authEmail" class="authInput" type="email" placeholder="Email" data-i18n-placeholder="ui.email" autocomplete="email" />
 
-          <div class="authFieldLabel">Password</div>
-          <input id="authPassword" class="authInput" type="password" placeholder="At least 8 characters" autocomplete="current-password" />
+          <div class="authFieldLabel" data-i18n="ui.password">Password</div>
+          <input id="authPassword" class="authInput" type="password" placeholder="At least 8 characters" data-i18n-placeholder="auth.password_hint" autocomplete="current-password" />
 
           <div class="authError" id="authError"></div>
 
           <div class="authActions" style="margin-top: 18px;">
-            <button id="authSubmit" class="authBtn authBtnPrimary" type="button">Login in/Sign up</button>
+            <button id="authSubmit" class="authBtn authBtnPrimary" type="button" data-i18n="auth.login_signup">Login in/Sign up</button>
           </div>
 
           <div class="authRowBetween">
-            <a id="authBack" class="authLink" href="#">&lt; Back</a>
-            <a id="authForgot" class="authLink" href="#">Forgot password?</a>
+            <a id="authBack" class="authLink" href="#" data-i18n="ui.back">&lt; Back</a>
+            <a id="authForgot" class="authLink" href="#" data-i18n="auth.forgot">Forgot password?</a>
           </div>
         </div>
 
         <!-- Step 3: forgot -->
         <div id="authStepForgot" style="display:none;">
-          <div class="authTitle">Reset your password</div>
-          <div class="authSub">Enter your email and we’ll send a reset link.</div>
-          <div class="authFieldLabel">Email address</div>
-          <input id="authForgotEmail" class="authInput" type="email" placeholder="Email" autocomplete="email" />
+          <div class="authTitle" data-i18n="auth.reset_title">Reset your password</div>
+          <div class="authSub" data-i18n="auth.reset_sub">Enter your email and we’ll send a reset link.</div>
+          <div class="authFieldLabel" data-i18n="ui.email_address">Email address</div>
+          <input id="authForgotEmail" class="authInput" type="email" placeholder="Email" data-i18n-placeholder="ui.email" autocomplete="email" />
           <div class="authError" id="authForgotError"></div>
           <div class="authActions" style="margin-top: 18px;">
-            <button id="authForgotSubmit" class="authBtn authBtnPrimary" type="button">Send reset link</button>
+            <button id="authForgotSubmit" class="authBtn authBtnPrimary" type="button" data-i18n="auth.send_reset">Send reset link</button>
           </div>
           <div class="authRowBetween">
-            <a id="authForgotBack" class="authLink" href="#">&lt; Back</a>
+            <a id="authForgotBack" class="authLink" href="#" data-i18n="ui.back">&lt; Back</a>
           </div>
         </div>
 
         <!-- Step 4: reset -->
         <div id="authStepReset" style="display:none;">
-          <div class="authTitle">Create a new password</div>
-          <div class="authSub">Choose a strong password (letters + digits).</div>
-          <div class="authFieldLabel">New password</div>
-          <input id="authResetPassword" class="authInput" type="password" placeholder="At least 8 characters" autocomplete="new-password" />
+          <div class="authTitle" data-i18n="auth.new_password_title">Create a new password</div>
+          <div class="authSub" data-i18n="auth.new_password_sub">Choose a strong password (letters + digits).</div>
+          <div class="authFieldLabel" data-i18n="auth.new_password_label">New password</div>
+          <input id="authResetPassword" class="authInput" type="password" placeholder="At least 8 characters" data-i18n-placeholder="auth.password_hint" autocomplete="new-password" />
           <div class="authError" id="authResetError"></div>
           <div class="authActions" style="margin-top: 18px;">
-            <button id="authResetSubmit" class="authBtn authBtnPrimary" type="button">Update password</button>
+            <button id="authResetSubmit" class="authBtn authBtnPrimary" type="button" data-i18n="auth.update_password">Update password</button>
           </div>
         </div>
 
       </div>
-      <div class="authFoot">By continuing, you agree to CHECK news’ <span style="color:#111;">Terms of Service</span> and <span style="color:#111;">Privacy Policy</span>.</div>
+      <div class="authFoot" data-i18n-html="auth.foot">By continuing, you agree to CHECK news’ <span style="color:#111;">Terms of Service</span> and <span style="color:#111;">Privacy Policy</span>.</div>
     </div>
   </div>
 
  <script src="/static/app.js"></script>
-
+<script src="/static/premium-animations.js"></script>
 <!-- Share modal -->
 <div id="shareBackdrop" class="shareBackdrop" aria-hidden="true">
   <div class="shareModal" role="dialog" aria-modal="true" aria-labelledby="shareHeroTitle">
 
     <div class="shareBody">
       <div class="shareHero">
-        <h1 id="shareHeroTitle">Share this event</h1>
-        <p>Share a news event you find important or relevant.</p>
+        <h1 id="shareHeroTitle" data-i18n="share.title">Share this event</h1>
+        <p data-i18n="share.sub">Share a news event you find important or relevant.</p>
       </div>
 
       <div class="sharePanel">
-        <div class="sharePanelLabel">ARTICLE PREVIEW</div>
+        <div class="sharePanelLabel" data-i18n="share.preview_label">ARTICLE PREVIEW</div>
         <div class="sharePreviewFrame">
           <img id="sharePreviewImg" class="sharePreviewImg" alt="Share preview" />
         </div>
@@ -2142,12 +2417,12 @@
       <div class="shareActions">
         <button id="shareToXBtn" class="shareAction primary" type="button">
           <img src="/static/icons/x.png" alt="X" />
-          <span>Share on X</span>
+          <span data-i18n="share.on_x">Share on X</span>
         </button>
 
         <button id="shareToThreadsBtn" class="shareAction secondary" type="button">
           <img src="/static/icons/treds.png" alt="Threads" />
-          <span>Share on Threads</span>
+          <span data-i18n="share.on_threads">Share on Threads</span>
         </button>
 
         <button id="shareCopyBtn" class="shareAction ghost" type="button">
@@ -2156,7 +2431,7 @@
         </button>
       </div>
 
-      <button id="shareNoThanks" class="shareNoThanks" type="button">No thanks!</button>
+      <button id="shareNoThanks" class="shareNoThanks" type="button" data-i18n="share.no_thanks">No thanks!</button>
     </div>
 
   </div>

@@ -1,0 +1,138 @@
+{
+  "ui": {
+    "language": "Langue",
+    "country": "Pays",
+    "interests": "Centres d’intérêt",
+    "search": "Recherche",
+    "favorites": "Favoris",
+    "feed": {
+      "label": "Fil",
+      "meta": "Fil : {time} — événements : {count} (nouveaux en haut)",
+      "hidden": "{count} actualités masquées",
+      "show_more": "Afficher plus (+{count})",
+      "shown": "{count} actualités affichées",
+      "hide": "Masquer"
+    },
+    "settings": "Paramètres",
+    "show_thumbs": "Afficher les vignettes",
+    "hide_thumbs": "Masquer les vignettes",
+    "updated": "Mis à jour",
+    "new": "Nouveau",
+    "loading": "Chargement…",
+    "no_results": "Aucun résultat",
+    "try_again": "Réessayer",
+    "close": "Fermer",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "sign_in": "Se connecter",
+    "sign_up": "S’inscrire",
+    "logout": "Se déconnecter",
+    "email": "E‑mail",
+    "password": "Mot de passe",
+    "continue_with": "Continuer avec",
+    "or": "ou",
+    "guest_locked": "Créez un compte pour voir tous les détails.",
+    "login_required_interests": "Connectez-vous pour changer vos centres d’intérêt.",
+    "copy_link": "Copier le lien",
+    "copied": "Copié !",
+    "share": "Partager",
+    "why_score": "Pourquoi ce score ?",
+    "ai_summary": "Résumé IA",
+    "unconfirmed": "Non confirmé",
+    "loading_feed": "Chargement du flux...",
+    "error_api_news": "Erreur /api/news",
+    "search_placeholder": "Rechercher des news ou des sources",
+    "apply": "Appliquer",
+    "miniatures": "Miniatures",
+    "toggle_thumbs_title": "Afficher/masquer les miniatures",
+    "tip_drag_remove": "Astuce : fais glisser une carte sur 🗑️ pour la retirer du suivi.",
+    "email_notifications": "Notifications e-mail",
+    "email_notifications_sub": "Envoie-moi un e-mail quand un événement suivi change",
+    "feed_status_prefix": "Flux",
+    "events": "événements",
+    "back": "< Retour",
+    "continue_with_google": "Continuer avec Google",
+    "continue_with_email": "Continuer avec e-mail",
+    "email_address": "Adresse e-mail",
+    "drag_to_delete": "Glisser pour supprimer"
+  },
+  "interests": {
+    "general": "Général",
+    "business": "Économie",
+    "technology": "Technologie",
+    "politics": "Politique",
+    "science": "Science",
+    "sports": "Sports",
+    "health": "Santé"
+  },
+  "score": {
+    "limited": "L'explication du score est limitée en raison de données insuffisantes.",
+    "summary": {
+      "high": "Score élevé : confirmé par plusieurs sources et/ou des médias fiables.",
+      "medium": "Score moyen : il y a des confirmations, mais elles restent limitées ou les sources varient en qualité.",
+      "low": "Score faible : peu de confirmations indépendantes et/ou réputation des sources plus faible.",
+      "has_negatives": "Certains facteurs réduisent le score."
+    },
+    "factor": {
+      "confirmation": {
+        "name": "Confirmation par les sources",
+        "desc": {
+          "one": "Une seule source trouvée pour l'instant — confirmation limitée.",
+          "two": "Deux sources indépendantes — la confirmation commence à se former.",
+          "many": "Confirmé par {n} sources indépendantes.",
+          "many_strong": "Confirmé par {n} sources indépendantes — signal fort."
+        }
+      },
+      "reputation": {
+        "name": "Réputation des sources",
+        "desc": "Poids moyen : {avg}, max : {max}."
+      },
+      "diversity": {
+        "name": "Diversification des sources",
+        "desc": "Part fortes/moyennes/faibles (normalisée) : {share}."
+      },
+      "clickbait": {
+        "name": "Clickbait / langage émotionnel",
+        "desc": "Le titre utilise un langage émotionnel ou manipulateur."
+      }
+    }
+  },
+  "pricing": {
+    "hero_title": "Suivez la crédibilité. Restez informé.",
+    "hero_sub": "Suivez les événements importants et recevez des mises à jour quand la confiance change.",
+    "monthly": "Mensuel",
+    "yearly": "Annuel",
+    "save_20": "Économisez 20%",
+    "most_popular": "Le plus populaire"
+  },
+  "auth": {
+    "title": "Créez un compte pour continuer",
+    "sub": "Suivez la crédibilité des infos, enregistrez des événements et recevez des mises à jour quand la confiance change.",
+    "note": "Pas de spam. Nous envoyons seulement des mises à jour pour les événements que vous suivez.",
+    "password_hint": "Au moins 8 caractères",
+    "login_signup": "Se connecter / S’inscrire",
+    "forgot": "Mot de passe oublié ?",
+    "reset_title": "Réinitialiser votre mot de passe",
+    "reset_sub": "Entrez votre e-mail et nous enverrons un lien de réinitialisation.",
+    "send_reset": "Envoyer le lien",
+    "new_password_title": "Créer un nouveau mot de passe",
+    "new_password_sub": "Choisissez un mot de passe fort (lettres + chiffres).",
+    "new_password_label": "Nouveau mot de passe",
+    "update_password": "Mettre à jour le mot de passe",
+    "foot": "En continuant, vous acceptez les <span style=\"color:#111;\">Conditions d’utilisation</span> et la <span style=\"color:#111;\">Politique de confidentialité</span> de CHECK news."
+  },
+  "share": {
+    "title": "Partager cet événement",
+    "sub": "Partagez un événement d’actualité que vous trouvez important ou pertinent.",
+    "preview_label": "APERÇU DE L’ARTICLE",
+    "on_x": "Partager sur X",
+    "on_threads": "Partager sur Threads",
+    "no_thanks": "Non merci !",
+    "tweet_prefix": "Score de confiance •"
+  },
+  "card": {
+    "source_diffs": "Différences entre sources",
+    "key_facts": "Faits clés",
+    "uncertainties": "Incertitudes"
+  }
+}

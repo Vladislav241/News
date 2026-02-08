@@ -8,6 +8,33 @@ from typing import Any, Optional, Tuple
 
 logger = logging.getLogger("news.ai")
 
+# Human-readable language names for prompts
+_LANG_LABELS = {
+    "en": "English",
+    "de": "German",
+    "fr": "French",
+    "ru": "Russian",
+    "uk": "Ukrainian",
+    # tolerate "ua" coming from UI
+    "ua": "Ukrainian",
+}
+
+
+def _norm_lang(code: str) -> str:
+    """
+    Normalize language codes:
+    - accepts: en, de, fr, ru, uk (and ua alias)
+    - drops region: en-US -> en
+    - unknown -> en
+    """
+    c = (code or "en").strip().lower()
+    c = c.split("-")[0]
+    if c == "ua":
+        c = "uk"
+    if c not in {"en", "de", "fr", "ru", "uk"}:
+        c = "en"
+    return c
+
 
 def verify_same_story(
     a_title: str,
@@ -16,34 +43,33 @@ def verify_same_story(
     b_desc: str,
     model: str = "gpt-4o-mini",
 ) -> bool:
-    """Binary gate: check if two headlines/descriptions refer to the same event.
-
-    This is intentionally short to keep token cost low.
+    """
+    Binary gate: check if two headlines/descriptions refer to the same event.
+    Intentionally short to keep token cost low.
     If OPENAI_API_KEY is not set, returns True (so the pipeline still works offline).
     """
     api_key = (os.getenv("OPENAI_API_KEY") or "").strip()
     if not api_key:
         return True
 
-    # Import lazily to avoid import-time issues during local/offline runs.
+    # Import lazily so local/offline runs don't fail import-time.
     from openai import OpenAI
+
+    def clip(s: str, n: int = 380) -> str:
+        s = (s or "").strip().replace("\n", " ")
+        return s[:n]
+
+    prompt = (
+        "Are these two news items about the SAME real-world event?\n"
+        "Answer with only one letter: Y or N.\n\n"
+        f"A title: {clip(a_title)}\n"
+        f"A desc: {clip(a_desc)}\n\n"
+        f"B title: {clip(b_title)}\n"
+        f"B desc: {clip(b_desc)}\n"
+    )
 
     try:
         client = OpenAI(api_key=api_key)
-
-        def clip(s: str, n: int = 380) -> str:
-            s = (s or "").strip().replace("\n", " ")
-            return s[:n]
-
-        prompt = (
-            "Decide if A and B describe the SAME real-world news story/event.\n"
-            "Answer ONLY with 'YES' or 'NO'.\n\n"
-            f"A title: {clip(a_title)}\n"
-            f"A desc: {clip(a_desc)}\n\n"
-            f"B title: {clip(b_title)}\n"
-            f"B desc: {clip(b_desc)}\n"
-        )
-
         resp = client.chat.completions.create(
             model=model,
             messages=[
@@ -51,9 +77,8 @@ def verify_same_story(
                 {"role": "user", "content": prompt},
             ],
             temperature=0,
-            max_tokens=3,
+            max_tokens=1,
         )
-
         txt = (resp.choices[0].message.content or "").strip().upper()
         return txt.startswith("Y")
     except Exception:
@@ -81,6 +106,10 @@ def _parse_json(text: str) -> Optional[dict[str, Any]]:
 
 
 def _validate(obj: dict[str, Any], sources: list[dict[str, Any]]) -> bool:
+    """
+    Validate structure and enforce that diffs cite >=2 concrete known sources.
+    Also blocks vague wording in multiple languages.
+    """
     if not isinstance(obj.get("brief"), str) or not obj["brief"].strip():
         return False
     if not isinstance(obj.get("key_facts"), list) or not obj["key_facts"]:
@@ -90,7 +119,7 @@ def _validate(obj: dict[str, Any], sources: list[dict[str, Any]]) -> bool:
     if "uncertainties" in obj and not isinstance(obj["uncertainties"], list):
         return False
 
-    known = {(s.get("source_name") or "").strip() for s in sources or []}
+    known = {(s.get("source_name") or "").strip() for s in (sources or [])}
     known = {x for x in known if x}
 
     def ok_src_list(lst: Any) -> bool:
@@ -99,25 +128,38 @@ def _validate(obj: dict[str, Any], sources: list[dict[str, Any]]) -> bool:
         ss = [str(x).strip() for x in lst if str(x).strip()]
         if len(ss) < 2:
             return False
-        # must be from known list (strict-ish)
+        # Must be from known list; check first 2 (that's what we require)
         return all((x in known) for x in ss[:2])
 
-    for d in obj["diffs"][:5]:
+    # block vague wording (RU/EN/DE/FR/UK)
+    vague_re = re.compile(
+        r"\b("
+        r"некоторые|другие|часть\s+источников|многие\s+источники|ряд\s+источников|"
+        r"some\s+sources|other\s+sources|several\s+sources|many\s+sources|"
+        r"einige\s+quellen|andere\s+quellen|mehrere\s+quellen|"
+        r"certaines\s+sources|d'autres\s+sources|plusieurs\s+sources|"
+        r"деякі\s+джерела|інші\s+джерела|кілька\s+джерел"
+        r")\b",
+        re.IGNORECASE,
+    )
+
+    for d in (obj.get("diffs") or [])[:5]:
         if not isinstance(d, dict):
             return False
         if not ok_src_list(d.get("sources")):
             return False
         if not isinstance(d.get("difference"), str) or not d["difference"].strip():
             return False
-        # block vague
-        if re.search(r"\b(некоторые|другие|часть источников)\b", d["difference"], re.IGNORECASE):
+        if vague_re.search(d["difference"]):
             return False
+
     return True
 
 
 def summarize_cluster(
     cluster_title: str,
     sources: list[dict[str, Any]],
+    lang: str = "en",
     model: str = "gpt-4o-mini",
 ) -> Tuple[Optional[str], Optional[str], str, Optional[str]]:
     """
@@ -141,14 +183,18 @@ def summarize_cluster(
         logger.exception("openai package not available")
         return None, None, "failed", None
 
+    # Normalize language
+    lang_n = _norm_lang(lang)
+    out_lang = _LANG_LABELS.get(lang_n, "English")
+
     # Build context (up to 10)
     items: list[str] = []
-    src_names = []
+    src_names: list[str] = []
     seen = set()
 
     for s in (sources or [])[:10]:
-        src = (s.get("source_name") or "unknown").strip()
-        if src and src.lower() not in seen:
+        src = (s.get("source_name") or "unknown").strip() or "unknown"
+        if src.lower() not in seen:
             seen.add(src.lower())
             src_names.append(src)
 
@@ -157,6 +203,7 @@ def summarize_cluster(
         p = (s.get("published_at") or "").strip()
         if not t and not d:
             continue
+
         line = f"- [{src}]"
         if p:
             line += f" ({p})"
@@ -169,33 +216,32 @@ def summarize_cluster(
     context = "\n".join(items) if items else "(no items)"
     sources_list_str = ", ".join(src_names[:12]) if src_names else "unknown"
 
+    # Prompt in English but instruct to write in the selected language (works reliably)
     prompt = (
-        "Ты — нейтральный редактор новостей. Пиши по-русски.\n"
-        "Задача: коротко пересказать событие по нескольким источникам и показать расхождения.\n"
-        "НЕ добавляй фактов, которых нет в источниках.\n\n"
-        "КРИТИЧНО:\n"
-        "- Каждый пункт diffs ОБЯЗАН ссылаться минимум на 2 конкретных источника.\n"
-        "- Названия источников бери СТРОГО из списка допустимых.\n"
-        "- Никаких 'некоторые/другие источники' — только конкретные.\n\n"
-        "Верни СТРОГО JSON (без markdown, без пояснений) вида:\n"
+        f"You are a neutral news editor. Write in {out_lang}.\n"
+        "Task: summarize ONE event using multiple sources and highlight disagreements.\n"
+        "Do NOT add facts that are not present in the sources.\n\n"
+        "CRITICAL:\n"
+        "- Each diffs item MUST reference at least 2 specific sources.\n"
+        "- Source names MUST be taken STRICTLY from the allowed list.\n"
+        "- No vague wording like 'some sources'; use concrete source names only.\n\n"
+        "Return STRICT JSON (no markdown, no extra text) with this schema:\n"
         "{\n"
-        '  "brief": "2–4 предложения",\n'
-        '  "key_facts": ["3–6 коротких фактов строго из источников"],\n'
-        '  "diffs": [\n'
-        '    {"sources":["Source A","Source B"],"difference":"В Source A сказано X, а в Source B — Y."}\n'
-        "  ],\n"
-        '  "uncertainties": ["1–4 пункта: что неясно/не подтверждено по источникам"]\n'
+        '  "brief": "2–4 sentences",\n'
+        '  "key_facts": ["3–6 short facts strictly from the sources"],\n'
+        '  "diffs": [{"sources":["A","B"],"difference":"..."}],\n'
+        '  "uncertainties": ["0–4 short uncertainties (only if mentioned by sources)"]\n'
         "}\n\n"
-        "Правила:\n"
-        "- brief: 2–4 предложения.\n"
-        "- key_facts: 3–6 буллетов.\n"
-        "- diffs: максимум 5 пунктов.\n"
-        "- uncertainties: 0–4 пунктов.\n"
-        "- Если существенных различий нет: верни ОДИН diffs пункт с difference='Существенных различий между источниками не указано.' "
-        "и sources=[<любой источник 1>, <любой источник 2>].\n\n"
-        f"Список допустимых источников: {sources_list_str}\n\n"
-        f"Событие (черновой заголовок): {cluster_title}\n"
-        f"Публикации источников:\n{context}\n"
+        "Rules:\n"
+        "- brief: 2–4 sentences.\n"
+        "- key_facts: 3–6 items.\n"
+        "- diffs: max 5 items.\n"
+        "- uncertainties: 0–4 items.\n"
+        "- If there are no material differences: return ONE diffs item with difference="
+        "'No material differences were stated between sources.' and sources=[any 2 allowed sources].\n\n"
+        f"Allowed source names: {sources_list_str}\n\n"
+        f"Event title: {cluster_title}\n"
+        f"Sources (title + description):\n{context}\n"
     )
 
     def _call(messages: list[dict[str, str]]) -> str:
@@ -230,9 +276,10 @@ def summarize_cluster(
                 {
                     "role": "user",
                     "content": (
-                        "Твой ответ не соответствует формату/требованиям.\n"
-                        "Исправь: верни СТРОГО валидный JSON указанного вида.\n"
-                        "Каждый diffs пункт: sources минимум 2 и только из списка допустимых; difference конкретный.\n"
+                        "Your output did not match the required JSON format/rules.\n"
+                        "Fix it: return STRICT valid JSON in the exact schema.\n"
+                        "Each diffs item: sources must have at least 2 names and ONLY from allowed list; "
+                        "difference must be concrete and reference those sources.\n"
                     ),
                 },
             ]
@@ -245,7 +292,6 @@ def summarize_cluster(
             brief = (obj2.get("brief") or "").strip()
             return brief, json.dumps(obj2, ensure_ascii=False), "success", raw2
 
-        # fallback: сохраняем raw, но в json не верим
         logger.warning("AI output invalid after retry; storing raw text only")
         return None, None, "failed", raw2 or raw1
 

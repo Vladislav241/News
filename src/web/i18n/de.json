@@ -1,0 +1,138 @@
+{
+  "ui": {
+    "language": "Sprache",
+    "country": "Land",
+    "interests": "Interessen",
+    "search": "Suche",
+    "favorites": "Favoriten",
+    "feed": {
+      "label": "Feed",
+      "meta": "Feed: {time} — Ereignisse: {count} (neu oben)",
+      "hidden": "{count} Nachrichten ausgeblendet",
+      "show_more": "Mehr anzeigen (+{count})",
+      "shown": "{count} Nachrichten angezeigt",
+      "hide": "Ausblenden"
+    },
+    "settings": "Einstellungen",
+    "show_thumbs": "Vorschaubilder anzeigen",
+    "hide_thumbs": "Vorschaubilder ausblenden",
+    "updated": "Aktualisiert",
+    "new": "Neu",
+    "loading": "Lädt…",
+    "no_results": "Keine Ergebnisse",
+    "try_again": "Erneut versuchen",
+    "close": "Schließen",
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "sign_in": "Anmelden",
+    "sign_up": "Registrieren",
+    "logout": "Abmelden",
+    "email": "E‑Mail",
+    "password": "Passwort",
+    "continue_with": "Weiter mit",
+    "or": "oder",
+    "guest_locked": "Erstelle ein Konto, um alle Details zu sehen.",
+    "login_required_interests": "Melde dich an, um Interessen zu ändern.",
+    "copy_link": "Link kopieren",
+    "copied": "Kopiert!",
+    "share": "Teilen",
+    "why_score": "Warum diese Bewertung?",
+    "ai_summary": "KI-Zusammenfassung",
+    "unconfirmed": "Unbestätigt",
+    "loading_feed": "Feed wird geladen...",
+    "error_api_news": "Fehler /api/news",
+    "search_placeholder": "Suche nach News oder Quellen",
+    "apply": "Anwenden",
+    "miniatures": "Miniaturen",
+    "toggle_thumbs_title": "Miniaturen anzeigen/ausblenden",
+    "tip_drag_remove": "Tipp: Ziehe eine Karte auf 🗑️, um sie aus dem Tracking zu entfernen.",
+    "email_notifications": "E-Mail-Benachrichtigungen",
+    "email_notifications_sub": "Sende mir eine E-Mail, wenn sich ein getracktes Ereignis ändert",
+    "feed_status_prefix": "Feed",
+    "events": "Ereignisse",
+    "back": "< Zurück",
+    "continue_with_google": "Mit Google fortfahren",
+    "continue_with_email": "Mit E‑Mail fortfahren",
+    "email_address": "E‑Mail-Adresse",
+    "drag_to_delete": "Zum Löschen ziehen"
+  },
+  "interests": {
+    "general": "Allgemein",
+    "business": "Wirtschaft",
+    "technology": "Technologie",
+    "politics": "Politik",
+    "science": "Wissenschaft",
+    "sports": "Sport",
+    "health": "Gesundheit"
+  },
+  "score": {
+    "limited": "Die Erklärung ist aufgrund unzureichender Daten eingeschränkt.",
+    "summary": {
+      "high": "Hohe Bewertung: durch mehrere Quellen und/oder zuverlässige Medien bestätigt.",
+      "medium": "Mittlere Bewertung: es gibt Bestätigungen, aber noch zu wenige oder die Quellen variieren in der Qualität.",
+      "low": "Niedrige Bewertung: wenige unabhängige Bestätigungen und/oder schwächere Quellenreputation.",
+      "has_negatives": "Einige Faktoren senken die Bewertung."
+    },
+    "factor": {
+      "confirmation": {
+        "name": "Bestätigung durch Quellen",
+        "desc": {
+          "one": "Bisher wurde nur eine Quelle gefunden — geringe Bestätigung.",
+          "two": "Es gibt 2 unabhängige Quellen — Bestätigung beginnt sich zu bilden.",
+          "many": "Durch {n} unabhängige Quellen bestätigt.",
+          "many_strong": "Durch {n} unabhängige Quellen bestätigt — starkes Signal."
+        }
+      },
+      "reputation": {
+        "name": "Quellenreputation",
+        "desc": "Durchschnittsgewicht: {avg}, max.: {max}."
+      },
+      "diversity": {
+        "name": "Quellen-Diversifizierung",
+        "desc": "Anteil stark/mittel/schwach (normalisiert): {share}."
+      },
+      "clickbait": {
+        "name": "Clickbait / emotionale Sprache",
+        "desc": "Die Überschrift nutzt emotionale oder manipulative Formulierungen."
+      }
+    }
+  },
+  "pricing": {
+    "hero_title": "Glaubwürdigkeit tracken. Informiert bleiben.",
+    "hero_sub": "Folge wichtigen News-Events und erhalte Updates, wenn sich das Vertrauen ändert.",
+    "monthly": "Monatlich",
+    "yearly": "Jährlich",
+    "save_20": "20% sparen",
+    "most_popular": "Am beliebtesten"
+  },
+  "auth": {
+    "title": "Konto erstellen, um fortzufahren",
+    "sub": "Tracke die Glaubwürdigkeit von News, speichere Events und erhalte Updates, wenn sich das Vertrauen ändert.",
+    "note": "Kein Spam. Wir senden nur Updates zu Events, die du trackst.",
+    "password_hint": "Mindestens 8 Zeichen",
+    "login_signup": "Anmelden / Registrieren",
+    "forgot": "Passwort vergessen?",
+    "reset_title": "Passwort zurücksetzen",
+    "reset_sub": "Gib deine E‑Mail ein und wir senden dir einen Reset‑Link.",
+    "send_reset": "Reset‑Link senden",
+    "new_password_title": "Neues Passwort erstellen",
+    "new_password_sub": "Wähle ein starkes Passwort (Buchstaben + Zahlen).",
+    "new_password_label": "Neues Passwort",
+    "update_password": "Passwort aktualisieren",
+    "foot": "Wenn du fortfährst, stimmst du den <span style=\"color:#111;\">Nutzungsbedingungen</span> und der <span style=\"color:#111;\">Datenschutzerklärung</span> von CHECK news zu."
+  },
+  "share": {
+    "title": "Dieses Ereignis teilen",
+    "sub": "Teile ein News-Event, das du wichtig oder relevant findest.",
+    "preview_label": "ARTIKELVORSCHAU",
+    "on_x": "Auf X teilen",
+    "on_threads": "Auf Threads teilen",
+    "no_thanks": "Nein, danke!",
+    "tweet_prefix": "Trust Score •"
+  },
+  "card": {
+    "source_diffs": "Unterschiede zwischen Quellen",
+    "key_facts": "Wichtige Fakten",
+    "uncertainties": "Unsicherheiten"
+  }
+}
