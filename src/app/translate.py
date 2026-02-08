@@ -30,6 +30,88 @@ def _default_deepl_url(key: str) -> str:
 if not DEEPL_API_URL:
     DEEPL_API_URL = _default_deepl_url(DEEPL_API_KEY)
 
+
+# =========================
+# Safety / budget controls
+# =========================
+# Goal: prevent burning DeepL quota on every feed refresh.
+#
+# - Circuit breaker: when quota is exceeded (HTTP 456), we disable DeepL for a cooldown.
+# - Budget: cap how many NEW texts we translate per API response (everything else stays original).
+# - Scope: by default we translate only cluster-level fields (title + summary). Source titles / facts
+#   are expensive; they can be enabled via env vars.
+#
+# These are environment-tunable so you can tweak without code changes on Render.
+
+DEEPL_COOLDOWN_SECONDS = int(os.getenv("DEEPL_COOLDOWN_SECONDS") or "21600")  # 6h default
+MAX_DEEPL_TEXTS_PER_RESPONSE = int(os.getenv("MAX_DEEPL_TEXTS_PER_RESPONSE") or "140")
+
+TRANSLATE_INCLUDE_SOURCES = (os.getenv("TRANSLATE_INCLUDE_SOURCES") or "").strip() in ("1", "true", "yes")
+TRANSLATE_INCLUDE_FACTS = (os.getenv("TRANSLATE_INCLUDE_FACTS") or "").strip() in ("1", "true", "yes")
+TRANSLATE_INCLUDE_DIFFS = (os.getenv("TRANSLATE_INCLUDE_DIFFS") or "").strip() in ("1", "true", "yes")
+
+# In-memory circuit breaker. (Works per-process; good enough to stop stampedes.)
+_DEEPL_DISABLED_UNTIL = 0.0
+_DEEPL_LOCK = anyio.Lock()
+
+def _now() -> float:
+    import time as _time
+    return _time.time()
+
+def _deepl_is_enabled() -> bool:
+    return bool(DEEPL_API_KEY) and _now() >= _DEEPL_DISABLED_UNTIL
+
+async def _deepl_disable_for_cooldown() -> None:
+    global _DEEPL_DISABLED_UNTIL
+    async with _DEEPL_LOCK:
+        # extend cooldown; don't shorten if already disabled
+        _DEEPL_DISABLED_UNTIL = max(_DEEPL_DISABLED_UNTIL, _now() + float(DEEPL_COOLDOWN_SECONDS))
+
+
+def _deepl_disable_for_cooldown_sync() -> None:
+    global _DEEPL_DISABLED_UNTIL
+    # Best-effort; race conditions here are fine.
+    _DEEPL_DISABLED_UNTIL = max(_DEEPL_DISABLED_UNTIL, _now() + float(DEEPL_COOLDOWN_SECONDS))
+
+def _looks_cyrillic(s: str) -> bool:
+    # Quick heuristic for RU/UK content
+    if not s:
+        return False
+    cyr = sum(1 for ch in s if "\u0400" <= ch <= "\u04FF" or "\u0500" <= ch <= "\u052F")
+    letters = sum(1 for ch in s if ch.isalpha())
+    if letters == 0:
+        return False
+    return (cyr / letters) >= 0.25
+
+def _should_translate_text(ui_lang: str, item_lang: str | None, text: str) -> bool:
+    """Decide whether translating this text is worth it.
+
+    We strongly avoid translating when language metadata is missing, because that's how quota gets burned.
+    We still translate when a simple script heuristic strongly suggests it's needed.
+    """
+    lang = _norm_ui_lang(ui_lang)
+    il = (item_lang or "").strip().lower()
+    t = (text or "").strip()
+    if not t:
+        return False
+
+    # If we KNOW item language equals UI language -> never translate
+    if il and il.split("-")[0] == lang:
+        return False
+
+    # If item language is known and different -> translate
+    if il:
+        return True
+
+    # Unknown item language: only translate when the script clearly mismatches the UI.
+    if lang == "en":
+        return _looks_cyrillic(t)
+    if lang in ("ru", "uk"):
+        # Translate latin-heavy texts into Cyrillic UIs
+        return not _looks_cyrillic(t)
+    # For other UIs (de/fr/etc) keep conservative: translate only if Cyrillic is detected.
+    return _looks_cyrillic(t)
+
 # DeepL expects uppercase language codes; Ukrainian is "UK"
 _LANG_MAP = {
     "en": "EN",
@@ -152,6 +234,10 @@ def _deepl_translate_texts_sync(texts: List[str], target_lang: str) -> List[str]
 
     texts = clean_texts
 
+    # Circuit breaker: if quota was exceeded recently, skip calling DeepL.
+    if not _deepl_is_enabled():
+        return texts
+
     if not DEEPL_API_KEY:
         return texts
     if not texts:
@@ -181,6 +267,9 @@ def _deepl_translate_texts_sync(texts: List[str], target_lang: str) -> List[str]
                 )
 
                 if r.status_code != 200:
+                    # DeepL returns 456 on quota exceeded. Stop further calls for a while.
+                    if r.status_code == 456 and ("Quota exceeded" in r.text or "quota" in r.text.lower()):
+                        _deepl_disable_for_cooldown_sync()
                     print("[DEEPL] non-200:", r.status_code, r.text[:300])
                     out.extend(batch)
                     continue
@@ -225,62 +314,100 @@ async def translate_text_cached(scope: str, scope_id: str, field: str, ui_lang: 
     return translated
 
 
-async def translate_feed_items(items: List[Dict[str, Any]], ui_lang: str) -> List[Dict[str, Any]]:
-    lang = _norm_ui_lang(ui_lang)
-    # NOTE: translate even for English UI (see translate_text_cached).
 
-    tasks: List[Tuple[str, str, str, str]] = []  # (scope, scope_id, field, text)
+async def translate_feed_items(items: List[Dict[str, Any]], ui_lang: str) -> List[Dict[str, Any]]:
+    """Translate feed items in a quota-safe way.
+
+    Design goals:
+      - Translate only cluster-level fields by default (title + summary).
+      - Use cache first; translate only cache-misses.
+      - Cap the number of NEW translations per response (budget).
+      - Fail-open when DeepL quota is exceeded (circuit breaker).
+    """
+    lang = _norm_ui_lang(ui_lang)
+
+    if not items:
+        return items
+
+    # If DeepL is disabled (quota exceeded) -> fail-open.
+    if not _deepl_is_enabled():
+        return items
+
+    tasks: List[Tuple[str, str, str, str, Optional[str]]] = []  # (scope, scope_id, field, text, item_lang)
+
+    def _infer_item_lang(it: Dict[str, Any]) -> Optional[str]:
+        il = (it.get("language") or "").strip().lower()
+        if il:
+            return il
+        srcs = it.get("sources") or []
+        if isinstance(srcs, list):
+            for s in srcs[:5]:
+                if isinstance(s, dict):
+                    sl = (s.get("language") or "").strip().lower()
+                    if sl:
+                        return sl
+        return None
 
     for it in items or []:
-    # Skip translation if item already matches UI language
-        item_lang = (it.get("language") or "").strip().lower()
-        if item_lang and item_lang == lang:
-            continue
-
         cid = str(it.get("cluster_id") or it.get("id") or it.get("event_id") or "")
         if not cid:
             continue
 
+        item_lang = _infer_item_lang(it)
 
         title = (it.get("title") or "").strip()
-        if title:
-            tasks.append(("cluster", cid, "title", title))
+        if title and _should_translate_text(lang, item_lang, title):
+            tasks.append(("cluster", cid, "title", title, item_lang))
 
         summary = (it.get("summary") or "").strip()
         st = str(it.get("summary_status") or "").lower().strip()
-        if summary and st not in ("locked", "skipped"):
-            tasks.append(("cluster", cid, "summary", summary))
+        if summary and st not in ("locked", "skipped") and _should_translate_text(lang, item_lang, summary):
+            tasks.append(("cluster", cid, "summary", summary, item_lang))
 
-        # summary facts
-        facts = it.get("summary_facts") or []
-        if isinstance(facts, list):
-            for idx, f in enumerate(facts):
-                if isinstance(f, str) and f.strip():
-                    tasks.append(("cluster", f"{cid}:fact:{idx}", "fact", f.strip()))
+        if TRANSLATE_INCLUDE_FACTS:
+            facts = it.get("summary_facts") or []
+            if isinstance(facts, list):
+                for idx, f in enumerate(facts):
+                    if isinstance(f, str):
+                        ftxt = f.strip()
+                        if ftxt and _should_translate_text(lang, item_lang, ftxt):
+                            tasks.append(("cluster", f"{cid}:fact:{idx}", "fact", ftxt, item_lang))
 
-        # summary diffs
-        diffs = it.get("summary_diffs") or []
-        if isinstance(diffs, list):
-            for idx, d in enumerate(diffs):
-                txt = (d.get("difference") or "").strip()
-                if txt:
-                    tasks.append(("cluster", f"{cid}:diff:{idx}", "diff", txt))
+        if TRANSLATE_INCLUDE_DIFFS:
+            diffs = it.get("summary_diffs") or []
+            if isinstance(diffs, list):
+                for idx, d in enumerate(diffs):
+                    if isinstance(d, dict):
+                        txt = (d.get("difference") or "").strip()
+                        if txt and _should_translate_text(lang, item_lang, txt):
+                            tasks.append(("cluster", f"{cid}:diff:{idx}", "diff", txt, item_lang))
 
+        if TRANSLATE_INCLUDE_SOURCES:
+            srcs = it.get("sources") or []
+            if isinstance(srcs, list):
+                for idx, s in enumerate(srcs[:20]):
+                    if not isinstance(s, dict):
+                        continue
+                    stitle = (s.get("title") or "").strip()
+                    if stitle and _should_translate_text(lang, (s.get("language") or item_lang), stitle):
+                        tasks.append(("source", f"{cid}:{idx}", "title", stitle, (s.get("language") or item_lang)))
 
-        srcs = it.get("sources") or []
-        if isinstance(srcs, list):
-            for idx, s in enumerate(srcs[:30]):
-                if not isinstance(s, dict):
-                    continue
-                stitle = (s.get("title") or "").strip()
-                if stitle:
-                    tasks.append(("source", f"{cid}:{idx}", "title", stitle))
+    # De-dup tasks by exact key to reduce work
+    seen = set()
+    uniq_tasks = []
+    for t in tasks:
+        key = (t[0], t[1], t[2], t[3])
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq_tasks.append(t)
+    tasks = uniq_tasks
 
     need_texts: List[str] = []
     need_meta: List[Tuple[str, str, str, str]] = []
     resolved: Dict[Tuple[str, str, str, str], str] = {}
 
-    for scope, scope_id, field, text in tasks:
+    for scope, scope_id, field, text, _il in tasks:
         cached = get_cached_translation(scope, scope_id, field, lang, text)
         if cached is None:
             need_texts.append(text)
@@ -288,16 +415,26 @@ async def translate_feed_items(items: List[Dict[str, Any]], ui_lang: str) -> Lis
         else:
             resolved[(scope, scope_id, field, text)] = cached
 
+    # Budget: only translate up to MAX_DEEPL_TEXTS_PER_RESPONSE cache-misses per response
     if need_texts:
-        translated_list = await _deepl_translate_texts(need_texts, _deepl_target(lang))
-        for meta, tr in zip(need_meta, translated_list):
+        budget = max(0, int(MAX_DEEPL_TEXTS_PER_RESPONSE))
+        todo_texts = need_texts[:budget] if budget else []
+        todo_meta = need_meta[:budget] if budget else []
+
+        # Anything beyond budget stays original (and is NOT cached as "translated")
+        for meta in need_meta[budget:]:
             scope, scope_id, field, text = meta
-            resolved[meta] = tr
+            resolved[(scope, scope_id, field, text)] = text
 
-            # НЕ кэшируем, если перевод равен оригиналу
-            if tr and tr.strip() and tr.strip() != text:
-                put_cached_translation(scope, scope_id, field, lang, text, tr)
+        if todo_texts:
+            translated_list = await _deepl_translate_texts(todo_texts, _deepl_target(lang))
+            for meta, tr in zip(todo_meta, translated_list):
+                scope, scope_id, field, text = meta
+                resolved[(scope, scope_id, field, text)] = tr
 
+                # Cache only successful translations (not identical)
+                if tr and tr.strip() and tr.strip() != text:
+                    put_cached_translation(scope, scope_id, field, lang, text, tr)
 
     out_items: List[Dict[str, Any]] = []
 
@@ -309,59 +446,53 @@ async def translate_feed_items(items: List[Dict[str, Any]], ui_lang: str) -> Lis
 
         new_it = dict(it)
 
-        # title
         title = (new_it.get("title") or "").strip()
         if title:
             new_it["title"] = resolved.get(("cluster", cid, "title", title), title)
 
-        # summary
         summary = (new_it.get("summary") or "").strip()
         st = str(new_it.get("summary_status") or "").lower().strip()
         if summary and st not in ("locked", "skipped"):
             new_it["summary"] = resolved.get(("cluster", cid, "summary", summary), summary)
 
-        # ✅ APPLY TRANSLATED FACTS (ВНУТРИ ЦИКЛА)
-        facts = new_it.get("summary_facts")
-        if isinstance(facts, list):
-            new_it["summary_facts"] = [
-                resolved.get(("cluster", f"{cid}:fact:{i}", "fact", f), f)
-                for i, f in enumerate(facts)
-            ]
+        if TRANSLATE_INCLUDE_FACTS:
+            facts = new_it.get("summary_facts")
+            if isinstance(facts, list):
+                new_it["summary_facts"] = [
+                    resolved.get(("cluster", f"{cid}:fact:{i}", "fact", (f or "").strip()), f)
+                    for i, f in enumerate(facts)
+                ]
 
-        # ✅ APPLY TRANSLATED DIFFS (ВНУТРИ ЦИКЛА)
-        diffs = new_it.get("summary_diffs")
-        if isinstance(diffs, list):
-            new_diffs = []
-            for i, d in enumerate(diffs):
-                nd = dict(d)
-                txt = (d.get("difference") or "").strip()
-                if txt:
-                    nd["difference"] = resolved.get(
-                        ("cluster", f"{cid}:diff:{i}", "diff", txt),
-                        txt
-                    )
-                new_diffs.append(nd)
-            new_it["summary_diffs"] = new_diffs
+        if TRANSLATE_INCLUDE_DIFFS:
+            diffs = new_it.get("summary_diffs")
+            if isinstance(diffs, list):
+                new_diffs = []
+                for i, d in enumerate(diffs):
+                    if not isinstance(d, dict):
+                        new_diffs.append(d)
+                        continue
+                    nd = dict(d)
+                    txt = (d.get("difference") or "").strip()
+                    if txt:
+                        nd["difference"] = resolved.get(("cluster", f"{cid}:diff:{i}", "diff", txt), txt)
+                    new_diffs.append(nd)
+                new_it["summary_diffs"] = new_diffs
 
-        # sources
-        srcs = new_it.get("sources")
-        if isinstance(srcs, list):
-            new_srcs = []
-            for idx, s in enumerate(srcs):
-                if not isinstance(s, dict):
-                    new_srcs.append(s)
-                    continue
-                ns = dict(s)
-                stitle = (ns.get("title") or "").strip()
-                if stitle:
-                    ns["title"] = resolved.get(
-                        ("source", f"{cid}:{idx}", "title", stitle),
-                        stitle
-                    )
-                new_srcs.append(ns)
-            new_it["sources"] = new_srcs
+        if TRANSLATE_INCLUDE_SOURCES:
+            srcs = new_it.get("sources")
+            if isinstance(srcs, list):
+                new_srcs = []
+                for idx, s in enumerate(srcs):
+                    if not isinstance(s, dict):
+                        new_srcs.append(s)
+                        continue
+                    ns = dict(s)
+                    stitle = (ns.get("title") or "").strip()
+                    if stitle:
+                        ns["title"] = resolved.get(("source", f"{cid}:{idx}", "title", stitle), stitle)
+                    new_srcs.append(ns)
+                new_it["sources"] = new_srcs
 
         out_items.append(new_it)
-
 
     return out_items
