@@ -318,6 +318,12 @@ class Database:
                 # Store the Stripe customer ID on the user for convenience.
                 conn.execute("ALTER TABLE users ADD COLUMN stripe_customer_id TEXT;")
 
+
+            if not self._has_column("users", "full_name"):
+                conn.execute("ALTER TABLE users ADD COLUMN full_name TEXT;")
+            if not self._has_column("users", "picture_url"):
+                conn.execute("ALTER TABLE users ADD COLUMN picture_url TEXT;")
+
             conn.commit()
 
     # -----------------
@@ -880,30 +886,43 @@ class Database:
         )
         return int(cur.lastrowid)
 
-    def upsert_oauth_user(self, provider: str, provider_id: str, email: str) -> int:
+    def upsert_oauth_user(self, provider: str, provider_id: str, email: str, full_name: str | None = None, picture_url: str | None = None) -> int:
         provider = (provider or "").strip().lower()
         provider_id = (provider_id or "").strip()
         email = (email or "").strip().lower()
+        full_name = (full_name or "").strip() or None
+        picture_url = (picture_url or "").strip() or None
         now = _utc_now_iso()
+
+        def _update_profile(uid: int) -> None:
+            if full_name:
+                self._exec("UPDATE users SET full_name=? WHERE id=?", (full_name, uid))
+            if picture_url:
+                self._exec("UPDATE users SET picture_url=? WHERE id=?", (picture_url, uid))
 
         # existing by provider id
         row = self._fetchone("SELECT id FROM users WHERE provider=? AND provider_id=?", (provider, provider_id))
         if row:
-            # update email if changed
-            self._exec("UPDATE users SET email=? WHERE id=?", (email, int(row["id"])))
-            return int(row["id"])
+            uid = int(row["id"])
+            # update email if changed + profile fields if provided
+            self._exec("UPDATE users SET email=? WHERE id=?", (email, uid))
+            _update_profile(uid)
+            return uid
 
         # existing by email
         row = self._fetchone("SELECT id FROM users WHERE email=?", (email,))
         if row:
-            self._exec("UPDATE users SET provider=?, provider_id=? WHERE id=?", (provider, provider_id, int(row["id"])))
-            return int(row["id"])
+            uid = int(row["id"])
+            self._exec("UPDATE users SET provider=?, provider_id=? WHERE id=?", (provider, provider_id, uid))
+            _update_profile(uid)
+            return uid
 
         cur = self._exec(
-            "INSERT INTO users(email, hashed_password, email_verified, provider, provider_id, created_at) VALUES(?, NULL, 1, ?, ?, ?)",
-            (email, provider, provider_id, now),
+            "INSERT INTO users(email, hashed_password, email_verified, provider, provider_id, created_at, full_name, picture_url) VALUES(?, NULL, 1, ?, ?, ?, ?, ?)",
+            (email, provider, provider_id, now, full_name, picture_url),
         )
         return int(cur.lastrowid)
+
 
     def set_user_email_verified(self, user_id: int, verified: bool) -> None:
         self._exec("UPDATE users SET email_verified=? WHERE id=?", (1 if verified else 0, int(user_id)))

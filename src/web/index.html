@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>CHECK news.</title>
+  <title>CheckNE news.</title>
 
   <!-- Favicon (prevents noisy /favicon.ico 404s in logs) -->
   <link rel="icon" href="/static/icons/Logo.svg" type="image/png">
@@ -14,10 +14,9 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700&family=Jersey+25&display=swap" rel="stylesheet">
 
+  <!-- Animations are inlined below (no extra CSS files). -->
 
-  <link rel="stylesheet" href="/static/premium-animations.css">
-
-  <style>
+ <style>
     :root{
       /* Clean flat look closer to the Figma reference */
       --bg:#ffffff;
@@ -1994,7 +1993,465 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
   border-radius: 999px;
   font-size: 14px;
 }
+/* =========================
+   Account button (header)
+   ========================= */
+.loginBtn{
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 2px solid #111;
+  background: #fff;
+  color: #111;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
 
+/* когда юзер залогинен — делаем компактнее и “премиумнее” */
+.loginBtn.isAuth{
+  padding: 8px 12px;
+  border-radius: 16px;
+}
+
+/* Круглый аватар (вместо S в квадратике) */
+.accountAvatar{
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;         /* круг */
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  border: 2px solid #111;
+  background: #111;
+  color: #fff;
+  flex: 0 0 auto;
+}
+
+/* Если вместо букв используешь фото */
+.accountAvatar img{
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  object-fit: cover;
+  display: block;
+}
+
+/* Имя рядом с аватаром */
+.accountName{
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: -0.2px;
+  white-space: nowrap;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* На мобилке можно скрыть имя и оставить только кружок */
+@media (max-width: 520px){
+  .accountName{ display: none; }
+}
+
+/* =========================
+   Account menu (dropdown)
+   ========================= */
+.menu{
+  width: 280px;                 /* чтобы не ломалось */
+  border-radius: 18px;
+  border: 2px solid rgba(0,0,0,.12);
+  background: #fff;
+  box-shadow: 0 16px 40px rgba(0,0,0,.12);
+  overflow: hidden;
+}
+
+/* верхний блок как на твоём втором скрине */
+.accountMenuHeader{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 14px 12px 14px;
+}
+
+/* аватар в меню */
+.accountMenuAvatar{
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  border: 2px solid rgba(0,0,0,.12);
+  background: rgba(0,0,0,.06);
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+  color: #111;
+  flex: 0 0 auto;
+}
+
+.accountMenuAvatar img{
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  object-fit: cover;
+  display: block;
+}
+
+.accountMenuText{
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.accountMenuName{
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: -0.2px;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.accountMenuPlan{
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  opacity: .65;
+  line-height: 1.1;
+}
+
+.accountMenuDivider{
+  height: 1px;
+  background: rgba(0,0,0,.10);
+  margin: 0 14px;
+}
+.menuEmail {
+  font-size: 13px;
+  color: #7a7a7a;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+/* ===== Account dropdown: premium header ===== */
+#accountMenu .menuHeader{
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid rgba(0,0,0,.06);
+}
+
+#accountMenu .menuHeaderText{
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0; /* чтобы ellipsis работал */
+}
+
+#accountMenu .menuName{
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+  color: #0f0f10;
+}
+
+/* ✅ Premium email line */
+#accountMenu .menuEmail{
+  font-size: 13px;
+  font-weight: 520;
+  letter-spacing: -0.005em;
+  line-height: 1.15;
+  color: rgba(15,15,16,.55);
+
+  /* эллипсис красиво */
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  /* "премиум" ощущения */
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(15,15,16,.04);
+  display: inline-flex;
+  width: fit-content;
+}
+
+/* если меню узкое на мобиле */
+@media (max-width: 520px){
+  #accountMenu .menuEmail{ max-width: 170px; }
+}
+#accountMenu .menuEmailRow{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+}
+
+#accountMenu .menuEmailDot{
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(0,0,0,.18);
+  flex: 0 0 auto;
+}
+
+#accountMenu .menuEmailPlain{
+  font-size: 13px;
+  font-weight: 520;
+  color: rgba(15,15,16,.55);
+  min-width:0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+/* ===== Account dropdown (premium) ===== */
+.accountMenu{
+  width: 260px;                 /* было 190 — слишком узко */
+  padding: 10px;
+  border-radius: 18px;
+  border: 1px solid rgba(0,0,0,0.14);
+  background: #fff;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.10);
+  overflow: hidden;
+}
+
+/* Header area */
+.accountMenuHeader{
+  padding: 10px 10px 8px;
+}
+
+/* Email row (premium) */
+.accountMenu .menuEmailRow{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-width:0;
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: rgba(15,15,16,.04);
+}
+
+.accountMenu .menuEmailDot{
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(0,0,0,.18);
+  flex: 0 0 auto;
+}
+
+.accountMenu .menuEmailPlain{
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: rgba(15,15,16,.62);
+  min-width:0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Divider */
+.accountMenuDivider{
+  height: 1px;
+  background: rgba(0,0,0,0.08);
+  margin: 6px 10px;
+}
+
+/* Menu items */
+.accountMenu button{
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 12px 12px;
+  border-radius: 14px;
+  font-size: 15px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.accountMenu button:hover{
+  background: rgba(0,0,0,0.05);
+}
+
+/* Logout red, but premium (not too “громко”) */
+#menuLogout{
+  color: #b00020;
+}
+
+/* Mobile: don't overflow */
+@media (max-width: 520px){
+  .accountMenu{ width: 230px; }
+}
+
+/* =========================
+   Premium swipe + transition (Feed <-> Tracking)
+   No extra files: everything is inline.
+   ========================= */
+
+html, body{ overflow-x: hidden; }
+
+/* Dimmed/blurred backdrop during view switch – subtle “iOS sheet” feel */
+/* Premium brand overlay during Feed <-> Tracking transitions */
+.brandOverlay{
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0; /* cover footer during transition */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 50;
+}
+.brandOverlay::before{
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.10);
+  opacity: 0;
+  transition: opacity 360ms cubic-bezier(0.22,1,0.36,1);
+}
+.brandOverlayInner{
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border-radius: 18px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow: 0 24px 80px rgba(0,0,0,0.24);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  transform: translate3d(0,10px,0) scale(0.985);
+  opacity: 0;
+  will-change: transform, opacity, filter;
+  filter: blur(6px);
+}
+.brandOverlayLogo{
+  width: 34px;
+  height: 34px;
+  display: block;
+}
+.brandOverlayTitle{
+  font-family: "Jersey 25", system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif;
+  font-size: 28px;
+  letter-spacing: 0.3px;
+  line-height: 1;
+  color: rgba(255,255,255,0.95);
+}
+.brandOverlaySub{
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  font-size: 12px;
+  margin-top: 2px;
+  color: rgba(255,255,255,0.72);
+  letter-spacing: 0.2px;
+}
+.brandOverlayText{
+  display: flex;
+  flex-direction: column;
+  transform: translateY(1px);
+}
+
+/* In / out states */
+body.brand-overlay-in .brandOverlay{ opacity: 1; }
+body.brand-overlay-in .brandOverlay::before{ opacity: 1; }
+body.brand-overlay-in .brandOverlayInner{
+  opacity: 1;
+  transform: translate3d(0,0,0) scale(1);
+  filter: blur(0px);
+  transition:
+    transform 720ms cubic-bezier(0.16,1,0.3,1),
+    opacity 520ms cubic-bezier(0.22,1,0.36,1),
+    filter 720ms cubic-bezier(0.16,1,0.3,1);
+}
+
+body.brand-overlay-out .brandOverlay::before{
+  opacity: 0;
+}
+body.brand-overlay-out .brandOverlayInner{
+  opacity: 0;
+  transform: translate3d(0,-8px,0) scale(0.995);
+  filter: blur(2px);
+  transition:
+    transform 520ms cubic-bezier(0.22,1,0.36,1),
+    opacity 360ms cubic-bezier(0.22,1,0.36,1),
+    filter 420ms cubic-bezier(0.22,1,0.36,1);
+}
+body.brand-overlay-out .brandOverlay{
+  transition: opacity 260ms cubic-bezier(0.22,1,0.36,1);
+  opacity: 0;
+}
+
+.viewShade{
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0; /* cover footer during transition */
+  background: rgba(15,15,17,0.06);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 420ms cubic-bezier(0.22,1,0.36,1);
+  backdrop-filter: blur(14px) saturate(1.15);
+  -webkit-backdrop-filter: blur(14px) saturate(1.15);
+}
+body.view-switching .viewShade{ opacity: 1; }
+
+/* Base state */
+#feedView{
+  transform: translate3d(0,0,0);
+  opacity: 1;
+  will-change: transform, opacity;
+}
+
+/* When switching, make it feel like a premium “page” floating above */
+body.view-switching #feedView{
+  box-shadow: 0 22px 90px rgba(0,0,0,0.20);
+  border-radius: 24px;
+}
+
+/* "Page out" (we add .page-transition + direction class) */
+#feedView.page-transition{
+  pointer-events: none;
+  transition:
+    transform 520ms cubic-bezier(0.22,1,0.36,1),
+    opacity 320ms cubic-bezier(0.22,1,0.36,1);
+}
+#feedView.page-transition.to-tracking{
+  transform: translate3d(-56px, 0, 0) scale(.985);
+  opacity: 0;
+}
+#feedView.page-transition.to-feed{
+  transform: translate3d(56px, 0, 0) scale(.985);
+  opacity: 0;
+}
+
+/* "Page in" (we add .page-in after content is swapped) */
+#feedView.page-in{
+  pointer-events: none;
+  transition:
+    transform 520ms cubic-bezier(0.22,1,0.36,1),
+    opacity 360ms cubic-bezier(0.22,1,0.36,1);
+  transform: translate3d(0,0,0);
+  opacity: 1;
+}
+
+/* Live drag feedback (JS sets inline transform/opacity). */
+#feedView.gesture-dragging{
+  transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce){
+  #feedView, #feedView.page-transition, #feedView.page-in{ transition: none !important; }
+  .viewShade{ transition: none !important; }
+}
 </style>
 </head>
 
@@ -2005,7 +2462,7 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
       <div id="brand" class="brand" aria-label="ONE news" role="button" tabindex="0">
         <img class="brandLogo" src="/static/icons/Logo.svg" alt="Logo" />
 
-        <div class="brandText"><div class="top">CHECK</div><div class="bottom">news.</div></div>
+        <div class="brandText"><div class="top">CheckNE</div><div class="bottom">news.</div></div>
       </div>
 
       <div class="tagline">Track credibility of breaking news</div>
@@ -2019,21 +2476,46 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
 
 <!-- ✅ Account dropdown -->
 <div class="accountWrap">
-  <button id="btnAccount" class="loginBtn" type="button">
-    Account <span id="accountPlanPill" class="accountPlanPill" style="display:none;">Pro</span>
+  <button id="btnAccount" class="loginBtn" type="button" aria-label="Account">
+    <span id="accountAvatar" class="accountAvatar" aria-hidden="true">V</span>
+    <span id="accountName" class="accountName">Account</span>
+    <span id="accountPlanPill" class="accountPlanPill" style="display:none;">Pro</span>
   </button>
 
-  <div id="accountMenu" class="accountMenu">
-    <button id="menuPricing" type="button">Pricing</button>
-    <button id="menuLogout" type="button">Log out</button>
+<div id="accountMenu" class="accountMenu">
+  <div class="accountMenuHeader">
+    <div class="menuEmailRow">
+      <span class="menuEmailDot" aria-hidden="true"></span>
+      <div id="menuEmail" class="menuEmailPlain"></div>
+    </div>
   </div>
+
+  <div class="accountMenuDivider"></div>
+
+  <button id="menuPricing" type="button">Pricing</button>
+  <button id="menuLogout" type="button">Log out</button>
 </div>
+
+
 
         <!-- Manual refresh kept for JS compatibility, but hidden in the new design -->
         <button id="btnRefresh" class="btn hiddenCompat" type="button">Refresh</button>
       </div>
     </div>
   </header>
+
+  <!-- Backdrop used by the Feed <-> Tracking page transition -->
+  <div id="viewShade" class="viewShade" aria-hidden="true"></div>
+  <div id="brandOverlay" class="brandOverlay" aria-hidden="true">
+    <div class="brandOverlayInner">
+      <img class="brandOverlayLogo" src="/static/icons/Logo.svg" alt="">
+      <div class="brandOverlayText">
+        <div class="brandOverlayTitle">CheckNE</div>
+        <div class="brandOverlaySub">Loading…</div>
+      </div>
+    </div>
+  </div>
+
 
   <div id="feedView" class="wrap">
     <div class="panel">
@@ -2067,8 +2549,6 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
             <option value="en">EN</option>
             <option value="de">DE</option>
             <option value="fr">FR</option>
-            <option value="uk">UA</option>
-            <option value="ru">RU</option>
           </select>
         </div>
 
@@ -2322,7 +2802,7 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
         <div class="footerLogo">
           <img class="footerLogoImg" src="/static/icons/Logo.svg" alt="Logo" />
           <div class="footerBrandText">
-            <div class="top">CHECK</div>
+            <div class="top">CheckNE</div>
             <div class="bottom">news.</div>
           </div>
         </div>
@@ -2369,7 +2849,7 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
 
   <!-- ✅ Copyright тоже отдельно и с отступами -->
   <div class="copyright">
-    © 2026 ONENews. All rights reserved.
+    © 2026 CheckNE news. All rights reserved.
   </div>
 
 </footer>
@@ -2388,7 +2868,7 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
         <div class="authBrand">
           <div class="footerLogo">
             <img class="footerLogoImg" src="/static/icons/Logo.svg" alt="Logo" />
-            <div class="footerBrandText"><div class="top">CHECK</div><div class="bottom">news.</div></div>
+            <div class="footerBrandText"><div class="top">CheckNE</div><div class="bottom">news.</div></div>
           </div>
           <button id="authClose" class="authClose" type="button" aria-label="Close" data-i18n-aria="ui.close">✕</button>
         </div>
@@ -2465,7 +2945,7 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
         </div>
 
       </div>
-      <div class="authFoot" data-i18n-html="auth.foot">By continuing, you agree to CHECK news’ <span style="color:#111;">Terms of Service</span> and <span style="color:#111;">Privacy Policy</span>.</div>
+      <div class="authFoot" data-i18n-html="auth.foot">By continuing, you agree to CheckNE news’ <span style="color:#111;">Terms of Service</span> and <span style="color:#111;">Privacy Policy</span>.</div>
     </div>
   </div>
 

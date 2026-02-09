@@ -52,7 +52,7 @@ SIMILARITY_THRESHOLD = 0.33
 import re as _re
 
 _CAP_SEQ_RE = _re.compile(
-    r"\b(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3}|[A-Z]{2,}(?:\s+[A-Z]{2,}){0,2})\b"
+    r"\b(?:[A-ZА-ЯЁ][a-zа-яё]+(?:\s+[A-ZА-ЯЁ][a-zа-яё]+){0,3}|[A-ZА-ЯЁ]{2,}(?:\s+[A-ZА-ЯЁ]{2,}){0,2})\b"
 )
 _NOISE = {"the", "and", "for", "with", "from", "says", "said", "new", "news", "live", "update", "breaking"}
 

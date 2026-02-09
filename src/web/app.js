@@ -127,7 +127,7 @@ async function shareCluster(item) {
     url,
     v,
     id,
-    title: item?.title || 'CHECK news',
+    title: item?.title || 'CheckNE news',
     score: item?.score ?? item?.trust_score ?? null,
     outlets: item?.sources_count ?? item?.outlet_count ?? null,
   });
@@ -160,7 +160,7 @@ function openShareModal(data) {
   };
 
   const encodedUrl = encodeURIComponent(data.url);
-  const tweetText = encodeURIComponent(`Trust score • ${data.title || 'CHECK news'}`);
+  const tweetText = encodeURIComponent(`Trust score • ${data.title || 'CheckNE news'}`);
   const xUrl = `https://twitter.com/intent/tweet?url=${encodedUrl}&text=${tweetText}`;
 
   toX.onclick = () => window.open(xUrl, '_blank', 'noopener,noreferrer');
@@ -405,29 +405,110 @@ let state = {
 
 function qs(id) { return document.getElementById(id); }
 function setStatus(text) { qs("status").textContent = text || ""; }
+// Keep the page-transition backdrop from covering the footer
+function updateFooterShadeGap(){
+  const footer = document.querySelector('footer');
+  if (!footer) return;
+  const h = Math.ceil(footer.getBoundingClientRect().height || 0);
+  // footer is intentionally covered during transitions
+  document.documentElement.style.setProperty('--footer-h', '0px');
+}
+window.addEventListener('resize', updateFooterShadeGap, { passive: true });
+window.addEventListener('orientationchange', updateFooterShadeGap, { passive: true });
+window.addEventListener('load', ()=>{ requestAnimationFrame(updateFooterShadeGap); }, { passive: true });
 
 // =========================
 // Premium mode transition (Feed <-> Tracking) + swipe navigation
 // =========================
 let __modeAnimating = false;
+let __modeLastTarget = null;
 
 function _sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
 
 function beginModeTransition(toMode){
   const wrap = qs('feedView');
   if(!wrap) return;
+  __modeLastTarget = toMode;
+  document.body.classList.add('view-switching');
   wrap.classList.remove('page-in','page-transition','to-feed','to-tracking');
   wrap.classList.add('page-transition', (toMode === 'fav') ? 'to-tracking' : 'to-feed');
 }
 
+// ----------------------------
+// Premium brand overlay during view transitions (no new files)
+// ----------------------------
+let __brandOverlayCleanupT = null;
+let __brandOverlayStartTs = 0;
+
+function brandOverlayIn(toMode){
+  const overlay = document.getElementById('brandOverlay');
+  if(!overlay) return;
+  const sub = overlay.querySelector('.brandOverlaySub');
+  if(sub){
+    sub.textContent = (toMode === 'fav') ? 'Opening Tracking…' : 'Back to Feed…';
+  }
+  document.body.classList.remove('brand-overlay-out');
+  document.body.classList.add('brand-overlay-in');
+  __brandOverlayStartTs = performance.now();
+}
+
+function brandOverlayOut(){
+  const overlay = document.getElementById('brandOverlay');
+  if(!overlay) return;
+
+  // Ensure the overlay is visible long enough to be readable (premium feel)
+  const elapsed = performance.now() - (__brandOverlayStartTs || 0);
+  const minHold = 650; // ms
+  const delay = elapsed < minHold ? (minHold - elapsed) : 0;
+
+  const doOut = ()=>{
+    document.body.classList.remove('brand-overlay-in');
+    document.body.classList.add('brand-overlay-out');
+
+    if(__brandOverlayCleanupT) window.clearTimeout(__brandOverlayCleanupT);
+    __brandOverlayCleanupT = window.setTimeout(()=>{
+      document.body.classList.remove('brand-overlay-out');
+    }, 520);
+  };
+
+  if(delay > 0){
+    window.setTimeout(doOut, delay);
+  }else{
+    doOut();
+  }
+}
+
+
 function endModeTransition(){
   const wrap = qs('feedView');
   if(!wrap) return;
-  // Trigger "page-in" animation
+
+  // Apple-like “sheet/page” entrance: minimal, smooth, spring-ish easing.
+  const enteringFromRight = (__modeLastTarget === 'fav');
+
+  // Small offset + tiny scale for depth (no blur/3D rotate).
+  const startX = enteringFromRight ? '36px' : '-36px';
+
+  // Set start state (no transition)
   wrap.classList.add('page-in');
+  wrap.style.transition = 'none';
+  wrap.style.transform = `translate3d(${startX},0,0) scale(.985)`;
+  wrap.style.opacity = '0';
+
+  // Next frame -> let CSS transitions take over (to normal)
+  requestAnimationFrame(()=>{
+    wrap.style.transition = '';
+    wrap.style.transform = '';
+    wrap.style.opacity = '';
+  });
+
   window.setTimeout(()=>{
     wrap.classList.remove('page-in','page-transition','to-feed','to-tracking');
-  }, 340);
+    wrap.style.transition = '';
+    wrap.style.transform = '';
+    wrap.style.opacity = '';
+    document.body.classList.remove('view-switching');
+  }, 560);
 }
 
 async function switchMode(targetMode){
@@ -435,6 +516,9 @@ async function switchMode(targetMode){
   if(state.mode === targetMode) return;
 
   __modeAnimating = true;
+
+  // Show premium brand overlay while the next view loads
+  brandOverlayIn(targetMode);
 
   try{
     // 1) “page out” анимация
@@ -465,13 +549,18 @@ async function switchMode(targetMode){
       await fetchFeed({ quiet: true });
     }
 
-    // 5) “page in” анимация
+    // 5) Hide brand overlay (let it fade out while the page animates in)
+    brandOverlayOut();
+
+    // 6) “page in” анимация
     endModeTransition();
 
     // 6) скролл вверх
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
   } finally {
+    // Safety: never leave overlay stuck
+    brandOverlayOut();
     window.setTimeout(()=>{ __modeAnimating = false; }, 180);
   }
 }
@@ -481,29 +570,87 @@ function setupSwipeNavigation(){
   const wrap = qs('feedView');
   if(!wrap) return;
 
+  const shade = document.getElementById('viewShade');
+
   let startX = 0, startY = 0, dx = 0, dy = 0, active = false;
+  let dragging = false;
+  const MAX_PULL = 220; // px (bigger = more “page” movement)
+
+  function clamp(n, a, b){ return Math.max(a, Math.min(b, n)); }
+
+  function resetInline(){
+    wrap.classList.remove('gesture-dragging');
+    wrap.style.transform = '';
+    wrap.style.opacity = '';
+    wrap.style.filter = '';
+    wrap.style.transition = '';
+    document.body.classList.remove('view-switching');
+    if(shade) shade.style.opacity = '';
+  }
 
   wrap.addEventListener('touchstart', (e)=>{
     if(!e.touches || !e.touches[0]) return;
     active = true;
+    dragging = false;
     startX = e.touches[0].clientX;
     startY = e.touches[0].clientY;
     dx = dy = 0;
   }, { passive: true });
 
+  // NOTE: passive:false so we can preventDefault when it's a horizontal swipe
   wrap.addEventListener('touchmove', (e)=>{
     if(!active || !e.touches || !e.touches[0]) return;
     dx = e.touches[0].clientX - startX;
     dy = e.touches[0].clientY - startY;
-  }, { passive: true });
+
+    // Decide when this becomes a horizontal gesture (don't fight vertical scroll)
+    if(!dragging){
+      if(Math.abs(dx) < 12) return;
+      if(Math.abs(dx) < Math.abs(dy)) return;
+      dragging = true;
+      wrap.classList.add('gesture-dragging');
+      document.body.classList.add('view-switching');
+    }
+
+    if(dragging){
+      e.preventDefault();
+      const pull = clamp(dx, -MAX_PULL, MAX_PULL);
+      const t = Math.min(1, Math.abs(pull) / MAX_PULL);
+      const dir = pull < 0 ? -1 : 1;
+      // Live feedback: iOS-like slide + tiny scale + subtle lift (premium, not flashy)
+      const scale = 1 - t * 0.018;
+      const lift = (t * 6).toFixed(1);
+      wrap.style.transform = `translate3d(${pull}px, ${lift}px, 0) scale(${scale})`;
+      wrap.style.opacity = String(1 - t*0.06);
+      wrap.style.filter = '';
+      if(shade){
+        shade.style.opacity = String(Math.min(1, 0.15 + t*0.55));
+      }
+    }
+  }, { passive: false });
 
   wrap.addEventListener('touchend', ()=>{
     if(!active) return;
     active = false;
 
-    // Horizontal swipe only (avoid interfering with scroll)
-    if(Math.abs(dx) < 70) return;
-    if(Math.abs(dx) < Math.abs(dy)) return;
+    const isHorizontal = dragging && (Math.abs(dx) >= 90) && (Math.abs(dx) > Math.abs(dy));
+
+    // If not a committed swipe -> snap back smoothly
+    if(!isHorizontal){
+      if(dragging){
+        wrap.style.transition = 'transform 260ms cubic-bezier(0.22,1,0.36,1), opacity 260ms cubic-bezier(0.22,1,0.36,1)';
+        wrap.style.transform = 'translate3d(0,0,0) scale(1)';
+        wrap.style.opacity = '1';
+        wrap.style.filter = '';
+        window.setTimeout(resetInline, 240);
+      }
+      dragging = false;
+      return;
+    }
+
+    // Commit swipe
+    resetInline();
+    dragging = false;
 
     if(dx < 0){
       // swipe left -> Tracking
@@ -512,6 +659,12 @@ function setupSwipeNavigation(){
       // swipe right -> Feed
       switchMode('feed');
     }
+  }, { passive: true });
+
+  wrap.addEventListener('touchcancel', ()=>{
+    active = false;
+    dragging = false;
+    resetInline();
   }, { passive: true });
 }
 
@@ -862,31 +1015,97 @@ function updateAccountPlanPill() {
   }
 }
 
+function _titleCaseWord(w){
+  if(!w) return "";
+  return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+}
+function displayNameFromUser(user){
+  const full = (user?.full_name || user?.name || user?.display_name || "").trim();
+  if(full) return full;
+
+  const email = (user?.email || "").trim();
+  if(!email) return "Account";
+  let local = (email.split("@")[0] || "").trim();
+  // remove digits
+  local = local.replace(/\d+/g, "");
+  const parts = local.split(/[._\-]+/).filter(Boolean).slice(0,2);
+  if(parts.length === 0) return _titleCaseWord((email[0]||"A"));
+  if(parts.length === 1) return _titleCaseWord(parts[0]);
+  return parts.map(_titleCaseWord).join(" ");
+}
+function initialsFromName(name){
+  const parts = (name||"").trim().split(/\s+/).filter(Boolean);
+  if(parts.length===0) return "?";
+  const a = parts[0][0] || "?";
+  const b = (parts.length>1 ? parts[parts.length-1][0] : "");
+  return (a + b).toUpperCase();
+}
+
 function updateAuthUI() {
-  // In this version the header uses btnAccount.
-  const btnAccount = document.getElementById('btnAccount');
+  const btnAccount  = document.getElementById('btnAccount');
   const accountMenu = document.getElementById('accountMenu');
-  const menuLogout = document.getElementById('menuLogout');
+  const menuLogout  = document.getElementById('menuLogout');
+
+  const avatar = document.getElementById('accountAvatar');
+
+  const btnName =
+    document.getElementById('accountBtnName') ||
+    document.getElementById('accountName') ||
+    document.getElementById('accountLabelText');
+
+  const menuAvatar = document.getElementById('menuAvatar');
+  const menuName   = document.getElementById('menuName');
+  const menuEmail  = document.getElementById('menuEmail'); // ✅ добавили
+  const menuPlan   = document.getElementById('menuPlan');
+
+  const isAuthed = !!authState?.authenticated;
+  const user = authState?.user || null;
+
+  const name = isAuthed ? displayNameFromUser(user) : 'Login';
+  const initials = isAuthed ? initialsFromName(name) : '';
+  const email = isAuthed ? String(user?.email || '').trim() : '';
 
   if (btnAccount) {
-    // Keep the visible label consistent with the design.
-    const label = authState.authenticated ? 'Account' : 'Login';
-    btnAccount.setAttribute('aria-label', label);
+    btnAccount.setAttribute('aria-label', name);
+    btnAccount.classList.toggle('isAuth', isAuthed);
+  }
 
-    // Also update the visible text (button contains a text node + optional plan pill span).
-    const pill = document.getElementById('accountPlanPill');
-    const textNode = Array.from(btnAccount.childNodes).find(n => n.nodeType === Node.TEXT_NODE);
-    if (textNode) {
-      textNode.textContent = label + ' ';
+  if (btnName) btnName.textContent = name;
+
+  if (avatar) {
+    if (isAuthed) {
+      avatar.textContent = initials;
+      avatar.style.display = 'grid';
     } else {
-      // Fallback: rebuild safely
-      btnAccount.textContent = label + ' ';
-      if (pill) btnAccount.appendChild(pill);
+      avatar.textContent = '';
+      avatar.style.display = 'none';
     }
   }
 
-  // When logged out, ensure the dropdown is closed and logout item hidden.
-  if (!authState.authenticated) {
+  // dropdown header
+  if (menuName) menuName.textContent = isAuthed ? name : '—';
+  if (menuAvatar) menuAvatar.textContent = isAuthed ? initials : '?';
+
+  // ✅ email в dropdown
+  if (menuEmail) {
+    menuEmail.textContent = isAuthed ? email : '';
+    menuEmail.style.display = (isAuthed && email) ? 'block' : 'none';
+  }
+
+  // plan label in dropdown
+  if (menuPlan) {
+    if (!isAuthed) {
+      menuPlan.textContent = '';
+    } else {
+      const p = String(billingState?.plan || 'free').toLowerCase();
+      menuPlan.textContent =
+        (p === 'pro') ? 'Plus' :
+        (p === 'analyst') ? 'Analyst' :
+        'Free';
+    }
+  }
+
+  if (!isAuthed) {
     if (accountMenu) accountMenu.classList.remove('open');
     if (menuLogout) menuLogout.style.display = 'none';
   } else {
@@ -895,6 +1114,9 @@ function updateAuthUI() {
 
   updateAccountPlanPill();
 }
+
+
+
 
 async function refreshAuthState() {
   try {
@@ -2833,7 +3055,7 @@ function bindUI() {
         return;
       }
       // Minimal "Account" behavior: logout
-      const ok = confirm('Log out from CHECK news?');
+      const ok = confirm('Log out from CheckNE news?');
       if (!ok) return;
       await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST' });
       authState = { authenticated: false, user: null };
@@ -3187,6 +3409,7 @@ menuLogout.addEventListener("click", async () => {
 
 
 
+requestAnimationFrame(updateFooterShadeGap);
 main();
 
 

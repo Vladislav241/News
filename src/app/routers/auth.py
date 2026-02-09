@@ -79,6 +79,8 @@ def me(user=Depends(get_current_user_optional)):
         "user": {
             "id": user["id"],
             "email": user["email"],
+            "full_name": user.get("full_name") or None,
+            "picture_url": user.get("picture_url") or None,
             "email_verified": bool(int(user.get("email_verified") or 0)),
             "email_alerts_enabled": bool(int(user.get("email_alerts_enabled") or 0)),
             "provider": user.get("provider") or "local",
@@ -106,7 +108,7 @@ def register(payload: RegisterIn, request: Request):
     send_email(
         to_email=email,
         subject="Verify your email",
-        text=f"Welcome to CHECK news.\n\nVerify your email by opening this link:\n{link}\n\nIf you didn't sign up, ignore this email.",
+        text=f"Welcome to CheckNE news.\n\nVerify your email by opening this link:\n{link}\n\nIf you didn't sign up, ignore this email.",
     )
 
     return {"status": "ok", "message": "Verification email sent"}
@@ -262,10 +264,12 @@ def google_callback(request: Request, code: str = "", state: str = ""):
     info = fetch_userinfo(access_token)
     email = (info.get("email") or "").strip().lower()
     sub = (info.get("sub") or "").strip()
+    full_name = (info.get("name") or "").strip()
+    picture_url = (info.get("picture") or "").strip()
     if not email or not sub:
         raise HTTPException(status_code=400, detail="Could not read Google profile")
 
-    user_id = db.upsert_oauth_user(provider="google", provider_id=sub, email=email)
+    user_id = db.upsert_oauth_user(provider="google", provider_id=sub, email=email, full_name=full_name, picture_url=picture_url)
     db.set_user_email_verified(user_id, True)
     db.update_user_last_login(user_id)
 

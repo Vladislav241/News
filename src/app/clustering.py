@@ -433,7 +433,7 @@ def _dynamic_threshold(text: str, base: float) -> float:
 
 
 # ---- gates (before merge) ----
-_CAP_SEQ_RE = re.compile(r"\b(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3}|[A-Z]{2,}(?:\s+[A-Z]{2,}){0,2})\b")
+_CAP_SEQ_RE = re.compile(r"\b(?:[A-ZА-ЯЁ][a-zа-яё]+(?:\s+[A-ZА-ЯЁ][a-zа-яё]+){0,3}|[A-ZА-ЯЁ]{2,}(?:\s+[A-ZА-ЯЁ]{2,}){0,2})\b")
 
 _COMMON_NOISE = {
     "the","and","for","with","from","over","into","after","before","says","said",
@@ -528,12 +528,22 @@ def match_cluster(
         # ask an LLM (optional) to confirm same-event vs same-topic.
         # This avoids cases like "Trump/Grammys" being merged with "Oil prices" just because of sidebar/related terms.
         need_llm = False
-        entity_q = set(extract_entities(txt_norm))
-        entity_c = set(extract_entities(c_norm))
+        entity_q = set(extract_entities(txt))
+        entity_c = set(extract_entities(cand_text))
         ent_ov = len(entity_q & entity_c)
 
+        # Hard gate: if both sides have clear entities but none overlap, they are almost surely different events.
+        # This prevents catastrophic merges (different people/places) especially in non-English feeds.
+        if ent_ov == 0 and len(entity_q) >= 2 and len(entity_c) >= 2:
+            return ClusterMatch(
+                cluster_id=None,
+                similarity=sim,
+                method="entity_gate_rejected",
+                debug={**dbg, "threshold": thr, "ov": ov, "j": j, "ent_q": sorted(list(entity_q))[:20], "ent_c": sorted(list(entity_c))[:20]},
+            )
+
         # Only trigger for the grey zone: not super-high similarity AND weak lexical/entity evidence.
-        if sim < max(0.82, thr + 0.20) and (ov < 3 or j < 0.20 or ent_ov == 0):
+        if sim < max(0.84, thr + 0.22) and (ov < 4 or j < 0.22 or ent_ov == 0):
             need_llm = True
 
         if need_llm:
