@@ -4,7 +4,6 @@ import os
 import asyncio
 import logging
 import hashlib
-import base64
 from datetime import datetime, timezone
 from typing import Any, Optional
 from urllib.parse import quote
@@ -44,38 +43,13 @@ def _min_interval_seconds() -> int:
         return 600
 
 
-def _logo_data_uri() -> str:
-    """Embed Logo.svg directly into the email so it works even on localhost."""
-    # Try both known locations in this repo.
-    candidates = [
-        os.path.join("src", "web", "static", "icons", "LogoEmail.svg"),
-        os.path.join("src", "web", "icons", "LogoEmail.svg"),
-    ]
-    for p in candidates:
-        try:
-            with open(p, "rb") as f:
-                b64 = base64.b64encode(f.read()).decode("ascii")
-            return f"data:image/svg+xml;base64,{b64}"
-        except Exception:
-            continue
-    # Fallback: empty (email client will just show alt text)
-    return ""
+def _email_logo_url() -> str:
+    """Public logo URL for emails.
 
-def _arrow_data_uri() -> str:
-    candidates = [
-        os.path.join("web", "icons", "Arrow.svg"),              # <-- ВОТ ТВОЙ ПУТЬ по скрину
-        os.path.join("src", "web", "icons", "Arrow.svg"),
-        os.path.join("src", "web", "static", "icons", "Arrow.svg"),
-    ]
-    for p in candidates:
-        try:
-            with open(p, "rb") as f:
-                b64 = base64.b64encode(f.read()).decode("ascii")
-            return f"data:image/svg+xml;base64,{b64}"
-        except Exception:
-            continue
-    log.warning("Arrow.svg not found in candidates=%s", candidates)
-    return ""
+    NOTE: Many email clients (esp. Gmail) block `data:` images and may not
+    reliably render SVG. A PNG served from your app is the most compatible.
+    """
+    return f"{_base_url()}/static/icons/Logo.png"
 
 
 
@@ -107,26 +81,14 @@ def _build_email_html(
     # Styling notes:
     # - Table layout + inline styles for Gmail/Outlook reliability
     # - Inter font if available, with safe fallbacks
-    # - Green longer arrow between scores
-    logo_uri = _logo_data_uri()
-    arrow_uri = _arrow_data_uri()
+    # - Avoid `data:` images and avoid SVG in email (often blocked / unreliable)
+    logo_url = _email_logo_url()
 
     # Only the word (increased/decreased/updated) is bold in the title line.
     title_line = f'Trust score <span style="font-weight:300;">{direction}</span> for a tracked event'
 
-    # Green arrow: long line + arrow head
-    arrow_html = f'''
-  <img src="{arrow_uri}"
-      alt="→"
-      style="
-        display:inline-block;
-        vertical-align:middle;
-        height:24px;
-        margin:0 16px;
-        position:relative;
-        top:-10px;
-      ">
-  '''
+    # Simple arrow glyph is the most compatible across email clients.
+    arrow_html = '<span style="display:inline-block;vertical-align:middle;margin:0 16px;font-size:34px;line-height:1;color:#0b0b0b;">→</span>'
 
 
     safe_title = (title or "").strip() or "Tracked event"
@@ -148,7 +110,7 @@ def _build_email_html(
             <!-- Header -->
             <tr>
               <td align="center" style="padding:10px 0 66px;">
-                <img src="{logo_uri}" alt="CHECK news" style="height:55px;display:block;border:0;"/>
+                <img src="{logo_url}" alt="CHECK news" style="height:55px;display:block;border:0;"/>
               </td>
             </tr>
 
@@ -222,7 +184,7 @@ def _build_email_html(
                             </div>
 
                             <div style="margin-top:10px;text-align:center;">
-                              <span style="font-size:42px;line-height:1;font-weight:800;">{new_score}</span>
+                              <span style="font-size:42px;line-height:1;font-weight:800;">{old_score}</span>
                               {arrow_html}
                               <span style="font-size:42px;line-height:1;font-weight:800;">{new_score}</span>
                             </div>
@@ -323,8 +285,17 @@ async def _notify_once() -> None:
         if not c:
             continue
 
+        # Score can be stored under different keys depending on the join/state.
+        # Prefer the computed credibility_score; fall back to other possible fields.
+        score_raw = (
+            c.get("credibility_score")
+            if c.get("credibility_score") is not None
+            else c.get("trust_score")
+            if c.get("trust_score") is not None
+            else c.get("score")
+        )
         try:
-            new_score = int(c.get("credibility_score") or 0)
+            new_score = int(score_raw or 0)
         except Exception:
             new_score = 0
 
@@ -361,8 +332,17 @@ async def _notify_once() -> None:
         except Exception:
             old_score = new_score
 
-        # No change? (also protects against duplicates)
-        if new_score == old_score and fingerprint == prev_fp:
+        # If score didn't change, don't email (users complain about "87 → 87").
+        # Still update the stored state to avoid repeated notifications.
+        if new_score == old_score:
+            db.update_email_alert_notified_state(
+                uid,
+                cid,
+                new_score=new_score,
+                new_sources_count=outlets,
+                fingerprint=fingerprint,
+                notified_at_iso=now.isoformat(),
+            )
             continue
 
         # Rate limit
