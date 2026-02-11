@@ -49,7 +49,7 @@ def _email_logo_url() -> str:
     NOTE: Many email clients (esp. Gmail) block `data:` images and may not
     reliably render SVG. A PNG served from your app is the most compatible.
     """
-    return f"{_base_url()}/static/icons/Logo.png"
+    return f"{_base_url()}/static/icons/LogoEmail.png"
 
 
 
@@ -88,7 +88,14 @@ def _build_email_html(
     title_line = f'Trust score <span style="font-weight:300;">{direction}</span> for a tracked event'
 
     # Simple arrow glyph is the most compatible across email clients.
-    arrow_html = '<span style="display:inline-block;vertical-align:middle;margin:0 16px;font-size:34px;line-height:1;color:#0b0b0b;">→</span>'
+    arrow_html = arrow_html = f'''
+  <img src="{_base_url()}/static/icons/Arrow.png"
+      width="32"
+      height="32"
+      style="display:inline-block;vertical-align:middle;margin:0 14px;border:0;"
+      alt="→">
+  '''
+
 
 
     safe_title = (title or "").strip() or "Tracked event"
