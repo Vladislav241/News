@@ -1,5 +1,18 @@
 const API_BASE = ""; // same-origin
 
+function isUrlQuery(q) {
+  try {
+    const s = String(q || "").trim();
+    if (!s) return false;
+    if (!(s.startsWith("http://") || s.startsWith("https://"))) return false;
+    new URL(s);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+
 // --- Deep-link support (shared URLs) ---
 // We keep the shared URL as /share/<id> for OG meta tags, but users get
 // redirected to /?open=<id>&shared=1. Here we auto-open that card.
@@ -231,13 +244,13 @@ const THUMBS_KEY = "news_thumbs_v1";
 // ----------------------
 // i18n (UI + AI summaries)
 // ----------------------
-const SUPPORTED_LANGS = ["en", "de", "fr", "ru", "uk"]; // "uk" == Ukrainian (UA label in UI)
+const SUPPORTED_LANGS = ["en", "de", "fr"]; // "uk" == Ukrainian (UA label in UI)
 
 function normalizeLang(code) {
   const raw = String(code || "").trim().toLowerCase();
   if (!raw) return "en";
   const base = raw.split("-")[0];
-  if (base === "ua") return "uk";
+  //if (base === "ua") return "uk";
   if (SUPPORTED_LANGS.includes(base)) return base;
   // common fallbacks
   if (base === "gb") return "en";
@@ -2419,9 +2432,17 @@ const showTrackingUI = state.mode === 'fav';
     // Safety: if something toggles it open anyway, close it.
     if (detailsEl) {
       detailsEl.addEventListener('toggle', () => {
+        // Paywall guard for guests
         if (!authState?.authenticated && detailsEl.open) {
           detailsEl.open = false;
           openAuthModal('paywall');
+          return;
+        }
+
+        // Tracking: keep delta visible until the user actually opens the card.
+        // When opened in Tracking, ACK it so next refresh shows the new baseline.
+        if (detailsEl.open && state.mode === 'fav') {
+          ackTrackingDelta(id);
         }
       });
     }
@@ -2577,7 +2598,7 @@ function renderCards(items, opts) {
   const q = (state.q || '').trim();
 
   const filtered = (items || [])
-    .filter((it) => itemMatchesSearch(it, q))
+    .filter((it) => isUrlQuery(q) ? true : itemMatchesSearch(it, q))
     .filter((it) => itemPassesFilters(it));
 
   // IMPORTANT: do not sort on the client.
@@ -2756,7 +2777,7 @@ function incrementalUpdateFeed(sortedItems, opts) {
 
   const q = (state.q || '').trim();
   const filtered = (sortedItems || [])
-    .filter((it) => itemMatchesSearch(it, q))
+    .filter((it) => isUrlQuery(q) ? true : itemMatchesSearch(it, q))
     .filter((it) => itemPassesFilters(it));
 
   // We only display a slice when collapsed.
@@ -2815,14 +2836,20 @@ async function fetchFeed(opts) {
   const signal = options.signal;
 
   const interests = encodeURIComponent((state.interests || []).join(","));
-  const q = encodeURIComponent((state.q || "").trim());
+  const rawQ = (state.q || "").trim();
+  const q = encodeURIComponent(rawQ);
 
-  const url =
-    `${API_BASE}/api/news?interests=${interests}` +
-    `&country=${encodeURIComponent(state.country)}` +
-    `&language=all` +
-    `&ui_lang=${encodeURIComponent(state.language || "en")}` +
-    (q ? `&q=${q}` : "");
+  // If the user pasted a URL into Search, show similar items from the feed.
+  const isUrl = /^https?:\/\//i.test(rawQ);
+
+  const url = isUrl
+    ? `${API_BASE}/api/news/similar?url=${q}` +
+      `&ui_lang=${encodeURIComponent(state.language || "en")}`
+    : `${API_BASE}/api/news?interests=${interests}` +
+      `&country=${encodeURIComponent(state.country)}` +
+      `&language=all` +
+      `&ui_lang=${encodeURIComponent(state.language || "en")}` +
+      (q ? `&q=${q}` : "");
 
 
   const feedKey = `${state.country}|${(state.interests || []).join(",")}|${(state.q || "").trim()}`;
@@ -2923,6 +2950,50 @@ async function fetchFavorites() {
     console.error(e);
     setStatus('Failed to load tracking.');
   }
+
+async function ackTrackingDelta(clusterId) {
+  try {
+    if (!authState?.authenticated) return;
+    const cid = Number(clusterId);
+    if (!Number.isFinite(cid)) return;
+
+    await fetch(`${API_BASE}/api/tracking/ack`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: [cid] }),
+    });
+
+    // Update UI immediately (no full refetch)
+    const card = document.querySelector(`.newsCard[data-id="${String(cid)}"]`);
+    if (card) {
+      const deltaEl = card.querySelector('.delta');
+      if (deltaEl) deltaEl.remove();
+      const icon = card.querySelector('img.trackIcon');
+      if (icon) icon.src = '/static/icons/Tracking.svg';
+      const wrap = card.querySelector('.trackIconWrap');
+      if (wrap) {
+        wrap.classList.remove('red', 'green');
+        wrap.classList.add('neutral');
+      }
+    }
+
+    // Also update cached items so later rerenders stay consistent
+    const patchList = (arr) => {
+      if (!Array.isArray(arr)) return;
+      const it = arr.find(x => Number(x?.cluster_id ?? x?.id) === cid);
+      if (it) {
+        it.delta_score = 0;
+        it.delta_sources_count = 0;
+      }
+    };
+    patchList(lastFavItems);
+    patchList(lastFeedItems);
+  } catch (e) {
+    // Non-fatal
+    console.warn('ackTrackingDelta failed', e);
+  }
+}
+
 }
 
 // ✅ Keep header counters in sync (Tracking badge)

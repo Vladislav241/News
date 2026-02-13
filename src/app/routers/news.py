@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import urllib.parse
 import json
+import hashlib
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
@@ -16,6 +18,11 @@ from ..translate import translate_feed_items
 
 import threading
 import asyncio
+
+import requests
+from bs4 import BeautifulSoup
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 router = APIRouter()
 
@@ -516,6 +523,188 @@ def _redact_item_for_guest(it: dict[str, Any]) -> dict[str, Any]:
     return it
 
 
+
+def _is_url(s: str) -> bool:
+    try:
+        ss = (s or "").strip().lower()
+        return ss.startswith("http://") or ss.startswith("https://")
+    except Exception:
+        return False
+
+_URL_DROP_PARAMS = {"utm_source","utm_medium","utm_campaign","utm_term","utm_content","utm_id","utm_name","utm_reader","utm_pubref","fbclid","gclid","yclid","mc_cid","mc_eid"}
+
+def _normalize_url(u: str) -> str:
+    try:
+        u = (u or "").strip()
+        if not u:
+            return ""
+        u = u.split("#", 1)[0]
+        p = urllib.parse.urlsplit(u)
+        if not p.scheme or not p.netloc:
+            return u
+        q = urllib.parse.parse_qsl(p.query, keep_blank_values=True)
+        q2 = [(k, v) for (k, v) in q if k.lower() not in _URL_DROP_PARAMS and not k.lower().startswith("utm_")]
+        p2 = p._replace(query=urllib.parse.urlencode(q2, doseq=True))
+        return urllib.parse.urlunsplit(p2)
+    except Exception:
+        return (u or "").strip().split("#", 1)[0]
+
+def _url_hash(u: str) -> str:
+    u = (u or "").strip().split("#", 1)[0]
+    return hashlib.sha1(u.encode("utf-8")).hexdigest()
+
+
+
+def _fetch_title_from_url(url: str) -> str:
+    """Fetch a page title (og:title or <title>) for similarity search."""
+    try:
+        r = requests.get(
+            url,
+            timeout=8,
+            headers={
+                "User-Agent": "Mozilla/5.0 (compatible; CHECKnewsBot/1.0; +https://example.invalid)"
+            },
+        )
+        if not r.ok:
+            return ""
+        html = r.text or ""
+        soup = BeautifulSoup(html, "lxml")
+        og = soup.find("meta", attrs={"property": "og:title"})
+        if og and og.get("content"):
+            return str(og.get("content")).strip()
+        t = soup.find("title")
+        if t and t.text:
+            return str(t.text).strip()
+        return ""
+    except Exception:
+        return ""
+
+
+@router.get("/api/news/similar")
+async def news_similar(
+    url: str,
+    user=Depends(get_current_user_optional),
+    ui_lang: str = "en",
+    interests: str = "",
+    country: str = "world",
+    language: str = "all",
+    limit: int = 60,
+) -> dict[str, Any]:
+    """Find similar news in the feed by a pasted URL.
+
+    The client can paste a link into Search. We fetch the page title and then
+    rank current feed clusters by TF‑IDF cosine similarity (title + source titles).
+    """
+    db.ensure_schema()
+
+    if not _is_url(url):
+        raise HTTPException(status_code=400, detail="url must start with http:// or https://")
+
+    norm_url = _normalize_url(url)
+    q_title = _fetch_title_from_url(norm_url)
+    if not q_title:
+        # Fallback: use the URL itself as text (still allows matching domains/keywords)
+        q_title = norm_url
+
+    interests_list = [x.strip().lower() for x in (interests or "").split(",") if x.strip()]
+    country = (country or "world").strip().lower()
+    language = (language or "all").strip().lower()
+    limit_n = max(1, min(200, int(limit)))
+    ui_lang = (ui_lang or "en").strip().lower()
+
+    # 1) Exact URL match → cluster_ids (if we already ingested this exact link)
+    exact_ids: set[int] = set()
+    try:
+        h = _url_hash(norm_url)
+        rows = db._fetchall(
+            """
+            SELECT DISTINCT ca.cluster_id AS cluster_id
+            FROM articles a
+            JOIN cluster_articles ca ON ca.article_id=a.id
+            WHERE a.url_hash=?
+            """,
+            (h,),
+        )
+        exact_ids = {int(r["cluster_id"]) for r in rows if r.get("cluster_id") is not None}
+    except Exception:
+        exact_ids = set()
+
+    # 2) Candidate pool: ignore current filters; search recent clusters across all topics/countries/languages
+    since_iso = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
+    clusters = db.query_clusters(
+        interests=[],
+        country="",
+        language="all",
+        since_iso=since_iso,
+        limit=400,  # wider pool for similarity
+    )
+
+    # Decorate (respect guest paywall similarly to /api/news)
+    is_guest = user is None
+    decorated: list[dict[str, Any]] = []
+    for idx, c in enumerate(clusters):
+        if (not is_guest) or idx < 3:
+            decorated.append(_decorate_cluster_row(c, include_sources=True))
+        else:
+            it = _decorate_cluster_row(c, include_sources=False)
+            it.pop("summary_facts", None)
+            it.pop("summary_diffs", None)
+            it.pop("summary_uncertainties", None)
+            it["summary"] = ""
+            it["credibility_explanation"] = "Create an account to view full details."
+            it["guest_locked"] = True
+            decorated.append(it)
+
+    def doc_text(it: dict[str, Any]) -> str:
+        parts = [str(it.get("title") or "")]
+        for s in (it.get("sources") or []):
+            parts.append(str(s.get("title") or ""))
+            parts.append(str(s.get("source_name") or ""))
+        return " ".join([p for p in parts if p]).strip()
+
+    docs = [doc_text(it) for it in decorated]
+    query = str(q_title or "").strip()
+
+    try:
+        vec = TfidfVectorizer(ngram_range=(1, 2), max_features=4000)
+        X = vec.fit_transform([query] + docs)
+        sims = cosine_similarity(X[0:1], X[1:]).ravel()
+    except Exception:
+        sims = [0.0 for _ in docs]
+
+    scored = []
+    for it, s in zip(decorated, sims):
+        try:
+            score = float(s)
+        except Exception:
+            score = 0.0
+
+        if int(it.get("cluster_id") or 0) in exact_ids:
+            score = 1.0
+
+        it["similarity"] = round(score, 4)
+        scored.append((score, it))
+
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+
+    # Keep only reasonably similar items (but always return at least a few)
+    filtered = [it for score, it in scored if score >= 0.08]
+    if len(filtered) < 5:
+        filtered = [it for _, it in scored[: min(20, len(scored))]]
+
+    filtered = filtered[:limit_n]
+
+    # Translate content to ui_lang (same behavior as /api/news)
+    if ui_lang:
+        try:
+            filtered = await translate_feed_items(filtered, ui_lang=ui_lang)
+        except Exception:
+            pass
+
+    return {"status": "ok", "query_title": q_title, "count": len(filtered), "items": filtered}
+
+
 @router.get("/api/news/by_ids")
 async def news_by_ids(
     ids: str,
@@ -586,6 +775,43 @@ async def news_by_ids(
     return {"status": "ok", "count": len(items), "items": items}
 
 
+class TrackingAck(BaseModel):
+    ids: list[int]
+
+@router.post("/api/tracking/ack")
+def tracking_ack(payload: TrackingAck, user=Depends(require_user)) -> dict[str, Any]:
+    """Acknowledge (reset) deltas for specific tracked clusters.
+
+    The UI should call this when the user opens a card in Tracking, so the
+    delta stays visible until the user actually checks it.
+    """
+    db.ensure_schema()
+
+    ids = [int(x) for x in (payload.ids or []) if str(x).isdigit() or isinstance(x, int)]
+    if not ids:
+        return {"status": "ok", "updated": 0}
+
+    clusters = db.get_clusters_by_ids(ids)
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    updates = []
+    for c in clusters:
+        cid = int(c["id"])
+        # Mirror get_tracking score/sources_count calculation
+        try:
+            cur_score = int(c.get("credibility_score") or 0)
+        except Exception:
+            cur_score = 0
+        try:
+            cur_sources = int(c.get("sources_count") or 0)
+        except Exception:
+            cur_sources = 0
+        updates.append((cid, cur_score, cur_sources, now_iso))
+
+    db.update_user_favorites_seen_state(int(user["id"]), updates)
+    return {"status": "ok", "updated": len(updates)}
+
+
 @router.post("/api/favorites/sync")
 def favorites_sync(payload: FavoriteSync, user=Depends(require_user)) -> dict[str, Any]:
     db.ensure_schema()
@@ -598,8 +824,8 @@ def favorites_sync(payload: FavoriteSync, user=Depends(require_user)) -> dict[st
 def get_tracking(user=Depends(require_user)) -> dict[str, Any]:
     """Return user's tracked clusters with server-side deltas.
 
-    Deltas are computed vs the last time the user opened Tracking on any device.
-    After returning, we update last_seen_* in DB so next open shows changes since this open.
+    Deltas are computed vs the last time the user ACKed (opened) a card in Tracking.
+    We do NOT auto-ack on GET; the UI must call POST /api/tracking/ack when the user opens a card.
     """
     db.ensure_schema()
 
@@ -648,8 +874,7 @@ def get_tracking(user=Depends(require_user)) -> dict[str, Any]:
         return (it.get("latest_published_at") or "", it.get("cluster_id") or 0)
 
     items.sort(key=_sort_key, reverse=True)
-
-    db.update_user_favorites_seen_state(int(user["id"]), updates)
+    # NOTE: do not ack here; ack happens on card open via /api/tracking/ack
 
     return {"status": "ok", "count": len(items), "items": items}
 
