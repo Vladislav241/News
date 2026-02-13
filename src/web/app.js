@@ -301,6 +301,7 @@ async function setLanguage(lang, { persist = true, refetch = true } = {}) {
   await loadI18n(state.language);
   applyI18nToDOM();
 
+
   // Update controls
   const sel = document.getElementById("language");
   if (sel) sel.value = state.language;
@@ -2856,14 +2857,17 @@ async function fetchFeed(opts) {
   // Decide rendering mode
   currentFeedKey = feedKey;
 
-  // ВСЕГДА полный ререндер, чтобы порядок был строго как на сервере
-  renderCards(items, {
-    nowTs: Date.now(),
-    newIds,
-    suppressNewBadges,
-    incremental: false,
-    animate: false, // можно true, но лучше false чтобы не "прыгало"
-  });
+  // Auto-refresh (quiet) — обновляем без сброса открытых карточек
+const useIncremental = quiet && !shouldReset;
+
+renderCards(items, {
+  nowTs: Date.now(),
+  newIds,
+  suppressNewBadges,
+  incremental: useIncremental,
+  animate: false,
+});
+
 
   hasInitialFeedLoaded = true;
 
@@ -3226,6 +3230,7 @@ async function main() {
   await handleBillingQueryParams();
 
   bindUI();
+  initCookieBanner();
   renderTags();
   syncThumbToggleUI();
   applyTabs();
@@ -3407,6 +3412,22 @@ menuLogout.addEventListener("click", async () => {
   }
 });
 
+function initCookieBanner() {
+  const key = "cookie_banner_ok_v1";
+  const banner = document.getElementById("cookie-banner");
+  const btn = document.getElementById("cookie-accept");
+  if (!banner || !btn) return;
+
+  // If already accepted -> don't show
+  if (localStorage.getItem(key) === "1") return;
+
+  banner.style.display = "block";
+
+  btn.addEventListener("click", () => {
+    localStorage.setItem(key, "1");
+    banner.style.display = "none";
+  });
+}
 
 
 requestAnimationFrame(updateFooterShadeGap);
@@ -3465,4 +3486,6 @@ async function updateEmailAlertsUI(){
   }catch(e){
     // ignore
   }
+
+
 }
