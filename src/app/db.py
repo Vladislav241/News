@@ -2,13 +2,120 @@ from __future__ import annotations
 
 import json
 import os
-import sqlite3
+import re
 import threading
+
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from psycopg2 import IntegrityError
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from .models import AppConfig
 from .sources import normalize_source_key
+
+# -----------------
+# PostgreSQL wrapper (psycopg2) that mimics a tiny subset of _PGConn/Cursor
+# so the rest of the codebase can stay mostly unchanged.
+# -----------------
+
+def _sql_qmark_to_percent(sql: str) -> str:
+    """Convert SQLite-style '?' placeholders to psycopg2 '%s' outside of string literals."""
+    out = []
+    in_single = False
+    i = 0
+    while i < len(sql):
+        ch = sql[i]
+        if ch == "'":
+            if in_single and i + 1 < len(sql) and sql[i + 1] == "'":
+                out.append("''")
+                i += 2
+                continue
+            in_single = not in_single
+            out.append(ch)
+            i += 1
+            continue
+        if (not in_single) and ch == "?":
+            out.append("%s")
+            i += 1
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+def _adapt_sqlite_dialect(sql: str) -> str:
+    s = sql.strip().rstrip(";")
+    if re.match(r"(?is)^insert\s+or\s+ignore\s+into\b", s):
+        s = re.sub(r"(?is)^insert\s+or\s+ignore\s+into\b", "INSERT INTO", s)
+        if "on conflict" not in s.lower():
+            s = s + " ON CONFLICT DO NOTHING"
+    return _sql_qmark_to_percent(s)
+
+class _PGCursor:
+    def __init__(self, cur) -> None:
+        self._cur = cur
+
+    @property
+    def rowcount(self) -> int:
+        return getattr(self._cur, "rowcount", -1)
+
+    def fetchone(self):
+        row = self._cur.fetchone()
+        try:
+            self._cur.close()
+        except Exception:
+            pass
+        return row
+
+    def fetchall(self):
+        rows = self._cur.fetchall()
+        try:
+            self._cur.close()
+        except Exception:
+            pass
+        return rows
+
+class _PGConn:
+    def __init__(self, raw_conn, lock: threading.RLock):
+        self._raw = raw_conn
+        self._lock = lock
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        with self._lock:
+            if getattr(self._raw, "closed", 1):
+                return False
+            if exc_type is None:
+                self._raw.commit()
+            else:
+                self._raw.rollback()
+        return False
+
+    def execute(self, sql: str, params=None) -> _PGCursor:
+        with self._lock:
+            cur = self._raw.cursor(cursor_factory=RealDictCursor)
+            cur.execute(_adapt_sqlite_dialect(sql), params or ())
+            return _PGCursor(cur)
+
+    def executemany(self, sql: str, seq_of_params):
+        with self._lock:
+            cur = self._raw.cursor()
+            cur.executemany(_adapt_sqlite_dialect(sql), seq_of_params)
+            try:
+                cur.close()
+            except Exception:
+                pass
+            return cur
+
+    def commit(self):
+        with self._lock:
+            self._raw.commit()
+
+    @property
+    def closed(self):
+        return getattr(self._raw, "closed", 1)
 
 
 def _utc_now_iso() -> str:
@@ -23,17 +130,14 @@ def _utc_days_ago_iso(days: int) -> str:
 class Database:
     def __init__(self) -> None:
         self._lock = threading.RLock()
-        self._conn: Optional[sqlite3.Connection] = None
+        self._raw_conn = None   # <-- ДОДАЙ ОЦЕ
+        self._conn: Optional[_PGConn] = None
+
 
     @property
-    def conn(self) -> sqlite3.Connection:
-        """Public alias for the underlying SQLite connection.
-
-        Some parts of the codebase expect `Database.conn` to exist.
-        We keep the real connection in `_conn` and expose it here.
-        """
+    def conn(self) -> _PGConn:
         if self._conn is None:
-            raise RuntimeError("Database is not connected. Call db.connect(db_path) first.")
+            raise RuntimeError("Database is not connected. Set DATABASE_URL and call db.connect() first.")
         return self._conn
 
     def get_config(self) -> AppConfig:
@@ -47,35 +151,47 @@ class Database:
             refresh_token=os.getenv("REFRESH_TOKEN", "").strip(),
         )
 
-    def connect(self) -> sqlite3.Connection:
-        cfg = self.get_config()
+
+    def connect(self) -> _PGConn:
+        dsn = (os.getenv("DATABASE_URL") or "").strip()
+        if not dsn:
+            raise RuntimeError(
+                "DATABASE_URL is not set. Configure PostgreSQL and set DATABASE_URL like "
+                "'postgresql://user:pass@host:5432/dbname'."
+            )
         with self._lock:
-            if self._conn is None:
-                conn = sqlite3.connect(cfg.db_path, check_same_thread=False)
-                conn.row_factory = sqlite3.Row
-                conn.execute("PRAGMA journal_mode=WAL;")
-                conn.execute("PRAGMA synchronous=NORMAL;")
-                conn.execute("PRAGMA foreign_keys=ON;")
-                self._conn = conn
+            if self._raw_conn is None or getattr(self._raw_conn, "closed", 1):
+                self._raw_conn = psycopg2.connect(dsn)
+                self._conn = _PGConn(self._raw_conn, self._lock)
             return self._conn
+
 
     def _has_column(self, table: str, col: str) -> bool:
         conn = self.connect()
-        rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
-        cols = {r[1] for r in rows}  # name
-        return col in cols
+        row = conn.execute(
+            """
+            SELECT 1 AS x
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = ? AND column_name = ?
+            LIMIT 1
+            """,
+            (table, col),
+        ).fetchone()
+        return bool(row)
+
 
     def ensure_schema(self) -> None:
         conn = self.connect()
         with self._lock:
-            conn.executescript(
+            conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS articles (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id BIGSERIAL PRIMARY KEY,
                     title TEXT NOT NULL,
                     url TEXT NOT NULL,
                     url_hash TEXT NOT NULL,
                     source_name TEXT NOT NULL,
+                    source_key TEXT,
                     published_at TEXT,
                     content TEXT,
                     description TEXT,
@@ -83,12 +199,23 @@ class Database:
                     topic TEXT,
                     country TEXT,
                     language TEXT,
+                    image_url TEXT,
+                    needs_fulltext INTEGER NOT NULL DEFAULT 0,
+                    fulltext_status TEXT,
+                    fulltext_attempts INTEGER NOT NULL DEFAULT 0,
+                    fulltext_next_attempt_at TEXT,
+                    fulltext_error TEXT,
+                    fulltext_updated_at TEXT,
                     inserted_at TEXT NOT NULL
                 );
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_articles_url_hash ON articles(url_hash);
+                """
+            )
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_articles_url_hash ON articles(url_hash);")
 
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS clusters (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id BIGSERIAL PRIMARY KEY,
                     cluster_key TEXT NOT NULL UNIQUE,
                     title TEXT NOT NULL,
                     topic TEXT,
@@ -97,62 +224,85 @@ class Database:
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
-                CREATE INDEX IF NOT EXISTS idx_clusters_updated ON clusters(updated_at);
-                CREATE INDEX IF NOT EXISTS idx_clusters_lang ON clusters(language);
-                CREATE INDEX IF NOT EXISTS idx_clusters_country ON clusters(country);
-                CREATE INDEX IF NOT EXISTS idx_clusters_topic ON clusters(topic);
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_clusters_updated ON clusters(updated_at);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_clusters_lang ON clusters(language);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_clusters_country ON clusters(country);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_clusters_topic ON clusters(topic);")
 
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS cluster_articles (
-                    cluster_id INTEGER NOT NULL,
-                    article_id INTEGER NOT NULL,
+                    cluster_id BIGINT NOT NULL,
+                    article_id BIGINT NOT NULL,
                     inserted_at TEXT NOT NULL,
                     PRIMARY KEY (cluster_id, article_id),
                     FOREIGN KEY(cluster_id) REFERENCES clusters(id) ON DELETE CASCADE,
                     FOREIGN KEY(article_id) REFERENCES articles(id) ON DELETE CASCADE
                 );
-                CREATE INDEX IF NOT EXISTS idx_cluster_articles_article ON cluster_articles(article_id);
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_cluster_articles_article ON cluster_articles(article_id);")
 
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS article_scores (
-                    cluster_id INTEGER PRIMARY KEY,
+                    cluster_id BIGINT PRIMARY KEY,
                     credibility_score INTEGER NOT NULL,
                     score_details_json TEXT NOT NULL,
                     computed_at TEXT NOT NULL,
                     FOREIGN KEY(cluster_id) REFERENCES clusters(id) ON DELETE CASCADE
                 );
+                """
+            )
 
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS article_summaries (
-                    cluster_id INTEGER PRIMARY KEY,
+                    cluster_id BIGINT PRIMARY KEY,
                     summary_text TEXT,
+                    summary_json TEXT,
+                    raw_text TEXT,
                     model TEXT,
                     status TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     FOREIGN KEY(cluster_id) REFERENCES clusters(id) ON DELETE CASCADE
                 );
+                """
+            )
 
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS ingest_runs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id BIGSERIAL PRIMARY KEY,
                     started_at TEXT NOT NULL,
                     finished_at TEXT,
                     status TEXT NOT NULL,
                     stats_json TEXT NOT NULL
                 );
+                """
+            )
 
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS favorites (
                     device_id TEXT NOT NULL,
-                    cluster_id INTEGER NOT NULL,
+                    cluster_id BIGINT NOT NULL,
                     created_at TEXT NOT NULL,
-
-                    -- Server-side tracking state (so tracking deltas work across devices)
                     last_seen_score INTEGER,
                     last_seen_sources_count INTEGER,
                     last_seen_at TEXT,
-
-                    PRIMARY KEY (device_id, cluster_id)
+                    PRIMARY KEY (device_id, cluster_id),
+                    FOREIGN KEY(cluster_id) REFERENCES clusters(id) ON DELETE CASCADE
                 );
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_favorites_cluster ON favorites(cluster_id);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_favorites_device ON favorites(device_id);")
 
-                CREATE INDEX IF NOT EXISTS idx_favorites_cluster ON favorites(cluster_id);
-                CREATE INDEX IF NOT EXISTS idx_favorites_device ON favorites(device_id);
-
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS feed_health (
                     feed_url TEXT PRIMARY KEY,
                     feed_name TEXT,
@@ -164,25 +314,33 @@ class Database:
                     error_count INTEGER NOT NULL DEFAULT 0,
                     backoff_until TEXT
                 );
+                """
+            )
 
-                -- -----------------
-                -- Auth (users + tokens + per-user favorites)
-                -- -----------------
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id BIGSERIAL PRIMARY KEY,
                     email TEXT NOT NULL UNIQUE,
                     hashed_password TEXT,
                     email_verified INTEGER NOT NULL DEFAULT 0,
                     provider TEXT NOT NULL DEFAULT 'local',
                     provider_id TEXT,
+                    stripe_customer_id TEXT,
+                    full_name TEXT,
+                    picture_url TEXT,
                     created_at TEXT NOT NULL,
                     last_login TEXT
                 );
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_users_provider ON users(provider, provider_id);
+                """
+            )
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_provider ON users(provider, provider_id);")
 
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS auth_tokens (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
+                    id BIGSERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
                     token_type TEXT NOT NULL,
                     token_hash TEXT NOT NULL,
                     expires_at TEXT NOT NULL,
@@ -190,36 +348,38 @@ class Database:
                     consumed_at TEXT,
                     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
                 );
-                CREATE INDEX IF NOT EXISTS idx_auth_tokens_type ON auth_tokens(token_type);
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_tokens_hash ON auth_tokens(token_hash);
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_auth_tokens_type ON auth_tokens(token_type);")
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_tokens_hash ON auth_tokens(token_hash);")
 
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS user_favorites (
-                    user_id INTEGER NOT NULL,
-                    cluster_id INTEGER NOT NULL,
+                    user_id BIGINT NOT NULL,
+                    cluster_id BIGINT NOT NULL,
                     created_at TEXT NOT NULL,
                     last_seen_score INTEGER,
                     last_seen_sources_count INTEGER,
                     last_seen_at TEXT,
-
-                    -- Per-event email alerts (opt-in)
                     email_alerts_enabled INTEGER NOT NULL DEFAULT 0,
                     last_notified_score INTEGER,
                     last_notified_sources_count INTEGER,
                     last_notified_at TEXT,
                     last_notified_fingerprint TEXT,
-
                     PRIMARY KEY (user_id, cluster_id),
                     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
                     FOREIGN KEY(cluster_id) REFERENCES clusters(id) ON DELETE CASCADE
                 );
-                CREATE INDEX IF NOT EXISTS idx_user_favs_user ON user_favorites(user_id);
-                CREATE INDEX IF NOT EXISTS idx_user_favs_cluster ON user_favorites(cluster_id);
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_user_favs_user ON user_favorites(user_id);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_user_favs_cluster ON user_favorites(cluster_id);")
 
-                -- -----------------
-                -- Subscriptions / Billing (MVP)
-                -- -----------------
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS user_subscriptions (
-                    user_id INTEGER PRIMARY KEY,
+                    user_id BIGINT PRIMARY KEY,
                     plan TEXT NOT NULL DEFAULT 'free',
                     status TEXT NOT NULL DEFAULT 'active',
                     billing_interval TEXT NOT NULL DEFAULT 'monthly',
@@ -230,16 +390,16 @@ class Database:
                     updated_at TEXT NOT NULL,
                     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
                 );
-                CREATE INDEX IF NOT EXISTS idx_user_subs_plan ON user_subscriptions(plan);
-                
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_user_subs_plan ON user_subscriptions(plan);")
 
-                -- -----------------
-                -- Text translations cache (DeepL / UI language)
-                -- -----------------
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS text_translations (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id BIGSERIAL PRIMARY KEY,
                     scope TEXT NOT NULL,
-                    scope_id INTEGER NOT NULL,
+                    scope_id BIGINT NOT NULL,
                     field TEXT NOT NULL,
                     target_lang TEXT NOT NULL,
                     src_hash TEXT NOT NULL,
@@ -247,89 +407,14 @@ class Database:
                     created_at TEXT NOT NULL,
                     UNIQUE(scope, scope_id, field, target_lang, src_hash)
                 );
-                CREATE INDEX IF NOT EXISTS idx_text_trans_scope ON text_translations(scope, scope_id);
-                CREATE INDEX IF NOT EXISTS idx_text_trans_lang ON text_translations(target_lang);
-"""
+                """
             )
-
-            # ---- MIGRATIONS ----
-            if not self._has_column("articles", "source_key"):
-                conn.execute("ALTER TABLE articles ADD COLUMN source_key TEXT;")
-
-            if not self._has_column("articles", "image_url"):
-                conn.execute("ALTER TABLE articles ADD COLUMN image_url TEXT;")
-
-            # --- Fulltext extraction queue (keeps ingest fast) ---
-            if not self._has_column("articles", "needs_fulltext"):
-                conn.execute("ALTER TABLE articles ADD COLUMN needs_fulltext INTEGER NOT NULL DEFAULT 0;")
-
-            if not self._has_column("articles", "fulltext_status"):
-                conn.execute("ALTER TABLE articles ADD COLUMN fulltext_status TEXT;")
-
-            if not self._has_column("articles", "fulltext_attempts"):
-                conn.execute("ALTER TABLE articles ADD COLUMN fulltext_attempts INTEGER NOT NULL DEFAULT 0;")
-
-            if not self._has_column("articles", "fulltext_next_attempt_at"):
-                conn.execute("ALTER TABLE articles ADD COLUMN fulltext_next_attempt_at TEXT;")
-
-            if not self._has_column("articles", "fulltext_error"):
-                conn.execute("ALTER TABLE articles ADD COLUMN fulltext_error TEXT;")
-
-            if not self._has_column("articles", "fulltext_updated_at"):
-                conn.execute("ALTER TABLE articles ADD COLUMN fulltext_updated_at TEXT;")
-
-            if not self._has_column("article_summaries", "summary_json"):
-                conn.execute("ALTER TABLE article_summaries ADD COLUMN summary_json TEXT;")
-
-            if not self._has_column("article_summaries", "raw_text"):
-                conn.execute("ALTER TABLE article_summaries ADD COLUMN raw_text TEXT;")
-
-
-            # Favorites tracking state (server-side deltas for Tracking UI)
-            if not self._has_column("favorites", "last_seen_score"):
-                conn.execute("ALTER TABLE favorites ADD COLUMN last_seen_score INTEGER;")
-
-            if not self._has_column("favorites", "last_seen_sources_count"):
-                conn.execute("ALTER TABLE favorites ADD COLUMN last_seen_sources_count INTEGER;")
-
-            if not self._has_column("favorites", "last_seen_at"):
-                conn.execute("ALTER TABLE favorites ADD COLUMN last_seen_at TEXT;")
-
-            # ---- Tracking email alerts (per-user, per-event) ----
-            if not self._has_column("user_favorites", "email_alerts_enabled"):
-                conn.execute("ALTER TABLE user_favorites ADD COLUMN email_alerts_enabled INTEGER NOT NULL DEFAULT 0;")
-
-            if not self._has_column("user_favorites", "last_notified_score"):
-                conn.execute("ALTER TABLE user_favorites ADD COLUMN last_notified_score INTEGER;")
-
-            if not self._has_column("user_favorites", "last_notified_sources_count"):
-                conn.execute("ALTER TABLE user_favorites ADD COLUMN last_notified_sources_count INTEGER;")
-
-            if not self._has_column("user_favorites", "last_notified_at"):
-                conn.execute("ALTER TABLE user_favorites ADD COLUMN last_notified_at TEXT;")
-
-            if not self._has_column("user_favorites", "last_notified_fingerprint"):
-                conn.execute("ALTER TABLE user_favorites ADD COLUMN last_notified_fingerprint TEXT;")
-
-            # ---- Subscription migrations ----
-            # Older DBs may not have the subscription table or new columns.
-            # The CREATE TABLE above handles the table; here we patch columns defensively.
-            if not self._has_column("users", "stripe_customer_id"):
-                # Store the Stripe customer ID on the user for convenience.
-                conn.execute("ALTER TABLE users ADD COLUMN stripe_customer_id TEXT;")
-
-
-            if not self._has_column("users", "full_name"):
-                conn.execute("ALTER TABLE users ADD COLUMN full_name TEXT;")
-            if not self._has_column("users", "picture_url"):
-                conn.execute("ALTER TABLE users ADD COLUMN picture_url TEXT;")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_text_trans_scope ON text_translations(scope, scope_id);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_text_trans_lang ON text_translations(target_lang);")
 
             conn.commit()
 
-    # -----------------
-    # Subscriptions helpers
-    # -----------------
-    def get_user_subscription(self, user_id: int) -> Optional[sqlite3.Row]:
+    def get_user_subscription(self, user_id: int) -> Optional[dict[str, Any]]:
         conn = self.connect()
         return conn.execute(
             "SELECT * FROM user_subscriptions WHERE user_id = ?",
@@ -401,32 +486,26 @@ class Database:
             conn.commit()
 
     # --------- helpers ----------
-    def _exec(self, sql: str, params: tuple[Any, ...] = ()) -> sqlite3.Cursor:
+    def _exec(self, sql: str, params: tuple[Any, ...] = ()) -> _PGCursor:
         conn = self.connect()
-        with self._lock:
-            cur = conn.execute(sql, params)
-            conn.commit()
-            return cur
+        return conn.execute(sql, params)
 
     def _fetchone(self, sql: str, params: tuple[Any, ...] = ()) -> Optional[dict[str, Any]]:
         conn = self.connect()
-        with self._lock:
-            row = conn.execute(sql, params).fetchone()
+        row = conn.execute(sql, params).fetchone()
         return dict(row) if row else None
 
     def _fetchall(self, sql: str, params: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
         conn = self.connect()
-        with self._lock:
-            rows = conn.execute(sql, params).fetchall()
-        return [dict(r) for r in rows]
+        rows = conn.execute(sql, params).fetchall()
+        return [dict(r) for r in (rows or [])]
 
-    # --------- ingest runs ----------
     def start_ingest_run(self) -> int:
-        cur = self._exec(
-            "INSERT INTO ingest_runs(started_at, status, stats_json) VALUES(?, ?, ?)",
+        row = self._fetchone(
+            "INSERT INTO ingest_runs(started_at, status, stats_json) VALUES(?, ?, ?) RETURNING id",
             (_utc_now_iso(), "running", json.dumps({})),
         )
-        return int(cur.lastrowid)
+        return int(row["id"]) if row else 0
 
     def finish_ingest_run(self, run_id: int, status: str, stats: dict[str, Any]) -> None:
         self._exec(
@@ -442,7 +521,6 @@ class Database:
         url = (article.get("url") or "").strip()
         if not url:
             return None
-
         url_hash = (article.get("url_hash") or "").strip()
         if not url_hash:
             return None
@@ -450,46 +528,38 @@ class Database:
         src_name = (article.get("source_name") or "unknown").strip()
         src_key = (article.get("source_key") or "").strip() or normalize_source_key(src_name)
 
+        title = (article.get("title") or "").strip()
+        published_at = (article.get("published_at") or "").strip() or None
+        content = (article.get("content") or "").strip() or None
+        description = (article.get("description") or "").strip() or None
+        raw_json = json.dumps(article.get("raw_json") or {}, ensure_ascii=False)
+        topic = (article.get("topic") or "").strip() or None
+        country = (article.get("country") or "").strip() or None
+        language = (article.get("language") or "").strip() or None
+        image_url = (article.get("image_url") or "").strip() or None
+        needs_fulltext = 1 if int(article.get("needs_fulltext") or 0) else 0
+
         cur = self._exec(
             """
-            INSERT OR IGNORE INTO articles(
+            INSERT INTO articles(
                 title, url, url_hash, source_name, source_key, published_at,
-                content, description, raw_json,
-                topic, country, language, image_url,
-                needs_fulltext, fulltext_status, fulltext_attempts, fulltext_next_attempt_at,
-                fulltext_error, fulltext_updated_at, inserted_at
-            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                content, description, raw_json, topic, country, language,
+                image_url, needs_fulltext, inserted_at,
+                fulltext_status, fulltext_attempts, fulltext_next_attempt_at, fulltext_error, fulltext_updated_at
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (url_hash) DO NOTHING
+            RETURNING id
             """,
             (
-                (article.get("title") or "").strip() or "(no title)",
-                url,
-                url_hash,
-                src_name,
-                src_key,
-                (article.get("published_at") or None),
-                (article.get("content") or None),
-                (article.get("description") or None),
-                json.dumps(article.get("raw") or {}, ensure_ascii=False),
-                (article.get("topic") or "general").strip().lower(),
-                (article.get("country") or "world").strip().lower(),
-                (article.get("language") or "en").strip().lower(),
-                (article.get("image_url") or None),
-                int(bool(article.get("needs_fulltext") or 0)),
-                ("pending" if (article.get("needs_fulltext") or 0) else None),
-                0,
-                None,
-                None,
-                None,
-                _utc_now_iso(),
+                title, url, url_hash, src_name, src_key, published_at,
+                content, description, raw_json, topic, country, language,
+                image_url, needs_fulltext, _utc_now_iso(),
+                None, 0, None, None, None
             ),
         )
-
-        # Если запись уже была (url_hash существует) — INSERT OR IGNORE ничего не вставит
-        if not cur.lastrowid:
-            return None
-
-        return int(cur.lastrowid)
-
+        row = cur.fetchone()
+        return int(row["id"]) if row else None
 
     def get_article_by_id(self, article_id: int) -> dict[str, Any]:
         row = self._fetchone("SELECT * FROM articles WHERE id=?", (article_id,))
@@ -562,7 +632,6 @@ class Database:
     def upsert_cluster(self, cluster_key: str, title: str, topic: str, country: str, language: str) -> int:
         existing = self._fetchone("SELECT id FROM clusters WHERE cluster_key=?", (cluster_key,))
         now = _utc_now_iso()
-
         if existing:
             cid = int(existing["id"])
             self._exec(
@@ -570,15 +639,15 @@ class Database:
                 (title, topic, country, language, now, cid),
             )
             return cid
-
         cur = self._exec(
             """
             INSERT INTO clusters(cluster_key, title, topic, country, language, created_at, updated_at)
-            VALUES(?, ?, ?, ?, ?, ?, ?)
+            VALUES(?, ?, ?, ?, ?, ?, ?) RETURNING id
             """,
             (cluster_key, title, topic, country, language, now, now),
         )
-        return int(cur.lastrowid)
+        row = cur.fetchone()
+        return int(row["id"]) if row else 0
 
     def touch_cluster(self, cluster_id: int) -> None:
         self._exec("UPDATE clusters SET updated_at=? WHERE id=?", (_utc_now_iso(), cluster_id))
@@ -591,7 +660,7 @@ class Database:
             )
             self.touch_cluster(cluster_id)
             return True
-        except sqlite3.IntegrityError:
+        except IntegrityError:
             return False
 
     def list_recent_clusters(self, language: str, limit: int = 600) -> list[dict[str, Any]]:
@@ -881,10 +950,11 @@ class Database:
     def create_user_local(self, email: str, hashed_password: str) -> int:
         now = _utc_now_iso()
         cur = self._exec(
-            "INSERT INTO users(email, hashed_password, email_verified, provider, created_at) VALUES(?, ?, 1, 'local', ?)",
+            "INSERT INTO users(email, hashed_password, email_verified, provider, created_at) VALUES(?, ?, 1, 'local', ?) RETURNING id",
             ((email or "").strip().lower(), hashed_password, now),
         )
-        return int(cur.lastrowid)
+        row = cur.fetchone()
+        return int(row["id"]) if row else 0
 
     def upsert_oauth_user(self, provider: str, provider_id: str, email: str, full_name: str | None = None, picture_url: str | None = None) -> int:
         provider = (provider or "").strip().lower()
@@ -900,16 +970,13 @@ class Database:
             if picture_url:
                 self._exec("UPDATE users SET picture_url=? WHERE id=?", (picture_url, uid))
 
-        # existing by provider id
         row = self._fetchone("SELECT id FROM users WHERE provider=? AND provider_id=?", (provider, provider_id))
         if row:
             uid = int(row["id"])
-            # update email if changed + profile fields if provided
             self._exec("UPDATE users SET email=? WHERE id=?", (email, uid))
             _update_profile(uid)
             return uid
 
-        # existing by email
         row = self._fetchone("SELECT id FROM users WHERE email=?", (email,))
         if row:
             uid = int(row["id"])
@@ -918,11 +985,11 @@ class Database:
             return uid
 
         cur = self._exec(
-            "INSERT INTO users(email, hashed_password, email_verified, provider, provider_id, created_at, full_name, picture_url) VALUES(?, NULL, 1, ?, ?, ?, ?, ?)",
+            "INSERT INTO users(email, hashed_password, email_verified, provider, provider_id, created_at, full_name, picture_url) VALUES(?, NULL, 1, ?, ?, ?, ?, ?) RETURNING id",
             (email, provider, provider_id, now, full_name, picture_url),
         )
-        return int(cur.lastrowid)
-
+        row = cur.fetchone()
+        return int(row["id"]) if row else 0
 
     def set_user_email_verified(self, user_id: int, verified: bool) -> None:
         self._exec("UPDATE users SET email_verified=? WHERE id=?", (1 if verified else 0, int(user_id)))
