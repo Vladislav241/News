@@ -32,11 +32,12 @@ from .routers.health import router as health_router
 from .routers.auth import router as auth_router
 from .routers.news import router as news_router
 from .routers.billing import router as billing_router
+from .routers.stats import router as stats_router
 from .routers.share import router as share_router
 from .routers.alerts import router as alerts_router
-from .routers.stats import router as stats_router
 from .auth.deps import csrf_origin_check
 from .routers import debug
+from .guest_tracker import mark as mark_guest
 
 log = logging.getLogger("news.autorefresh")
 
@@ -66,6 +67,11 @@ app.add_middleware(
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
+        # Guest online tracking (approximate; resets on container restart)
+        try:
+            mark_guest(getattr(getattr(request, "client", None), "host", None))
+        except Exception:
+            pass
         # CSRF origin check for cookie auth
         try:
             csrf_origin_check(request)
@@ -110,9 +116,9 @@ def favicon():
 app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(news_router)
-app.include_router(stats_router)
 app.include_router(alerts_router)
 app.include_router(billing_router)
+app.include_router(stats_router)
 app.include_router(share_router)
 app.include_router(debug_router)
 

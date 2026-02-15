@@ -8,14 +8,6 @@ from fastapi import Depends, HTTPException, Request
 from ..db import db
 from .security import decode_session_jwt, session_cookie_params
 
-def touch_user_activity(user_id: int) -> None:
-    """Update user's last_seen_at for online tracking (fail-open)."""
-    try:
-        db.execute("UPDATE users SET last_seen_at = now() WHERE id = ?", (int(user_id),))
-    except Exception:
-        pass
-
-
 
 def get_current_user_optional(request: Request) -> Optional[Dict[str, Any]]:
     params = session_cookie_params()
@@ -33,7 +25,8 @@ def get_current_user_optional(request: Request) -> Optional[Dict[str, Any]]:
         return None
     user = db.get_user_by_id(user_id)
     if user:
-        touch_user_activity(int(user.get('id') or user_id))
+        # Used for admin "online" statistics.
+        db.touch_user_last_seen(user_id)
     return user
 
 
@@ -45,6 +38,13 @@ def require_user(user: Optional[Dict[str, Any]] = Depends(get_current_user_optio
     if enforce:
         if (user.get("provider") or "local") == "local" and not bool(int(user.get("email_verified") or 0)):
             raise HTTPException(status_code=403, detail="Email not verified")
+    return user
+
+
+def require_admin(user: Dict[str, Any] = Depends(require_user)) -> Dict[str, Any]:
+    """Admin-only access guard."""
+    if not bool(user.get("is_admin")):
+        raise HTTPException(status_code=403, detail="Admin access required")
     return user
 
 

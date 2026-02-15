@@ -349,8 +349,17 @@ class Database:
                 """
             )
             conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_provider ON users(provider, provider_id);")
-            conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE")
 
+            # Online/admin stats support.
+            # Keep timestamps as ISO strings to stay compatible with both sqlite and postgres.
+            try:
+                conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TEXT;")
+            except Exception:
+                pass
 
             conn.execute(
                 """
@@ -962,6 +971,20 @@ class Database:
         except Exception:
             return None
         return self._fetchone("SELECT * FROM users WHERE id=?", (uid,))
+
+    def touch_user_last_seen(self, user_id: int) -> None:
+        """Mark an authenticated user as 'online' (for admin stats).
+
+        Stored as UTC ISO string.
+        """
+        try:
+            uid = int(user_id)
+        except Exception:
+            return
+        try:
+            self._exec("UPDATE users SET last_seen_at=? WHERE id=?", (_utc_now_iso(), uid))
+        except Exception:
+            return
 
     def create_user_local(self, email: str, hashed_password: str) -> int:
         now = _utc_now_iso()
