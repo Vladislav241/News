@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import asyncio
 import logging
+
 from typing import Optional
 
 # Load .env automatically for local development
@@ -12,6 +13,8 @@ try:
     load_dotenv()
 except Exception:
     pass
+from fastapi import HTTPException
+from fastapi.responses import JSONResponse
 
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -65,11 +68,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # CSRF origin check for cookie auth
         try:
             csrf_origin_check(request)
-        except Exception as e:
-            # csrf_origin_check raises HTTPException; let FastAPI handle it
-            raise
+        except HTTPException as e:
+            return JSONResponse(status_code=e.status_code, content={"detail": e.detail})
 
         resp = await call_next(request)
+
         resp.headers.setdefault("X-Content-Type-Options", "nosniff")
         resp.headers.setdefault("X-Frame-Options", "DENY")
         resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
