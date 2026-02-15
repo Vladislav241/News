@@ -94,20 +94,23 @@ class _PGConn:
         return False
 
     def execute(self, sql, params=None):
-        cur = self._raw.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        try:
-            cur.execute(_adapt_sqlite_dialect(sql), params or ())
-            return cur
-        except Exception:
+        # Thread-safety: keep cursor/execute/rollback/close under one lock,
+        # because multiple background loops use the same connection.
+        with self._lock:
+            cur = self._raw.cursor(cursor_factory=psycopg2.extras.DictCursor)
             try:
-                self._raw.rollback()
+                cur.execute(_adapt_sqlite_dialect(sql), params or ())
+                return cur
             except Exception:
-                pass
-            try:
-                cur.close()
-            except Exception:
-                pass
-            raise
+                try:
+                    self._raw.rollback()
+                except Exception:
+                    pass
+                try:
+                    cur.close()
+                except Exception:
+                    pass
+                raise
 
 
 
@@ -172,11 +175,20 @@ class Database:
                 "'postgresql://user:pass@host:5432/dbname'."
             )
         with self._lock:
+            # Reconnect if needed
             if self._raw_conn is None or getattr(self._raw_conn, "closed", 1):
                 self._raw_conn = psycopg2.connect(dsn)
-                self._raw_conn.autocommit = True
-                self._conn = _PGConn(self._raw_conn, self._lock)
 
+            # Always keep autocommit enabled for Postgres. This prevents the
+            # connection from getting stuck in an 'aborted transaction' state
+            # across background loops/requests.
+            try:
+                self._raw_conn.autocommit = True
+            except Exception:
+                pass
+
+            # Re-wrap every time to ensure the wrapper has the current lock/conn.
+            self._conn = _PGConn(self._raw_conn, self._lock)
             return self._conn
 
 
