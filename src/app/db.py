@@ -93,11 +93,23 @@ class _PGConn:
                 self._raw.rollback()
         return False
 
-    def execute(self, sql: str, params=None) -> _PGCursor:
+    def execute(self, sql, params=None):
         with self._lock:
-            cur = self._raw.cursor(cursor_factory=RealDictCursor)
-            cur.execute(_adapt_sqlite_dialect(sql), params or ())
-            return _PGCursor(cur)
+            cur = self._raw.cursor(cursor_factory=psycopg2.extras.DictCursor)
+            try:
+                cur.execute(_adapt_sqlite_dialect(sql), params or ())
+                return _PGCursor(cur)  # важно: вернуть обертку
+            except Exception:
+                try:
+                    self._raw.rollback()
+                except Exception:
+                    pass
+                try:
+                    cur.close()
+                except Exception:
+                    pass
+                raise
+
 
     def executemany(self, sql: str, seq_of_params):
         with self._lock:
