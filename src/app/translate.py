@@ -149,7 +149,7 @@ CREATE TABLE IF NOT EXISTS translate_cache_v2 (
   sha1 TEXT NOT NULL,
   original TEXT NOT NULL,
   translated TEXT NOT NULL,
-  created_at TEXT DEFAULT (datetime('now')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (lang, sha1)
 );
 """
@@ -163,6 +163,7 @@ CREATE TABLE IF NOT EXISTS translate_cache (
   sha1 TEXT NOT NULL,
   original TEXT NOT NULL,
   translated TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (scope, scope_id, field, lang, sha1)
 );
 """
@@ -203,15 +204,17 @@ def put_cached_translation(scope: str, scope_id: str, field: str, lang: str, tex
     key = _sha1(text)
     # v2 insert (global)
     db._exec(
-        "INSERT OR REPLACE INTO translate_cache_v2(lang, sha1, original, translated) VALUES(?,?,?,?)",
+        "INSERT INTO translate_cache_v2(lang, sha1, original, translated) VALUES(?,?,?,?) "
+        "ON CONFLICT (lang, sha1) DO UPDATE SET original=EXCLUDED.original, translated=EXCLUDED.translated, created_at=now()",
         (lang, key, text, translated),
-    )
+    ),
 
     # best-effort: also write v1 (doesn't hurt older code paths)
     db._exec(
-        "INSERT OR REPLACE INTO translate_cache(scope, scope_id, field, lang, sha1, original, translated) VALUES(?,?,?,?,?,?,?)",
+        "INSERT INTO translate_cache(scope, scope_id, field, lang, sha1, original, translated) VALUES(?,?,?,?,?,?,?) "
+        "ON CONFLICT (scope, scope_id, field, lang, sha1) DO UPDATE SET original=EXCLUDED.original, translated=EXCLUDED.translated, created_at=now()",
         (scope, scope_id, field, lang, key, text, translated),
-    )
+    ),
 
 # =========================
 # DeepL client helpers

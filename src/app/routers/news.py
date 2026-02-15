@@ -364,147 +364,6 @@ def _decorate_cluster_row(c: dict[str, Any], include_sources: bool = True) -> di
     return payload
 
 
-@router.get("/api/preferences")
-def get_preferences() -> dict:
-    return {"status": "ok", "note": "preferences are stored on frontend (localStorage) for now"}
-
-
-@router.post("/api/preferences")
-def save_preferences(p: Preferences) -> dict:
-    return {"status": "ok", "saved": p.model_dump()}
-
-
-@router.get("/api/news")
-async def get_news(
-    user=Depends(get_current_user_optional),
-    ui_lang: str = "en",
-    interests: str = "",
-    country: str = "world",
-    language: str = "all",
-    since: Optional[str] = None,
-    limit: int = 120,
-    q: Optional[str] = None,
-) -> dict[str, Any]:
-    db.ensure_schema()
-
-    interests_list = [x.strip().lower() for x in (interests or "").split(",") if x.strip()]
-    interests_norm = ",".join(sorted(set(interests_list)))
-    country = (country or "world").strip().lower()
-    language = (language or "all").strip().lower()
-    limit_n = max(1, min(400, int(limit)))
-
-    # NOTE: bucketed snapshots make the feed deterministic across devices.
-    # The helper is called _snapshot_bucket() in this file.
-    bucket = _snapshot_bucket()
-    ui_lang = (ui_lang or "en").strip().lower()
-
-    cache_key = _feed_cache_key(
-        interests=interests_norm,
-        country=(country or "world").strip().lower(),
-        language=(language or "en").strip().lower(),
-        ui_lang=ui_lang,
-        since=since,
-        q=q,
-        limit=limit_n,
-        bucket=bucket,
-        variant=("auth" if user else "guest"),
-    )
-
-    now = time.time()
-    with _FEED_CACHE_LOCK:
-        cached = _FEED_CACHE.get(cache_key)
-        if cached and cached[0] > now:
-            return cached[1]
-
-    clusters = db.query_clusters(
-        interests=interests_list,
-        country=country,
-        language=language,
-        since_iso=since,
-        limit=limit_n,
-    )
-
-    # Paywall: guests get full details only for the first 3 items.
-    is_guest = user is None
-    items: list[dict[str, Any]] = []
-    for idx, c in enumerate(clusters):
-        if (not is_guest) or idx < 3:
-            items.append(_decorate_cluster_row(c, include_sources=True))
-        else:
-            it = _decorate_cluster_row(c, include_sources=False)
-            # redact details
-            it.pop("summary_facts", None)
-            it.pop("summary_diffs", None)
-            it.pop("summary_uncertainties", None)
-            it["summary"] = ""
-            it["credibility_explanation"] = "Create an account to view full details."
-            it["guest_locked"] = True
-            items.append(it)
-
-    cutoff = _days_ago_iso(FEED_KEEP_DAYS)
-    items = [
-        it
-        for it in items
-        if (it.get("latest_published_at") or it.get("updated_at") or "") >= cutoff
-    ]
-
-    if q and q.strip():
-        qq = q.strip().lower()
-
-        def hit(it: dict[str, Any]) -> bool:
-            if qq in (it.get("title") or "").lower():
-                return True
-            for s in it.get("sources") or []:
-                if qq in ((s.get("title") or "").lower()):
-                    return True
-                if qq in ((s.get("source_name") or "").lower()):
-                    return True
-            return False
-
-        items = [it for it in items if hit(it)]
-
-    items.sort(
-        key=lambda x: (
-            x.get("latest_published_at") or "",
-            int(x.get("importance") or 0),
-            int(x.get("credibility_score") or 0),
-            int(x.get("sources_count") or 0),
-            int(x.get("cluster_id") or 0),
-        ),
-        reverse=True,
-    )
-
-    # UI-language translation (content only). Never affects clustering/summary generation.
-# Translate for ANY ui_lang (including EN), but translate_feed_items will skip items
-# that are already in the UI language.
-    if ui_lang and ui_lang.strip():
-        try:
-            items = await translate_feed_items(items, ui_lang)
-        except Exception as e:
-            print("[TRANSLATE] failed:", repr(e))
-            # fail-open: keep originals
-            pass
-
-
-    snapshot_at = datetime.fromtimestamp(
-        bucket * FEED_SNAPSHOT_SECONDS, tz=timezone.utc
-    ).isoformat()
-
-    payload = {
-        "status": "ok",
-        "count": len(items),
-        "items": items,
-        "cutoff": cutoff,
-        "snapshot_bucket": bucket,
-        "snapshot_at": snapshot_at,
-    }
-
-    with _FEED_CACHE_LOCK:
-        _FEED_CACHE[cache_key] = (time.time() + FEED_SNAPSHOT_SECONDS, payload)
-
-    return payload
-
-
 def _redact_item_for_guest(it: dict[str, Any]) -> dict[str, Any]:
     """Redact details for guests (same paywall behavior as /api/news).
 
@@ -523,7 +382,6 @@ def _redact_item_for_guest(it: dict[str, Any]) -> dict[str, Any]:
     return it
 
 
-
 def _is_url(s: str) -> bool:
     try:
         ss = (s or "").strip().lower()
@@ -531,7 +389,24 @@ def _is_url(s: str) -> bool:
     except Exception:
         return False
 
-_URL_DROP_PARAMS = {"utm_source","utm_medium","utm_campaign","utm_term","utm_content","utm_id","utm_name","utm_reader","utm_pubref","fbclid","gclid","yclid","mc_cid","mc_eid"}
+
+_URL_DROP_PARAMS = {
+    "utm_source",
+    "utm_medium",
+    "utm_campaign",
+    "utm_term",
+    "utm_content",
+    "utm_id",
+    "utm_name",
+    "utm_reader",
+    "utm_pubref",
+    "fbclid",
+    "gclid",
+    "yclid",
+    "mc_cid",
+    "mc_eid",
+}
+
 
 def _normalize_url(u: str) -> str:
     try:
@@ -543,16 +418,20 @@ def _normalize_url(u: str) -> str:
         if not p.scheme or not p.netloc:
             return u
         q = urllib.parse.parse_qsl(p.query, keep_blank_values=True)
-        q2 = [(k, v) for (k, v) in q if k.lower() not in _URL_DROP_PARAMS and not k.lower().startswith("utm_")]
+        q2 = [
+            (k, v)
+            for (k, v) in q
+            if k.lower() not in _URL_DROP_PARAMS and not k.lower().startswith("utm_")
+        ]
         p2 = p._replace(query=urllib.parse.urlencode(q2, doseq=True))
         return urllib.parse.urlunsplit(p2)
     except Exception:
         return (u or "").strip().split("#", 1)[0]
 
+
 def _url_hash(u: str) -> str:
     u = (u or "").strip().split("#", 1)[0]
     return hashlib.sha1(u.encode("utf-8")).hexdigest()
-
 
 
 def _fetch_title_from_url(url: str) -> str:
@@ -579,6 +458,151 @@ def _fetch_title_from_url(url: str) -> str:
     except Exception:
         return ""
 
+
+@router.get("/api/preferences")
+def get_preferences() -> dict:
+    return {"status": "ok", "note": "preferences are stored on frontend (localStorage) for now"}
+
+
+@router.post("/api/preferences")
+def save_preferences(p: Preferences) -> dict:
+    return {"status": "ok", "saved": p.model_dump()}
+
+
+@router.get("/api/news")
+async def get_news(
+    user=Depends(get_current_user_optional),
+    ui_lang: str = "en",
+    interests: str = "",
+    country: str = "world",
+    language: str = "all",
+    since: Optional[str] = None,
+    limit: int = 120,
+    q: Optional[str] = None,
+) -> dict[str, Any]:
+    try:
+        db.ensure_schema()
+
+        interests_list = [x.strip().lower() for x in (interests or "").split(",") if x.strip()]
+        interests_norm = ",".join(sorted(set(interests_list)))
+        country = (country or "world").strip().lower()
+        language = (language or "all").strip().lower()
+        limit_n = max(1, min(400, int(limit)))
+
+        # NOTE: bucketed snapshots make the feed deterministic across devices.
+        # The helper is called _snapshot_bucket() in this file.
+        bucket = _snapshot_bucket()
+        ui_lang = (ui_lang or "en").strip().lower()
+
+        cache_key = _feed_cache_key(
+            interests=interests_norm,
+            country=(country or "world").strip().lower(),
+            language=(language or "en").strip().lower(),
+            ui_lang=ui_lang,
+            since=since,
+            q=q,
+            limit=limit_n,
+            bucket=bucket,
+            variant=("auth" if user else "guest"),
+        )
+
+        now = time.time()
+        with _FEED_CACHE_LOCK:
+            cached = _FEED_CACHE.get(cache_key)
+            if cached and cached[0] > now:
+                return cached[1]
+
+        clusters = db.query_clusters(
+            interests=interests_list,
+            country=country,
+            language=language,
+            since_iso=since,
+            limit=limit_n,
+        )
+
+        # Paywall: guests get full details only for the first 3 items.
+        is_guest = user is None
+        items: list[dict[str, Any]] = []
+        for idx, c in enumerate(clusters):
+            if (not is_guest) or idx < 3:
+                items.append(_decorate_cluster_row(c, include_sources=True))
+            else:
+                it = _decorate_cluster_row(c, include_sources=False)
+                # redact details
+                it.pop("summary_facts", None)
+                it.pop("summary_diffs", None)
+                it.pop("summary_uncertainties", None)
+                it["summary"] = ""
+                it["credibility_explanation"] = "Create an account to view full details."
+                it["guest_locked"] = True
+                items.append(it)
+
+        cutoff = _days_ago_iso(FEED_KEEP_DAYS)
+        items = [
+            it
+            for it in items
+            if (it.get("latest_published_at") or it.get("updated_at") or "") >= cutoff
+        ]
+
+        if q and q.strip():
+            qq = q.strip().lower()
+
+            def hit(it: dict[str, Any]) -> bool:
+                if qq in (it.get("title") or "").lower():
+                    return True
+                for s in it.get("sources") or []:
+                    if qq in ((s.get("title") or "").lower()):
+                        return True
+                    if qq in ((s.get("source_name") or "").lower()):
+                        return True
+                return False
+
+            items = [it for it in items if hit(it)]
+
+        items.sort(
+            key=lambda x: (
+                x.get("latest_published_at") or "",
+                int(x.get("importance") or 0),
+                int(x.get("credibility_score") or 0),
+                int(x.get("sources_count") or 0),
+                int(x.get("cluster_id") or 0),
+            ),
+            reverse=True,
+        )
+
+        # UI-language translation (content only). Never affects clustering/summary generation.
+    # Translate for ANY ui_lang (including EN), but translate_feed_items will skip items
+    # that are already in the UI language.
+        if ui_lang and ui_lang.strip():
+            try:
+                items = await translate_feed_items(items, ui_lang)
+            except Exception as e:
+                print("[TRANSLATE] failed:", repr(e))
+                # fail-open: keep originals
+                pass
+
+
+        snapshot_at = datetime.fromtimestamp(
+            bucket * FEED_SNAPSHOT_SECONDS, tz=timezone.utc
+        ).isoformat()
+
+        payload = {
+            "status": "ok",
+            "count": len(items),
+            "items": items,
+            "cutoff": cutoff,
+            "snapshot_bucket": bucket,
+            "snapshot_at": snapshot_at,
+        }
+
+        with _FEED_CACHE_LOCK:
+            _FEED_CACHE[cache_key] = (time.time() + FEED_SNAPSHOT_SECONDS, payload)
+
+        return payload
+    except Exception as e:
+        # Fail-open: don't take down the UI if something goes wrong.
+        print("[/api/news] failed:", repr(e))
+        return {"status": "ok", "count": 0, "items": [], "error": str(e)}
 
 @router.get("/api/news/similar")
 async def news_similar(
