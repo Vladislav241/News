@@ -94,30 +94,20 @@ class _PGConn:
         return False
 
     def execute(self, sql, params=None):
-        # psycopg2 connections must not be used concurrently across threads.
-        # We guard cursor creation + execution with a lock and proactively rollback
-        # to clear a previously aborted transaction (otherwise every command fails
-        # with InFailedSqlTransaction).
-        with self._lock:
+        cur = self._raw.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        try:
+            cur.execute(_adapt_sqlite_dialect(sql), params or ())
+            return cur
+        except Exception:
             try:
                 self._raw.rollback()
             except Exception:
                 pass
-
-            cur = self._raw.cursor(cursor_factory=psycopg2.extras.DictCursor)
             try:
-                cur.execute(_adapt_sqlite_dialect(sql), params or ())
-                return cur
+                cur.close()
             except Exception:
-                try:
-                    self._raw.rollback()
-                except Exception:
-                    pass
-                try:
-                    cur.close()
-                except Exception:
-                    pass
-                raise
+                pass
+            raise
 
 
 
@@ -184,19 +174,8 @@ class Database:
         with self._lock:
             if self._raw_conn is None or getattr(self._raw_conn, "closed", 1):
                 self._raw_conn = psycopg2.connect(dsn)
-
-            # Ensure autocommit is always enabled. In autocommit mode, each statement
-            # is its own transaction and a failed statement won't poison subsequent ones.
-            try:
                 self._raw_conn.autocommit = True
-            except Exception:
-                pass
-
-            if self._conn is None or getattr(self._raw_conn, "closed", 1):
                 self._conn = _PGConn(self._raw_conn, self._lock)
-
-            return self._conn
-
 
             return self._conn
 
@@ -370,6 +349,8 @@ class Database:
                 """
             )
             conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_provider ON users(provider, provider_id);")
+            conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE")
+
 
             conn.execute(
                 """
