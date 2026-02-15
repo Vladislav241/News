@@ -94,21 +94,21 @@ class _PGConn:
         return False
 
     def execute(self, sql, params=None):
-        with self._lock:
-            cur = self._raw.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cur = self._raw.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        try:
+            cur.execute(_adapt_sqlite_dialect(sql), params or ())
+            return cur
+        except Exception:
             try:
-                cur.execute(_adapt_sqlite_dialect(sql), params or ())
-                return _PGCursor(cur)  # важно: вернуть обертку
+                self._raw.rollback()
             except Exception:
-                try:
-                    self._raw.rollback()
-                except Exception:
-                    pass
-                try:
-                    cur.close()
-                except Exception:
-                    pass
-                raise
+                pass
+            try:
+                cur.close()
+            except Exception:
+                pass
+            raise
+
 
 
     def executemany(self, sql: str, seq_of_params):
@@ -174,7 +174,9 @@ class Database:
         with self._lock:
             if self._raw_conn is None or getattr(self._raw_conn, "closed", 1):
                 self._raw_conn = psycopg2.connect(dsn)
+                self._raw_conn.autocommit = True
                 self._conn = _PGConn(self._raw_conn, self._lock)
+
             return self._conn
 
 
