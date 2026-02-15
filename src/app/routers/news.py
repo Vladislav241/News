@@ -846,10 +846,11 @@ def favorites_sync(payload: FavoriteSync, user=Depends(require_user)) -> dict[st
 
 @router.get("/api/tracking")
 def get_tracking(user=Depends(require_user)) -> dict[str, Any]:
-    """Return user's tracked clusters with server-side deltas.
+    """Return user tracking cards (favorites).
 
-    Deltas are computed vs the last time the user ACKed (opened) a card in Tracking.
-    We do NOT auto-ack on GET; the UI must call POST /api/tracking/ack when the user opens a card.
+    Deltas are computed vs favorites.last_seen_* (the previous "seen" snapshot).
+    We also update last_seen_* for returned cards so next call shows changes since
+    the last time the user opened Tracking.
     """
     db.ensure_schema()
 
@@ -898,7 +899,10 @@ def get_tracking(user=Depends(require_user)) -> dict[str, Any]:
         return (it.get("latest_published_at") or "", it.get("cluster_id") or 0)
 
     items.sort(key=_sort_key, reverse=True)
-    # NOTE: do not ack here; ack happens on card open via /api/tracking/ack
+    # Mark current state as "seen" so deltas reflect changes since the previous
+    # time the user opened Tracking. (This replaces the old client-side ack.)
+    if updates:
+        db.update_user_favorites_seen_state(user["id"], updates)
 
     return {"status": "ok", "count": len(items), "items": items}
 

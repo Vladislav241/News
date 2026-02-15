@@ -238,6 +238,7 @@ const STORAGE_KEY = "news_prefs_v1";
 const FAV_KEY = "news_favs_v1";
 const DEVICE_KEY = "news_device_id_v1";
 const SEEN_KEY = "news_seen_state_v1";
+const TRACKING_DELTA_KEY = "news_tracking_deltas_v1";
 const FILTERS_KEY = "news_filters_v1";
 const THUMBS_KEY = "news_thumbs_v1";
 
@@ -836,6 +837,71 @@ function loadSeenState() {
   catch { return {}; }
 }
 function saveSeenState(obj) { localStorage.setItem(SEEN_KEY, JSON.stringify(obj || {})); }
+// --- Tracking delta persistence ---
+// We keep the latest non-zero delta received from the server and keep showing it
+// until the user opens the card (so the indicator doesn't disappear on refresh).
+function loadTrackingDeltaState() {
+  try { return JSON.parse(localStorage.getItem(TRACKING_DELTA_KEY) || "{}") || {}; }
+  catch { return {}; }
+}
+function saveTrackingDeltaState(obj) {
+  try { localStorage.setItem(TRACKING_DELTA_KEY, JSON.stringify(obj || {})); }
+  catch {}
+}
+
+function applyTrackingStickyDeltas(items) {
+  const now = Date.now();
+  const map = loadTrackingDeltaState();
+  let changed = false;
+
+  for (const it of (items || [])) {
+    const id = Number(it?.cluster_id ?? it?.event_id);
+    if (!Number.isFinite(id)) continue;
+    const key = String(id);
+
+    const delta = Number(it?.delta_score ?? it?.delta ?? it?.credibility_delta ?? 0);
+    const hasDelta = Number.isFinite(delta) && delta !== 0;
+
+    if (hasDelta) {
+      map[key] = {
+        delta_score: delta,
+        ts: now,
+        updated_at: String(it?.updated_at ?? it?.latest_published_at ?? it?.created_at ?? ""),
+      };
+      changed = true;
+    } else if (map[key] && Number.isFinite(Number(map[key].delta_score)) && Number(map[key].delta_score) !== 0) {
+      // Re-apply sticky delta if server returns 0 on subsequent refreshes.
+      it.delta_score = Number(map[key].delta_score);
+    }
+  }
+
+  if (changed) saveTrackingDeltaState(map);
+  return items;
+}
+
+function clearTrackingDelta(id) {
+  const key = String(id);
+  const map = loadTrackingDeltaState();
+  if (map && Object.prototype.hasOwnProperty.call(map, key)) {
+    delete map[key];
+    saveTrackingDeltaState(map);
+  }
+
+  // Update current DOM card instantly (no full re-render needed).
+  const el = document.querySelector(`.newsCard[data-id="${CSS.escape(key)}"]`);
+  if (el) {
+    const deltaEl = el.querySelector('.delta');
+    if (deltaEl) deltaEl.remove();
+
+    const wrap = el.querySelector('.trackIconWrap');
+    if (wrap) {
+      wrap.classList.remove('red', 'green');
+      wrap.classList.add('neutral');
+    }
+    const icon = el.querySelector('img.trackIcon');
+    if (icon) icon.src = '/static/icons/Tracking.svg';
+  }
+}
 
 function updateSeenStateFromItems(items) {
   const now = Date.now();
@@ -2515,7 +2581,20 @@ const showTrackingUI = state.mode === 'fav';
     updateTrashZone();
   });
 
-  return div;
+  
+
+// Tracking: clear the sticky ▲/▼ indicator only when the user opens the card.
+// (This prevents it from disappearing immediately on auto-refresh.)
+const detailsOpenEl = div.querySelector('details.newsDetails');
+if (detailsOpenEl) {
+  detailsOpenEl.addEventListener('toggle', () => {
+    if (detailsOpenEl.open && state.mode === 'fav') {
+      clearTrackingDelta(id);
+    }
+  });
+}
+
+return div;
 }
 
 function updateCardElement(el, item, ctx, seen) {
@@ -3500,8 +3579,151 @@ function initCookieBanner() {
   });
 }
 
+// ------------------------------
+// Smooth <details> animations
+// ------------------------------
+// Native <details> opens instantly. We intercept clicks on summaries and
+// animate the content container height + opacity.
+let _smoothDetailsInit = false;
+
+function _animateDetails(detailsEl, contentEl, shouldOpen){
+  if (!detailsEl || !contentEl) return;
+  if (detailsEl.dataset.animating === '1') return;
+
+  const prefersReduced = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  if (prefersReduced){
+    detailsEl.open = !!shouldOpen;
+    // clear inline styles
+    contentEl.style.height = '';
+    contentEl.style.opacity = '';
+    contentEl.style.transform = '';
+    contentEl.style.transition = '';
+    return;
+  }
+
+  const duration = 340;
+  const ease = 'cubic-bezier(.16,1,.3,1)';
+
+  detailsEl.dataset.animating = '1';
+  contentEl.style.overflow = 'hidden';
+
+// Apple-like smoothness: images loading can change scrollHeight mid-animation and cause "jank".
+// Watch size changes while animating and smoothly retarget the height.
+const stopResizeWatch = () => {
+  try { if (contentEl._smoothRO) contentEl._smoothRO.disconnect(); } catch {}
+  contentEl._smoothRO = null;
+};
+
+const startResizeWatch = () => {
+  stopResizeWatch();
+  if (!('ResizeObserver' in window)) return;
+  try {
+    const ro = new ResizeObserver(() => {
+      if (detailsEl.dataset.animating !== '1') return;
+      if (!detailsEl.open) return;
+      contentEl.style.height = `${contentEl.scrollHeight}px`;
+    });
+    ro.observe(contentEl);
+    contentEl._smoothRO = ro;
+  } catch {}
+};
+
+
+  const cleanup = () => {
+    detailsEl.dataset.animating = '';
+    contentEl.style.height = '';
+    contentEl.style.opacity = '';
+    contentEl.style.transform = '';
+    contentEl.style.transition = '';
+    stopResizeWatch();
+    // allow normal layout after animation
+    if (detailsEl.open) contentEl.style.overflow = 'visible';
+  };
+
+  if (shouldOpen){
+    detailsEl.open = true;
+    // start from 0
+    contentEl.style.height = '0px';
+    contentEl.style.opacity = '0';
+    contentEl.style.transform = 'translateY(-6px)';
+
+    // measure after open
+    const endH = contentEl.scrollHeight;
+    startResizeWatch();
+    requestAnimationFrame(() => {
+      contentEl.style.transition = `height ${duration}ms ${ease}, opacity ${duration}ms ${ease}, transform ${duration}ms ${ease}`;
+      contentEl.style.height = `${endH}px`;
+      contentEl.style.opacity = '1';
+      contentEl.style.transform = 'translateY(0)';
+    });
+
+    const onEnd = (e) => {
+      if (e && e.target !== contentEl) return;
+      contentEl.removeEventListener('transitionend', onEnd);
+      cleanup();
+    };
+    contentEl.addEventListener('transitionend', onEnd);
+  } else {
+    // closing
+    stopResizeWatch();
+    const startH = contentEl.scrollHeight;
+    contentEl.style.height = `${startH}px`;
+    contentEl.style.opacity = '1';
+    contentEl.style.transform = 'translateY(0)';
+
+    requestAnimationFrame(() => {
+      contentEl.style.transition = `height ${duration}ms ${ease}, opacity ${duration}ms ${ease}, transform ${duration}ms ${ease}`;
+      contentEl.style.height = '0px';
+      contentEl.style.opacity = '0';
+      contentEl.style.transform = 'translateY(-6px)';
+    });
+
+    const onEnd = (e) => {
+      if (e && e.target !== contentEl) return;
+      contentEl.removeEventListener('transitionend', onEnd);
+      detailsEl.open = false;
+      cleanup();
+    };
+    contentEl.addEventListener('transitionend', onEnd);
+  }
+}
+
+function initSmoothDetails(){
+  if (_smoothDetailsInit) return;
+  _smoothDetailsInit = true;
+
+  // Use capture so we can prevent the native toggle before it happens.
+  document.addEventListener('click', (e) => {
+    const sum = e.target && e.target.closest ? e.target.closest('summary.accordionSummary, summary.newsSummary') : null;
+    if (!sum) return;
+
+    const detailsEl = sum.parentElement;
+    if (!detailsEl || detailsEl.tagName !== 'DETAILS') return;
+
+    // Ignore clicks on interactive elements inside the summary (buttons/links etc.)
+    if (sum.classList.contains('newsSummary')){
+      if (e.target.closest('button, a, input, textarea, select, .trackToggle, .shareBtn, .iconBtn')) return;
+      const body = detailsEl.querySelector('.newsOpenBody');
+      if (!body) return;
+      e.preventDefault();
+      e.stopPropagation();
+      _animateDetails(detailsEl, body, !detailsEl.open);
+      return;
+    }
+
+    if (sum.classList.contains('accordionSummary')){
+      const body = detailsEl.querySelector('.accordionBody');
+      if (!body) return;
+      e.preventDefault();
+      e.stopPropagation();
+      _animateDetails(detailsEl, body, !detailsEl.open);
+    }
+  }, true);
+}
+
 
 requestAnimationFrame(updateFooterShadeGap);
+initSmoothDetails();
 main();
 
 
