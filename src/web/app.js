@@ -412,6 +412,8 @@ let state = {
   showThumbs: false,
 
   filters: {
+    pushLowToBottom: true,
+    threshold: 50,
     onlyConfirmed: false,
     onlyAI: false,
     minScore: 0,
@@ -726,6 +728,8 @@ function loadFilters() {
     const raw = localStorage.getItem(FILTERS_KEY);
     if (!raw) return;
     const f = JSON.parse(raw);
+    state.filters.pushLowToBottom = (f.pushLowToBottom !== undefined) ? !!f.pushLowToBottom : true;
+    state.filters.threshold = Number.isFinite(Number(f.threshold)) ? Number(f.threshold) : 50;
     state.filters.onlyConfirmed = !!f.onlyConfirmed;
     state.filters.onlyAI = !!f.onlyAI;
     state.filters.minScore = Number(f.minScore || 0);
@@ -751,14 +755,20 @@ function saveThumbPrefs() {
 }
 
 function applyFiltersUIToState() {
+  state.filters.pushLowToBottom = !!qs("fPushLow").checked;
+  state.filters.threshold = Number(qs("fThreshold").value || 50);
   state.filters.onlyConfirmed = !!qs("fOnlyConfirmed").checked;
   state.filters.onlyAI = !!qs("fOnlyAI").checked;
   state.filters.minScore = Number(qs("fMinScore").value || 0);
+  qs("fThresholdVal").textContent = String(state.filters.threshold);
   qs("fMinScoreVal").textContent = String(state.filters.minScore);
   saveFilters();
 }
 
 function syncFiltersStateToUI() {
+  qs("fPushLow").checked = !!state.filters.pushLowToBottom;
+  qs("fThreshold").value = String(state.filters.threshold ?? 50);
+  qs("fThresholdVal").textContent = String(state.filters.threshold ?? 50);
   qs("fOnlyConfirmed").checked = !!state.filters.onlyConfirmed;
   qs("fOnlyAI").checked = !!state.filters.onlyAI;
   qs("fMinScore").value = String(state.filters.minScore || 0);
@@ -2588,10 +2598,25 @@ const showTrackingUI = state.mode === 'fav';
 const detailsOpenEl = div.querySelector('details.newsDetails');
 if (detailsOpenEl) {
   detailsOpenEl.addEventListener('toggle', () => {
-    if (detailsOpenEl.open && state.mode === 'fav') {
-      clearTrackingDelta(id);
-    }
-  });
+  // если мы сейчас анимируем открытие/закрытие — не трогаем DOM
+  if (detailsOpenEl.dataset.animating === '1') {
+    setTimeout(() => {
+      // повторим после анимации
+      if (detailsOpenEl.open && state.mode === 'fav') {
+        clearTrackingDelta(id);
+      }
+    }, 360); // чуть больше твоих 340ms
+    return;
+  }
+
+  if (detailsOpenEl.open && state.mode === 'fav') {
+    clearTrackingDelta(id);
+  }
+});
+
+  // Apply once for programmatic opens (deep links)
+  const tw0 = div.querySelector('.newsThumbWrap');
+  if (tw0) tw0.style.display = detailsOpenEl.open ? 'none' : '';
 }
 
 return div;
@@ -2685,8 +2710,22 @@ function renderCards(items, opts) {
   // so every device sees the same feed for the same interests.
 
   let visible = filtered;
+
+  // Ranking rule: stable partition (NOT sorting). Keep server order inside each group.
+  if (state.filters.pushLowToBottom) {
+    const thr = Number(state.filters.threshold ?? 50);
+    const hi = [];
+    const lo = [];
+    for (const it of filtered) {
+      const s = Number(it.score ?? it.credibility_score ?? it.credibility ?? it.trust_score ?? it.rating ?? 0);
+      if (s <= thr) lo.push(it);
+      else hi.push(it);
+    }
+    visible = hi.concat(lo);
+  }
+
   if (state.mode === 'feed' && !feedExpanded && filtered.length > FEED_PAGE_SIZE) {
-    visible = filtered.slice(0, FEED_PAGE_SIZE);
+    visible = visible.slice(0, FEED_PAGE_SIZE);
   }
 
   if (filtered.length === 0) {
@@ -2861,8 +2900,22 @@ function incrementalUpdateFeed(sortedItems, opts) {
 
   // We only display a slice when collapsed.
   let visible = filtered;
+
+  // Ranking rule: stable partition (NOT sorting). Keep server order inside each group.
+  if (state.filters.pushLowToBottom) {
+    const thr = Number(state.filters.threshold ?? 50);
+    const hi = [];
+    const lo = [];
+    for (const it of filtered) {
+      const s = Number(it.score ?? it.credibility_score ?? it.credibility ?? it.trust_score ?? it.rating ?? 0);
+      if (s <= thr) lo.push(it);
+      else hi.push(it);
+    }
+    visible = hi.concat(lo);
+  }
+
   if (state.mode === 'feed' && !feedExpanded && filtered.length > FEED_PAGE_SIZE) {
-    visible = filtered.slice(0, FEED_PAGE_SIZE);
+    visible = visible.slice(0, FEED_PAGE_SIZE);
   }
 
   const seen = loadSeenState();
@@ -3141,8 +3194,48 @@ function bindUI() {
   qs("country").onchange = qs("btnSave").onclick;
   qs("language").onchange = async () => { await setLanguage(qs("language").value); };
 
-  // filters init (controls are currently hidden in the new layout, but must keep working)
+  // filters init
   syncFiltersStateToUI();
+
+  // Filters drawer (premium sheet)
+  const overlay = qs("filtersOverlay");
+  const drawer = qs("filtersDrawer");
+  const openBtn = qs("btnOpenFilters");
+  const closeBtn = qs("btnCloseFilters");
+  const openFilters = () => {
+    if (!overlay || !drawer) return;
+    overlay.classList.add("open");
+    drawer.classList.add("open");
+  };
+  const closeFilters = () => {
+    if (!overlay || !drawer) return;
+    overlay.classList.remove("open");
+    drawer.classList.remove("open");
+  };
+  if (openBtn) openBtn.onclick = openFilters;
+  if (closeBtn) closeBtn.onclick = closeFilters;
+  if (overlay) overlay.onclick = closeFilters;
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeFilters();
+  });
+
+  // Live labels
+  if (qs("fThreshold")) {
+    qs("fThreshold").oninput = async () => {
+      qs("fThresholdVal").textContent = String(qs("fThreshold").value || 50);
+      applyFiltersUIToState();
+      setFeedExpanded(false);
+      if (state.mode === "feed") await fetchFeed();
+      else await fetchFavorites();
+    };
+  }
+
+  qs("fPushLow").onchange = async () => {
+    applyFiltersUIToState();
+    setFeedExpanded(false);
+    if (state.mode === "feed") await fetchFeed();
+    else await fetchFavorites();
+  };
   qs("fOnlyConfirmed").onchange = async () => {
     applyFiltersUIToState();
     setFeedExpanded(false);
