@@ -286,6 +286,24 @@ class Database:
                 """
             )
 
+            # --- Trust score history (server-side) ---
+            # Stores score snapshots for a cluster over time so the UI can render a stable chart
+            # across devices and sessions.
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS trust_score_history (
+                    id BIGSERIAL PRIMARY KEY,
+                    cluster_id BIGINT NOT NULL,
+                    score INTEGER NOT NULL,
+                    sources_count INTEGER NOT NULL,
+                    sources_delta INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(cluster_id) REFERENCES clusters(id) ON DELETE CASCADE
+                );
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_trust_history_cluster_time ON trust_score_history(cluster_id, created_at);")
+
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS ingest_runs (
@@ -813,6 +831,74 @@ class Database:
 
     def get_score(self, cluster_id: int) -> Optional[dict[str, Any]]:
         return self._fetchone("SELECT * FROM article_scores WHERE cluster_id=?", (cluster_id,))
+
+    # --------- trust score history ----------
+    def get_trust_history(self, cluster_id: int, limit: int = 60) -> list[dict[str, Any]]:
+        """Return trust score history points for a cluster (ascending time)."""
+        limit = max(1, min(int(limit or 60), 500))
+        rows = self._fetchall(
+            """
+            SELECT created_at, score, sources_count, sources_delta
+            FROM trust_score_history
+            WHERE cluster_id = ?
+            ORDER BY created_at ASC
+            LIMIT ?
+            """,
+            (int(cluster_id), limit),
+        )
+        return [dict(r) for r in rows]
+
+    def get_latest_trust_history_point(self, cluster_id: int) -> Optional[dict[str, Any]]:
+        return self._fetchone(
+            """
+            SELECT created_at, score, sources_count, sources_delta
+            FROM trust_score_history
+            WHERE cluster_id = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (int(cluster_id),),
+        )
+
+    def record_trust_history_if_changed(self, cluster_id: int, score: int, sources_count: int) -> bool:
+        """Insert a new history point only if score or sources_count changed.
+
+        Returns True if a new point was inserted.
+        """
+        now = _utc_now_iso()
+        try:
+            score_i = int(score)
+        except Exception:
+            score_i = 0
+        try:
+            sc_i = int(sources_count)
+        except Exception:
+            sc_i = 0
+
+        prev = self.get_latest_trust_history_point(int(cluster_id)) or None
+        if prev:
+            try:
+                prev_score = int(prev.get("score") or 0)
+            except Exception:
+                prev_score = 0
+            try:
+                prev_sc = int(prev.get("sources_count") or 0)
+            except Exception:
+                prev_sc = 0
+            if prev_score == score_i and prev_sc == sc_i:
+                return False
+            delta = sc_i - prev_sc
+        else:
+            delta = 0
+
+        self._exec(
+            """
+            INSERT INTO trust_score_history(cluster_id, score, sources_count, sources_delta, created_at)
+            VALUES(?, ?, ?, ?, ?)
+            """,
+            (int(cluster_id), score_i, sc_i, int(delta), now),
+        )
+        return True
 
     def upsert_summary(
         self,

@@ -2,8 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
+  <!-- Prevent aggressive caching (helps updates show without hard refresh) -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>CheckNE news.</title>
+  <title>CHECKNE.</title>
 
   <!-- Favicon (prevents noisy /favicon.ico 404s in logs) -->
   <link rel="icon" href="/static/icons/Logo.svg" type="image/png">
@@ -70,9 +74,9 @@
 
     /* used in footer */
     .brandMark { width: 22px; height: 22px; background: #0b0b0f; border-radius: 3px; }
-    .brandText { font-family: "Jersey 25", Inter, system-ui; font-size: 24px; line-height: 0.64; letter-spacing: .6px; margin-bottom: -3px; }
-    .brandText .top { font-size: 32px; }
-    .brandText .bottom { font-size: 30px; }
+    .brandText { font-family: "Jersey 25", Inter, system-ui; font-size: 24px; line-height: 0.64; letter-spacing: .6px; margin-bottom: -17px; }
+    .brandText .top { font-size: 40px; }
+    .brandText .bottom { font-size: 40px; }
 
 .tagline{
   flex: 0 0 auto;      /* НЕ растягиваем */
@@ -338,6 +342,40 @@
     .delta{ font-weight: 700; font-size: 13px; display:inline-flex; align-items:center; gap:6px; }
     .delta.up{ color: #166534; }
     .delta.down{ color: #b91c1c; }
+
+    /* Trust score history chart (Tracking details) */
+    .trustHistoryWrap{ margin-top: 18px; }
+    .trustHistoryTitle{ font-weight: 900; font-size: 22px; letter-spacing: -0.02em; margin: 10px 0 12px; }
+    /* Keep chart + stats block pinned to the left (avoid stretching across the card) */
+    .trustHistoryGrid{ display:inline-grid; grid-template-columns: minmax(520px, 760px) 210px; gap: 18px; align-items: start; justify-content: start; }
+    @media (max-width: 720px){ .trustHistoryGrid{ grid-template-columns: 1fr; } }
+    .trustChartCard{ border: none; border-radius: 0; padding: 0; position: relative; background: transparent; min-height: 280px; }
+    .trustChartLoading{ height: 260px; border-radius: 16px; background: linear-gradient(90deg, rgba(0,0,0,0.04), rgba(0,0,0,0.02), rgba(0,0,0,0.04)); background-size: 200% 100%; animation: shimmer 1.2s ease-in-out infinite; }
+    @keyframes shimmer{ 0%{ background-position: 0% 0; } 100%{ background-position: -200% 0; } }
+    .trustStatsCard{ border: 1px solid rgba(0,0,0,0.14); border-radius: 16px; padding: 14px 14px 12px; background:#fff; }
+    .trustStatsRow{ display:flex; justify-content: space-between; gap: 14px; padding: 10px 0; font-size: 18px; }
+    .trustStatsLabel{ color: rgba(0,0,0,0.55); }
+    .trustStatsVal{ font-weight: 900; letter-spacing: -0.01em; }
+    .trustStatsDivider{ height: 1px; background: rgba(0,0,0,0.12); margin: 10px 0; }
+    .trustStatsSub{ margin-top: 8px; color: rgba(0,0,0,0.55); font-size: 14px; line-height: 1.25; }
+    .trustTooltip{ position: absolute; z-index: 5; pointer-events: none; background: rgba(255,255,255,0.98); border: 1px solid rgba(0,0,0,0.12); border-radius: 12px; padding: 10px 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.12); font-size: 13px; line-height: 1.25; min-width: 170px; opacity: 0; transform: translateY(6px); transition: opacity .12s ease, transform .12s ease; }
+    .trustTooltip.show{ opacity: 1; transform: translateY(0); }
+    .trustTooltip .ttDate{ font-weight: 900; margin-bottom: 8px; }
+    .trustTooltip .ttRow{ display:flex; justify-content: space-between; gap: 10px; }
+    .trustTooltip .ttRow + .ttRow{ margin-top: 4px; }
+    .trustTooltip .ttLabel{ color: var(--muted); }
+    .trustChartHint{ margin-top: 10px; color: rgba(0,0,0,0.55); font-size: 15px; }
+    .trustChartSvg text{ fill: rgba(0,0,0,0.28); font-size: 14px; }
+    .trustChartSvg .xTick{ fill: rgba(0,0,0,0.28); font-size: 14px; }
+    .trustChartSvg .gridLine{ stroke: rgba(0,0,0,0.10); stroke-width: 1; }
+    .trustChartSvg .axisLine{ stroke: rgba(0,0,0,0.16); stroke-width: 1; }
+    .trustChartSvg .hoverLine{ stroke: rgba(0,0,0,0.24); stroke-width: 2; stroke-dasharray: 6 8; }
+    .trustChartSvg .line{ fill: none; stroke: rgba(0,0,0,0.62); stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+    .trustChartSvg .pt{ cursor: pointer; pointer-events: all; }
+    .trustChartSvg .ptDot{ fill: rgba(0,0,0,0.86); }
+    .trustChartSvg .ptHalo{ fill: rgba(0,0,0,0.08); }
+    .trustChartSvg .pt.active .ptHalo{ fill: rgba(0,0,0,0.12); }
+
     .newsCard.isLow .delta.up{ color: #22c55e; }
     .newsCard.isLow .delta.down{ color: #ef4444; }
 
@@ -479,8 +517,7 @@
       display: none;
       align-items: center;
       justify-content: center;
-      background: rgba(255,255,255,.9);
-      border: 1px solid rgba(17,17,19,.14);
+      background: #E64C42;
       box-shadow: 0 10px 30px rgba(10,15,20,.10);
       z-index: 50;
       backdrop-filter: blur(8px);
@@ -1886,8 +1923,8 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
     flex-wrap: wrap;
   }
   .brandLogo{ width: 34px; height: 34px; }
-  .brandText .top{ font-size: 26px; }
-  .brandText .bottom{ font-size: 24px; }
+  .brandText .top{ font-size: 30px; }
+  .brandText .bottom{ font-size: 30px; }
   .tagline{ display:none; }
   .headerRight{ gap: 8px; margin-left: auto; }
   .trackBtn{
@@ -2543,6 +2580,80 @@ body.view-switching #feedView{
 .newsCard{ width: 100%; }
 
 /* ===== Filters button + drawer (premium) ===== */
+/* ===== Sort dropdown (match reference) ===== */
+.sortWrap{ position: relative; margin-left:auto; }
+.sortBtn{
+  display:flex; align-items:center; gap:8px;
+  height: 34px;
+  padding: 0 12px;
+  border:1px solid rgba(15,23,42,.22);
+  background:#fff;
+  border-radius: 10px;
+  font-weight:600;
+  cursor:pointer;
+}
+.sortBtn:active{ transform: translateY(0.5px); }
+.sortLabel{ color: rgba(15,23,42,.75); font-weight:600; }
+.sortValue{ color: rgba(15,23,42,.95); }
+.sortCaret{ opacity:.75; margin-left:2px; }
+
+.sortMenu{
+  position:absolute;
+  right:0;
+  top: calc(100% + 8px);
+  width: 210px;
+  background:#fff;
+  border:1px solid rgba(15,23,42,.18);
+  border-radius: 12px;
+  padding: 10px 10px 12px;
+  box-shadow: 0 10px 30px rgba(2,6,23,.12);
+  z-index: 50;
+
+  /* premium open/close (no jerky hidden toggle) */
+  opacity: 0;
+  transform: translateY(-10px) scale(.985);
+  pointer-events: none;
+  transform-origin: top right;
+  will-change: transform, opacity;
+  transition: transform 220ms cubic-bezier(.22,1,.36,1), opacity 180ms ease;
+}
+.sortMenu.open{
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+.sortMenu.closing{
+  opacity: 0;
+  transform: translateY(-10px) scale(.985);
+  pointer-events: none;
+}
+.sortMenuDivider{ height:1px; background: rgba(15,23,42,.10); margin: 10px 2px 8px; }
+.checkSection{ display:flex; flex-direction:column; gap:10px; padding: 2px 2px 2px; }
+.checkRow{ display:flex; align-items:center; gap:10px; font-size:14px; color: rgba(15,23,42,.9); cursor:pointer; user-select:none; }
+.checkRow input{ width:14px; height:14px; accent-color:#111113; }
+
+@media (prefers-reduced-motion: reduce){
+  .sortMenu{ transition:none; }
+  .sortMenu.open{ animation:none; }
+}
+.sortMenuSection{ display:flex; flex-direction:column; gap:10px; padding: 2px 2px 8px; }
+.radioRow{ display:flex; align-items:center; gap:10px; font-size:14px; color: rgba(15,23,42,.9); cursor:pointer; user-select:none; }
+.radioRow input{ width: 14px; height: 14px; accent-color: #111113; }
+
+.rangeRow{ display:flex; align-items:center; justify-content:center; gap:10px; padding-top: 6px; }
+.pillInput{
+  width: 62px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid rgba(15,23,42,.22);
+  background:#fff;
+  text-align:center;
+  font-weight:600;
+  outline:none;
+}
+.pillInput:focus{ border-color: rgba(15,23,42,.45); }
+.rangeSep{ font-size:14px; color: rgba(15,23,42,.7); }
+
 .filtersBtn{
   display:inline-flex;
   align-items:center;
@@ -2706,7 +2817,98 @@ body.view-switching #feedView{
   display: block;
 }
 
+/* --- Trust score history: premium responsive layout (mobile-first) --- */
+.trustHistoryGrid{
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  gap: 16px;
+  align-items: start;
+  justify-content: start;
+}
+.trustHistoryGrid > *{ justify-self: stretch; }
+
+/* Chart card looks like a real card (not a loose SVG on the page) */
+.trustChartCard{
+  border: 1px solid rgba(0,0,0,0.12);
+  border-radius: 20px;
+  padding: 14px 14px 10px;
+  background: #fff;
+  position: relative;
+  min-height: 0;
+}
+.trustChartLoading{
+  border-radius: 18px;
+  height: 260px;
+}
+.trustChartSvg{
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+/* Stats card – no negative margins, no fixed width so it never overlaps */
+.trustStatsCard{
+  width: auto;
+  height: auto;
+  border: 1px solid rgba(0,0,0,0.12);
+  border-radius: 20px;
+  padding: 14px 14px 12px;
+  background: #fff;
+  box-sizing: border-box;
+}
+.trustStatsRow{
+  display:flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 14px;
+  padding: 10px 0;
+  font-size: 16px;
+}
+.trustStatsLabel{ color: rgba(0,0,0,0.58); }
+.trustStatsVal{ font-weight: 900; letter-spacing: -0.01em; }
+.trustStatsDivider{
+  height: 1px;
+  background: rgba(0,0,0,0.12);
+  margin: 10px 0;
+}
+.trustStatsSub{
+  margin-top: 6px;
+  color: rgba(0,0,0,0.55);
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+/* Mobile: stack, tighter typography, stats become a compact grid */
+@media (max-width: 720px){
+  .trustHistoryTitle{ font-size: 20px; margin: 8px 0 10px; }
+  .trustHistoryGrid{ grid-template-columns: 1fr; gap: 12px; }
+
+  .trustChartCard{ border-radius: 18px; padding: 12px 12px 10px; }
+  .trustChartLoading{ height: 230px; }
+
+  .trustStatsCard{
+    border-radius: 18px;
+    padding: 12px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 14px;
+  }
+  .trustStatsRow{ padding: 0; font-size: 14px; }
+  .trustStatsLabel{ font-size: 12.5px; }
+  .trustStatsVal{ font-size: 15.5px; }
+
+  .trustStatsDivider{ grid-column: 1 / -1; margin: 2px 0 0; }
+  .trustStatsSub{ grid-column: 1 / -1; margin-top: 0; font-size: 12px; }
+
+  .trustChartHint{ font-size: 13px; margin-top: 8px; }
+}
+
+/* Prevent iOS zooming on tap/inputs inside tooltip */
+.trustTooltip{ max-width: min(260px, calc(100vw - 32px)); }
+
 </style>
+
 </head>
 
 <body>
@@ -2716,10 +2918,9 @@ body.view-switching #feedView{
       <div id="brand" class="brand" aria-label="ONE news" role="button" tabindex="0">
         <img class="brandLogo" src="/static/icons/Logo.svg" alt="Logo" />
 
-        <div class="brandText"><div class="top">CheckNE</div><div class="bottom">news.</div></div>
+        <div class="brandText"><div class="top">CHECKNE.</div></div>
       </div>
 
-      <div class="tagline">Track credibility of breaking news</div>
 
       <div class="headerRight">
         <button id="btnTracking" class="trackBtn" type="button" aria-label="Tracking">
@@ -2764,7 +2965,7 @@ body.view-switching #feedView{
     <div class="brandOverlayInner">
       <img class="brandOverlayLogo" src="/static/icons/Logo.svg" alt="">
       <div class="brandOverlayText">
-        <div class="brandOverlayTitle">CheckNE</div>
+        <div class="brandOverlayTitle">CHECKNE.</div>
         <div class="brandOverlaySub">Loading…</div>
       </div>
     </div>
@@ -2805,7 +3006,49 @@ body.view-switching #feedView{
             <option value="fr">FR</option>
           </select>
         </div>
-        <button id="btnOpenFilters" class="filtersBtn" type="button" aria-haspopup="dialog" aria-controls="filtersDrawer"><span class="filtersDot" aria-hidden="true"></span>Filters</button>
+        <div class="sortWrap" id="sortWrap">
+          <button id="sortBtn" class="sortBtn" type="button" aria-haspopup="menu" aria-expanded="false">
+            <span class="sortLabel">Sort:</span>
+            <span id="sortBtnValue" class="sortValue">Newest</span>
+            <span class="sortCaret" aria-hidden="true">▾</span>
+          </button>
+
+          <div id="sortMenu" class="sortMenu" role="menu" aria-label="Sort and rating filter" hidden>
+            <div class="sortMenuSection">
+              <label class="radioRow" role="menuitemradio">
+                <input type="radio" name="sortOrder" value="newest" checked>
+                <span>Newest</span>
+              </label>
+              <label class="radioRow" role="menuitemradio">
+                <input type="radio" name="sortOrder" value="low">
+                <span>Low to High</span>
+              </label>
+              <label class="radioRow" role="menuitemradio">
+                <input type="radio" name="sortOrder" value="high">
+                <span>High to Low</span>
+              </label>
+            </div>
+
+            <div class="rangeRow">
+              <input id="scoreMin" class="pillInput" type="number" min="0" max="100" step="1" value="0" inputmode="numeric" />
+              <span class="rangeSep">to</span>
+              <input id="scoreMax" class="pillInput" type="number" min="0" max="100" step="1" value="100" inputmode="numeric" />
+            </div>
+
+            <div class="sortMenuDivider" aria-hidden="true"></div>
+
+            <div class="checkSection" aria-label="Extra filters">
+              <label class="checkRow">
+                <input id="onlyConfirmed" type="checkbox" />
+                <span>Only confirmed (2+ sources)</span>
+              </label>
+              <label class="checkRow">
+                <input id="onlyAiSummary" type="checkbox" />
+                <span>Only with AI summary</span>
+              </label>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="tagsBar">
@@ -3048,8 +3291,7 @@ body.view-switching #feedView{
         <div class="footerLogo">
           <img class="footerLogoImg" src="/static/icons/Logo.svg" alt="Logo" />
           <div class="footerBrandText">
-            <div class="top">CheckNE</div>
-            <div class="bottom">news.</div>
+            <div class="top">CHECKNE.</div>
           </div>
         </div>
       </div>
@@ -3095,7 +3337,7 @@ body.view-switching #feedView{
 
   <!-- ✅ Copyright тоже отдельно и с отступами -->
   <div class="copyright">
-    © 2026 CheckNE news. All rights reserved.
+    © 2026 CHECKNE. All rights reserved.
   </div>
 
 </footer>
@@ -3114,7 +3356,7 @@ body.view-switching #feedView{
         <div class="authBrand">
           <div class="footerLogo">
             <img class="footerLogoImg" src="/static/icons/Logo.svg" alt="Logo" />
-            <div class="footerBrandText"><div class="top">CheckNE</div><div class="bottom">news.</div></div>
+            <div class="footerBrandText"><div class="top">CHECKNE.</div></div>
           </div>
           <button id="authClose" class="authClose" type="button" aria-label="Close" data-i18n-aria="ui.close">✕</button>
         </div>
@@ -3191,11 +3433,12 @@ body.view-switching #feedView{
         </div>
 
       </div>
-      <div class="authFoot" data-i18n-html="auth.foot">By continuing, you agree to CheckNE news’ <span style="color:#111;">Terms of Service</span> and <span style="color:#111;">Privacy Policy</span>.</div>
+      <div class="authFoot" data-i18n-html="auth.foot">By continuing, you agree to CHECKNE.’ <span style="color:#111;">Terms of Service</span> and <span style="color:#111;">Privacy Policy</span>.</div>
     </div>
   </div>
 
- <script src="/static/app.js"></script>
+ <!-- Cache-bust static JS on deploy by bumping v=... -->
+ <script src="/static/app.js?v=2026-02-19-2"></script>
 <!-- Share modal -->
 <div id="shareBackdrop" class="shareBackdrop" aria-hidden="true">
   <div class="shareModal" role="dialog" aria-modal="true" aria-labelledby="shareHeroTitle">
@@ -3252,52 +3495,5 @@ body.view-switching #feedView{
     <button id="cookie-accept" class="cookie-banner__btn">OK</button>
   </div>
 </div>
-
-
-
-  <!-- Filters Drawer -->
-  <div id="filtersOverlay" class="filtersOverlay" aria-hidden="true"></div>
-  <aside id="filtersDrawer" class="filtersDrawer" role="dialog" aria-modal="true" aria-label="Filters">
-    <div class="filtersHead">
-      <div class="filtersTitle">Filters</div>
-      <button id="btnCloseFilters" class="filtersClose" type="button" aria-label="Close">✕</button>
-    </div>
-    <div class="filtersBody">
-      <div class="filtersGroup">
-        <div class="filtersGroupTitle">Ranking rule</div>
-        <div class="filtersRowLine">
-          <label><input type="checkbox" id="fPushLow" checked /> Put low-score (≤ threshold) items to the bottom</label>
-        </div>
-        <div class="filtersRowLine" style="align-items:flex-end;">
-          <div style="flex:1;">
-            <small>Threshold</small>
-            <input id="fThreshold" class="filtersRange" type="range" min="0" max="100" step="5" value="50" />
-          </div>
-          <div style="min-width:64px; text-align:right; font-weight:800;"><span id="fThresholdVal">50</span>/100</div>
-        </div>
-      </div>
-
-      <div class="filtersGroup">
-        <div class="filtersGroupTitle">Quality</div>
-        <div class="filtersRowLine">
-          <label><input type="checkbox" id="fOnlyConfirmed" /> Only confirmed (2+ sources)</label>
-        </div>
-        <div class="filtersRowLine">
-          <label><input type="checkbox" id="fOnlyAI" /> Only with AI summary</label>
-        </div>
-        <div class="filtersRowLine" style="align-items:flex-end;">
-          <div style="flex:1;">
-            <small>Min score</small>
-            <input id="fMinScore" class="filtersRange" type="range" min="0" max="100" step="5" value="0" />
-          </div>
-          <div style="min-width:64px; text-align:right; font-weight:800;"><span id="fMinScoreVal">0</span>/100</div>
-        </div>
-      </div>
-    </div>
-    <div class="filtersFooter">
-      <button id="btnApplyFilters" class="btn" type="button" data-i18n="ui.apply">Apply</button>
-    </div>
-  </aside>
-
 </body>
 </html>

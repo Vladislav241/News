@@ -40,7 +40,7 @@ def send_test_email(user=Depends(get_current_user_optional)):
 
     ok = send_email(
         to_email,
-        subject="CheckNE news — test email",
+        subject="CHECKNE. — test email",
         html="<p>If you received this, email delivery is working ✅</p>",
         text="If you received this, email delivery is working.",
     )

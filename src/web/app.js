@@ -140,7 +140,7 @@ async function shareCluster(item) {
     url,
     v,
     id,
-    title: item?.title || 'CheckNE news',
+    title: item?.title || 'CHECKNE.',
     score: item?.score ?? item?.trust_score ?? null,
     outlets: item?.sources_count ?? item?.outlet_count ?? null,
   });
@@ -173,7 +173,7 @@ function openShareModal(data) {
   };
 
   const encodedUrl = encodeURIComponent(data.url);
-  const tweetText = encodeURIComponent(`Trust score • ${data.title || 'CheckNE news'}`);
+  const tweetText = encodeURIComponent(`Trust score • ${data.title || 'CHECKNE.'}`);
   const xUrl = `https://twitter.com/intent/tweet?url=${encodedUrl}&text=${tweetText}`;
 
   toX.onclick = () => window.open(xUrl, '_blank', 'noopener,noreferrer');
@@ -239,6 +239,7 @@ const FAV_KEY = "news_favs_v1";
 const DEVICE_KEY = "news_device_id_v1";
 const SEEN_KEY = "news_seen_state_v1";
 const TRACKING_DELTA_KEY = "news_tracking_deltas_v1";
+const TRACKING_HISTORY_KEY = "news_tracking_history_v1";
 const FILTERS_KEY = "news_filters_v1";
 const THUMBS_KEY = "news_thumbs_v1";
 
@@ -412,11 +413,11 @@ let state = {
   showThumbs: false,
 
   filters: {
-    pushLowToBottom: true,
-    threshold: 50,
-    onlyConfirmed: false,
-    onlyAI: false,
+    sortOrder: 'newest',
     minScore: 0,
+    maxScore: 100,
+    onlyConfirmed: false, // 2+ sources
+    onlyAiSummary: false, // summary text present
   },
 };
 
@@ -563,7 +564,10 @@ async function switchMode(targetMode){
     if(targetMode === 'fav'){
       await fetchFavorites();
     } else {
-      await fetchFeed({ quiet: true });
+      // IMPORTANT: when returning from Tracking -> Feed we must fully reset the cards DOM.
+      // Otherwise incremental rendering can keep Tracking-only blocks (graph/drag UI) in the feed
+      // until a hard reload.
+      await fetchFeed({ quiet: true, reset: true });
     }
 
     // 5) Hide brand overlay (let it fade out while the page animates in)
@@ -701,6 +705,10 @@ function getDeviceId() {
 }
 const DEVICE_ID = getDeviceId();
 
+// Feed policy: when sorting by "Newest", push low-credibility items to the bottom
+// so the top of the list stays "confirmed".
+const CONFIRMED_SCORE_THRESHOLD = 55;
+
 function loadPrefs() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -728,11 +736,12 @@ function loadFilters() {
     const raw = localStorage.getItem(FILTERS_KEY);
     if (!raw) return;
     const f = JSON.parse(raw);
-    state.filters.pushLowToBottom = (f.pushLowToBottom !== undefined) ? !!f.pushLowToBottom : true;
-    state.filters.threshold = Number.isFinite(Number(f.threshold)) ? Number(f.threshold) : 50;
+    const so = String(f.sortOrder || 'newest');
+    state.filters.sortOrder = (so === 'low' || so === 'high' || so === 'newest') ? so : 'newest';
+    state.filters.minScore = clamp(Number(f.minScore ?? 0), 0, 100);
+    state.filters.maxScore = clamp(Number(f.maxScore ?? 100), 0, 100);
     state.filters.onlyConfirmed = !!f.onlyConfirmed;
-    state.filters.onlyAI = !!f.onlyAI;
-    state.filters.minScore = Number(f.minScore || 0);
+    state.filters.onlyAiSummary = !!f.onlyAiSummary;
   } catch {}
 }
 
@@ -755,24 +764,59 @@ function saveThumbPrefs() {
 }
 
 function applyFiltersUIToState() {
-  state.filters.pushLowToBottom = !!qs("fPushLow").checked;
-  state.filters.threshold = Number(qs("fThreshold").value || 50);
-  state.filters.onlyConfirmed = !!qs("fOnlyConfirmed").checked;
-  state.filters.onlyAI = !!qs("fOnlyAI").checked;
-  state.filters.minScore = Number(qs("fMinScore").value || 0);
-  qs("fThresholdVal").textContent = String(state.filters.threshold);
-  qs("fMinScoreVal").textContent = String(state.filters.minScore);
+  const minEl = qs('scoreMin');
+  const maxEl = qs('scoreMax');
+  const minV = clamp(Number(minEl ? minEl.value : 0), 0, 100);
+  const maxV = clamp(Number(maxEl ? maxEl.value : 100), 0, 100);
+
+  // Ensure min <= max
+  const a = Math.min(minV, maxV);
+  const b = Math.max(minV, maxV);
+
+  state.filters.minScore = a;
+  state.filters.maxScore = b;
+  if (minEl) minEl.value = String(a);
+  if (maxEl) maxEl.value = String(b);
+
+  const checked = document.querySelector('input[name="sortOrder"]:checked');
+  const so = String(checked ? checked.value : 'newest');
+  state.filters.sortOrder = (so === 'low' || so === 'high' || so === 'newest') ? so : 'newest';
+
+  const label = qs('sortBtnValue');
+  if (label) {
+    label.textContent = (state.filters.sortOrder === 'newest') ? 'Newest'
+      : (state.filters.sortOrder === 'low') ? 'Low to High'
+      : 'High to Low';
+  }
+
+  // Extra filters
+  const onlyConfirmedEl = qs('onlyConfirmed');
+  const onlyAiSummaryEl = qs('onlyAiSummary');
+  state.filters.onlyConfirmed = !!(onlyConfirmedEl && onlyConfirmedEl.checked);
+  state.filters.onlyAiSummary = !!(onlyAiSummaryEl && onlyAiSummaryEl.checked);
+
   saveFilters();
 }
 
 function syncFiltersStateToUI() {
-  qs("fPushLow").checked = !!state.filters.pushLowToBottom;
-  qs("fThreshold").value = String(state.filters.threshold ?? 50);
-  qs("fThresholdVal").textContent = String(state.filters.threshold ?? 50);
-  qs("fOnlyConfirmed").checked = !!state.filters.onlyConfirmed;
-  qs("fOnlyAI").checked = !!state.filters.onlyAI;
-  qs("fMinScore").value = String(state.filters.minScore || 0);
-  qs("fMinScoreVal").textContent = String(state.filters.minScore || 0);
+  const minEl = qs('scoreMin');
+  const maxEl = qs('scoreMax');
+  if (minEl) minEl.value = String(clamp(Number(state.filters.minScore ?? 0), 0, 100));
+  if (maxEl) maxEl.value = String(clamp(Number(state.filters.maxScore ?? 100), 0, 100));
+
+  const so = String(state.filters.sortOrder || 'newest');
+  const input = document.querySelector('input[name="sortOrder"][value="' + so + '"]');
+  if (input) input.checked = true;
+
+  const label = qs('sortBtnValue');
+  if (label) {
+    label.textContent = (so === 'newest') ? 'Newest' : (so === 'low') ? 'Low to High' : 'High to Low';
+  }
+
+  const onlyConfirmedEl = qs('onlyConfirmed');
+  const onlyAiSummaryEl = qs('onlyAiSummary');
+  if (onlyConfirmedEl) onlyConfirmedEl.checked = !!state.filters.onlyConfirmed;
+  if (onlyAiSummaryEl) onlyAiSummaryEl.checked = !!state.filters.onlyAiSummary;
 }
 
 function syncThumbToggleUI() {
@@ -858,6 +902,180 @@ function saveTrackingDeltaState(obj) {
   try { localStorage.setItem(TRACKING_DELTA_KEY, JSON.stringify(obj || {})); }
   catch {}
 }
+
+
+// --- Trust score history (server-side, per cluster) ---
+// History points are stored on the backend (PostgreSQL) so they are stable across devices.
+const TRUST_HISTORY_CACHE = new Map(); // clusterId -> { items, fetchedAt }
+async function fetchTrustHistory(clusterId, limit = 60) {
+  const cid = Number(clusterId);
+  if (!Number.isFinite(cid)) return [];
+
+  const cached = TRUST_HISTORY_CACHE.get(cid);
+  // short cache (20s) to avoid spamming when user opens/closes cards
+  if (cached && (Date.now() - cached.fetchedAt) < 20_000) return cached.items || [];
+
+  try {
+    const r = await fetch(`/api/trust-history/${cid}?limit=${encodeURIComponent(String(limit))}`, {
+      credentials: 'include'
+    });
+    const data = await r.json().catch(() => ({}));
+    const items = Array.isArray(data.items) ? data.items : [];
+    TRUST_HISTORY_CACHE.set(cid, { items, fetchedAt: Date.now() });
+    return items;
+  } catch {
+    return cached?.items || [];
+  }
+}
+
+
+// Build SVG line chart for trust score history (0..100)
+function _catmullRomToBezierPath(coords) {
+  // coords: [{x,y}, ...]
+  if (!coords || coords.length < 2) return '';
+  if (coords.length === 2) {
+    const a = coords[0], b = coords[1];
+    return `M ${a.x.toFixed(2)} ${a.y.toFixed(2)} L ${b.x.toFixed(2)} ${b.y.toFixed(2)}`;
+  }
+  const pts = coords;
+  let d = `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] || p2;
+
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C ${c1x.toFixed(2)} ${c1y.toFixed(2)} ${c2x.toFixed(2)} ${c2y.toFixed(2)} ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+  }
+  return d;
+}
+
+function _fmtTickDate(ts) {
+  try {
+    const d = new Date(ts);
+    // like "07 Feb"
+    return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
+  } catch {
+    return '';
+  }
+}
+
+function buildTrustHistorySvg(points) {
+  const pts = Array.isArray(points) ? points : [];
+  if (!pts.length) return '';
+
+  const isSmall = (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-width: 720px)').matches);
+  const W = isSmall ? 560 : 620;
+  const H = isSmall ? 220 : 260;
+  // Tighter left padding so the chart + stats block can sit closer to the left edge.
+  const padL = isSmall ? 40 : 44, padR = 18, padT = 18, padB = isSmall ? 32 : 36;
+
+  const tsVals = pts.map(p => Date.parse(p.ts)).filter(Number.isFinite);
+  const minT = tsVals.length ? Math.min(...tsVals) : Date.now();
+  const maxT = tsVals.length ? Math.max(...tsVals) : minT;
+
+  function xFor(ts) {
+    const t = Date.parse(ts);
+    if (!Number.isFinite(t) || maxT === minT) return padL + (W - padL - padR) / 2;
+    return padL + ((t - minT) / (maxT - minT)) * (W - padL - padR);
+  }
+  function yFor(score) {
+    // Fixed axis like in the reference: 40..100 with evenly spaced ticks.
+    const MIN_Y = 40;
+    const MAX_Y = 100;
+    const sRaw = Number(score);
+    const s = Math.max(MIN_Y, Math.min(MAX_Y, Number.isFinite(sRaw) ? sRaw : MIN_Y));
+    return padT + ((MAX_Y - s) / (MAX_Y - MIN_Y)) * (H - padT - padB);
+  }
+
+  const gridYs = [100, 80, 60, 40];
+  const grid = gridYs.map((v) => {
+    const y = yFor(v);
+    return `
+      <line class="gridLine" x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}"></line>
+      <text x="${padL - 8}" y="${y + 4}" text-anchor="end">${v}</text>
+    `;
+  }).join('');
+
+  const coords = pts.map((p) => ({ x: xFor(p.ts), y: yFor(p.score), meta: p }));
+  const pathD = _catmullRomToBezierPath(coords);
+
+  // x-axis ticks: up to 5 labels based on points
+  const tickIdx = [];
+  if (coords.length >= 1) tickIdx.push(0);
+  if (coords.length >= 3) tickIdx.push(Math.floor((coords.length - 1) * 0.33));
+  if (coords.length >= 4) tickIdx.push(Math.floor((coords.length - 1) * 0.5));
+  if (coords.length >= 5) tickIdx.push(Math.floor((coords.length - 1) * 0.66));
+  if (coords.length >= 2) tickIdx.push(coords.length - 1);
+  const uniqTicks = Array.from(new Set(tickIdx)).sort((a,b)=>a-b).slice(0,5);
+  const xTicks = uniqTicks.map((i) => {
+    const c = coords[i];
+    const label = _fmtTickDate(c.meta.ts);
+    return `
+      <text class="xTick" x="${c.x.toFixed(2)}" y="${(H - 10).toFixed(2)}" text-anchor="middle">${escapeHtml(label)}</text>
+    `;
+  }).join('');
+
+  const circles = coords.map((c, i) => {
+    const meta = {
+      ts: c.meta.ts,
+      score: c.meta.score,
+      sources_added: c.meta.sources_added ?? 0,
+      sources_count: c.meta.sources_count ?? null,
+      idx: i,
+    };
+    const enc = encodeURIComponent(JSON.stringify(meta));
+    return `
+      <g class="pt" data-meta="${enc}">
+        <circle class="ptHalo" cx="${c.x}" cy="${c.y}" r="14"></circle>
+        <circle class="ptDot" cx="${c.x}" cy="${c.y}" r="5"></circle>
+      </g>
+    `;
+  }).join('');
+
+  return `
+  <svg class="trustChartSvg" viewBox="0 0 ${W} ${H}" width="100%" height="260" role="img" aria-label="Trust score history chart">
+    ${grid}
+    <line class="axisLine" x1="${padL}" y1="${padT}" x2="${padL}" y2="${H - padB}"></line>
+    <line class="hoverLine" x1="${padL}" y1="${padT}" x2="${padL}" y2="${H - padB}" style="display:none;"></line>
+    <path class="line" d="${pathD}"></path>
+    ${circles}
+    ${xTicks}
+  </svg>`;
+}
+
+function buildTrustHistorySectionHtml(item) {
+  const cid = Number(item.cluster_id ?? item.event_id);
+  if (!Number.isFinite(cid)) return '';
+
+  // We render a placeholder, then hydrate asynchronously from the server.
+  return `
+    <div class="trustHistoryWrap" data-trust-cid="${cid}">
+      <div class="trustHistoryTitle">${t("ui.trust_score_history","Trust score history")}</div>
+      <div class="trustHistoryGrid">
+        <div class="trustChartCard">
+          <div class="trustChartLoading"></div>
+          <div class="trustTooltip" aria-hidden="true"></div>
+        </div>
+        <div class="trustStatsCard">
+          <div class="trustStatsRow"><span class="trustStatsLabel">${t("ui.current","Current")}</span><span class="trustStatsVal">—</span></div>
+          <div class="trustStatsRow"><span class="trustStatsLabel">${t("ui.highest","Highest")}</span><span class="trustStatsVal">—</span></div>
+          <div class="trustStatsRow"><span class="trustStatsLabel">${t("ui.lowest","Lowest")}</span><span class="trustStatsVal">—</span></div>
+          <div class="trustStatsDivider"></div>
+          <div class="trustStatsRow"><span class="trustStatsLabel">${t("ui.change","Change")}</span><span class="trustStatsVal">—</span></div>
+          <div class="trustStatsSub">${t("ui.since_publication","Since publication")}</div>
+        </div>
+      </div>
+      <div class="trustChartHint">${t("ui.chart_hint","Tip: hover or tap a dot for details")}</div>
+    </div>
+  `;
+}
+
+
 
 function applyTrackingStickyDeltas(items) {
   const now = Date.now();
@@ -1962,11 +2180,18 @@ function onImgErrorToFallback(imgEl) {
 
 function itemPassesFilters(item) {
   const sourcesCount = Number(item.sources_count ?? (item.sources ? item.sources.length : 0));
-  const score = Number(item.credibility_score ?? 0);
+  const score = Number(item.score ?? item.credibility_score ?? item.credibility ?? item.trust_score ?? item.rating ?? 0);
+  const minS = Number(state.filters.minScore ?? 0);
+  const maxS = Number(state.filters.maxScore ?? 100);
+  if (score < minS) return false;
+  if (score > maxS) return false;
 
+  // Extra filters
   if (state.filters.onlyConfirmed && sourcesCount < 2) return false;
-  if (state.filters.onlyAI && !(item.summary || "").trim()) return false;
-  if (score < Number(state.filters.minScore || 0)) return false;
+  if (state.filters.onlyAiSummary) {
+    const summaryText = String(item?.summary || '').trim();
+    if (!summaryText) return false;
+  }
 
   return true;
 }
@@ -2367,6 +2592,8 @@ const deltaAbs = Math.abs(delta);
 // Only show tracking delta + icon inside the Tracking tab.
 const showTrackingUI = state.mode === 'fav';
 
+  const historyHtml = showTrackingUI ? buildTrustHistorySectionHtml(item) : '';
+
   const dragHandleHtml = showTrackingUI
     ? `<span class=\"dragHandle\" title=\"Drag to delete\" aria-label=\"Drag to delete\">⋮⋮</span>`
     : '';
@@ -2438,6 +2665,8 @@ const showTrackingUI = state.mode === 'fav';
             ${imageUrl ? `<img class="newsImage" loading="lazy" alt="" src="${imageUrl}" data-fallback-stage="0" />` : `<div class="newsImagePlaceholder">No related image available</div>`}
           </div>
         </div>
+
+        ${historyHtml}
 
         <div class="newsSubMeta">
           <span class="chip">Topic: <b>${escapeHtml(item.topic || 'general')}</b></span>
@@ -2708,20 +2937,31 @@ function renderCards(items, opts) {
   // IMPORTANT: do not sort on the client.
   // The server returns a deterministic order (and a time-bucketed snapshot),
   // so every device sees the same feed for the same interests.
-
   let visible = filtered;
 
-  // Ranking rule: stable partition (NOT sorting). Keep server order inside each group.
-  if (state.filters.pushLowToBottom) {
-    const thr = Number(state.filters.threshold ?? 50);
+  // Client sort (UI-driven).
+  // Newest keeps the server order (deterministic), but we *stable-partition*
+  // so "confirmed" items appear first.
+  if (state.filters.sortOrder === 'newest') {
     const hi = [];
     const lo = [];
-    for (const it of filtered) {
+    for (const it of visible) {
       const s = Number(it.score ?? it.credibility_score ?? it.credibility ?? it.trust_score ?? it.rating ?? 0);
-      if (s <= thr) lo.push(it);
+      // confirmed threshold is score-based (product decision)
+      if (s < CONFIRMED_SCORE_THRESHOLD) lo.push(it);
       else hi.push(it);
     }
     visible = hi.concat(lo);
+  }
+
+  if (state.filters.sortOrder === 'low' || state.filters.sortOrder === 'high') {
+    const dir = (state.filters.sortOrder === 'low') ? 1 : -1;
+    visible = [...visible].sort((a, b) => {
+      const sa = Number(a.score ?? a.credibility_score ?? a.credibility ?? a.trust_score ?? a.rating ?? 0);
+      const sb = Number(b.score ?? b.credibility_score ?? b.credibility ?? b.trust_score ?? b.rating ?? 0);
+      if (sa === sb) return 0;
+      return (sa < sb ? -1 : 1) * dir;
+    });
   }
 
   if (state.mode === 'feed' && !feedExpanded && filtered.length > FEED_PAGE_SIZE) {
@@ -2901,17 +3141,16 @@ function incrementalUpdateFeed(sortedItems, opts) {
   // We only display a slice when collapsed.
   let visible = filtered;
 
-  // Ranking rule: stable partition (NOT sorting). Keep server order inside each group.
-  if (state.filters.pushLowToBottom) {
-    const thr = Number(state.filters.threshold ?? 50);
-    const hi = [];
-    const lo = [];
-    for (const it of filtered) {
-      const s = Number(it.score ?? it.credibility_score ?? it.credibility ?? it.trust_score ?? it.rating ?? 0);
-      if (s <= thr) lo.push(it);
-      else hi.push(it);
-    }
-    visible = hi.concat(lo);
+  // Client sort (UI-driven).
+  // Newest keeps the server order (deterministic).
+  if (state.filters.sortOrder === 'low' || state.filters.sortOrder === 'high') {
+    const dir = (state.filters.sortOrder === 'low') ? 1 : -1;
+    visible = [...visible].sort((a, b) => {
+      const sa = Number(a.score ?? a.credibility_score ?? a.credibility ?? a.trust_score ?? a.rating ?? 0);
+      const sb = Number(b.score ?? b.credibility_score ?? b.credibility ?? b.trust_score ?? b.rating ?? 0);
+      if (sa === sb) return 0;
+      return (sa < sb ? -1 : 1) * dir;
+    });
   }
 
   if (state.mode === 'feed' && !feedExpanded && filtered.length > FEED_PAGE_SIZE) {
@@ -3005,9 +3244,6 @@ async function fetchFeed(opts) {
   const items = data.items || [];
 
   // keep cache for smooth expand/collapse
-  lastFavItems = items;
-
-  // keep cache for smooth expand/collapse
   lastFeedItems = items;
 
   // Update seen state first so first_seen_at is stable.
@@ -3074,14 +3310,21 @@ async function fetchFavorites() {
     const data = await r.json();
     const items = (data && data.items) ? data.items : [];
 
+    lastFavItems = items;
+
     // Tracking page uses server-side deltas (delta_score / delta_sources_count)
     renderCards(items, { nowTs: Date.now(), newIds: new Set(), suppressNewBadges: true, incremental: false, animate: false });
+
+    // Hydrate trust history charts (server-side) for newly rendered cards
+    hydrateTrustHistorySections();
+
     setStatus(items.length ? '' : 'Tracking is empty. Tap ★ on a news card to add.');
     updateCounts();
   } catch (e) {
     console.error(e);
     setStatus('Failed to load tracking.');
   }
+}
 
 async function ackTrackingDelta(clusterId) {
   try {
@@ -3124,8 +3367,6 @@ async function ackTrackingDelta(clusterId) {
     // Non-fatal
     console.warn('ackTrackingDelta failed', e);
   }
-}
-
 }
 
 // ✅ Keep header counters in sync (Tracking badge)
@@ -3174,6 +3415,43 @@ async function refreshBackend() {
   else await fetchFavorites();
 }
 
+
+// ------------------------------
+// Re-render current view (used by Filters UI)
+// ------------------------------
+function render() {
+  try {
+    const nowTs = Date.now();
+    if (state.mode === 'feed') {
+      renderCards(Array.isArray(lastFeedItems) ? lastFeedItems : [], {
+        nowTs,
+        newIds: new Set(),
+        suppressNewBadges: true,
+        incremental: false,
+        animate: false,
+      });
+    } else if (state.mode === 'fav') {
+      renderCards(Array.isArray(lastFavItems) ? lastFavItems : [], {
+        nowTs,
+        newIds: new Set(),
+        suppressNewBadges: true,
+        incremental: false,
+        animate: false,
+      });
+    } else {
+      renderCards(Array.isArray(lastFavItems) ? lastFavItems : [], {
+        nowTs,
+        newIds: new Set(),
+        suppressNewBadges: true,
+        incremental: false,
+        animate: false,
+      });
+    }
+  } catch (e) {
+    console.warn('render() failed', e);
+  }
+}
+
 function bindUI() {
   qs("country").value = state.country;
   qs("language").value = state.language;
@@ -3197,170 +3475,117 @@ function bindUI() {
   // filters init
   syncFiltersStateToUI();
 
-  // Filters drawer (premium sheet)
-  const overlay = qs("filtersOverlay");
-  const drawer = qs("filtersDrawer");
-  const openBtn = qs("btnOpenFilters");
-  const closeBtn = qs("btnCloseFilters");
-  const openFilters = () => {
-    if (!overlay || !drawer) return;
-    overlay.classList.add("open");
-    drawer.classList.add("open");
-  };
-  const closeFilters = () => {
-    if (!overlay || !drawer) return;
-    overlay.classList.remove("open");
-    drawer.classList.remove("open");
-  };
-  if (openBtn) openBtn.onclick = openFilters;
-  if (closeBtn) closeBtn.onclick = closeFilters;
-  if (overlay) overlay.onclick = closeFilters;
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeFilters();
-  });
+  // Sort dropdown UI
+  const sortWrap = qs('sortWrap');
+  const sortBtn = qs('sortBtn');
+  const sortMenu = qs('sortMenu');
 
-  // Live labels
-  if (qs("fThreshold")) {
-    qs("fThreshold").oninput = async () => {
-      qs("fThresholdVal").textContent = String(qs("fThreshold").value || 50);
-      applyFiltersUIToState();
-      setFeedExpanded(false);
-      if (state.mode === "feed") await fetchFeed();
-      else await fetchFavorites();
-    };
-  }
+  let __sortMenuCloseT = null;
+  let __sortMenuOnEnd = null;
 
-  qs("fPushLow").onchange = async () => {
-    applyFiltersUIToState();
-    setFeedExpanded(false);
-    if (state.mode === "feed") await fetchFeed();
-    else await fetchFavorites();
-  };
-  qs("fOnlyConfirmed").onchange = async () => {
-    applyFiltersUIToState();
-    setFeedExpanded(false);
-    if (state.mode === "feed") await fetchFeed();
-    else await fetchFavorites();
-  };
-  qs("fOnlyAI").onchange = async () => {
-    applyFiltersUIToState();
-    setFeedExpanded(false);
-    if (state.mode === "feed") await fetchFeed();
-    else await fetchFavorites();
-  };
-  qs("fMinScore").oninput = async () => {
-    applyFiltersUIToState();
-    setFeedExpanded(false);
-    if (state.mode === "feed") await fetchFeed();
-    else await fetchFavorites();
-  };
+  function closeSortMenu(){
+    if (!sortMenu || !sortBtn) return;
+    if (sortMenu.hidden) return;
 
-  qs("btnApplyFilters").onclick = async () => {
-    applyFiltersUIToState();
-    setFeedExpanded(false);
-    if (state.mode === "feed") await fetchFeed();
-    else await fetchFavorites();
-  };
+    sortBtn.setAttribute('aria-expanded','false');
 
-  qs("btnReload").onclick = async () => {
-    setFeedExpanded(false);
-    if (state.mode === "feed") await fetchFeed();
-    else await fetchFavorites();
-  };
+    // kick off close animation
+    sortMenu.classList.remove('open');
+    sortMenu.classList.add('closing');
 
-  const btnRefresh = qs("btnRefresh");
-  if (btnRefresh) btnRefresh.onclick = refreshBackend;
-
-
-  // Header Tracking button (replaces Favorites tab)
-  const btnTracking = document.getElementById("btnTracking");
-  if (btnTracking) {
-    btnTracking.onclick = async () => {
-      // Ensure we are on the main (non-pricing) page
-      if (window.__setMainPage) window.__setMainPage('feed');
-
-      if (!authState.authenticated) {
-        openAuthModal('tracking');
-        return;
-      }
-      // If local email is not verified, keep user on Feed and prompt verification
-      if (authState.user && authState.user.provider === 'local' && !authState.user.email_verified) {
-        openAuthModal('verify_required');
-        return;
-      }
-
-      await switchMode('fav');
-    };
-  }
-
-  // Header Login / Account button Account button
-  const btnLogin = document.getElementById('btnLogin');
-  if (btnLogin) {
-    btnLogin.onclick = async () => {
-      if (!authState.authenticated) {
-        openAuthModal('login');
-        return;
-      }
-      // Minimal "Account" behavior: logout
-      const ok = confirm('Log out from CheckNE news?');
-      if (!ok) return;
-      await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST' });
-      authState = { authenticated: false, user: null };
-      updateAuthUI();
-      // After logout, go back to Feed
-      state.mode = 'feed';
-      setFeedExpanded(false);
-      applyTabs();
-      await fetchFeed();
-    };
-  }
-
-  // Logo click => back to Feed
-  const brand = document.getElementById("brand");
-  if (brand) {
-    brand.onclick = async () => {
-      state.mode = "feed";
-      setFeedExpanded(false);
-      applyTabs();
-      await fetchFeed();
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    };
-  }
-
-  qs("tabFeed").onclick = async () => {
-  setFeedExpanded(false);
-  await switchMode("feed");
-};
-
-qs("tabFav").onclick = async () => {
-  if (!authState?.authenticated) {
-    openAuthModal('tracking');
-    return;
-  }
-  if (authState.user && authState.user.provider === 'local' && !authState.user.email_verified) {
-    openAuthModal('verify_required');
-    return;
-  }
-  await switchMode("fav");
-};
-
-
-  const searchEl = qs("search");
-  qs("btnSearch").onclick = async () => {
-    state.q = searchEl.value || "";
-    setFeedExpanded(false);
-    if (state.mode === "feed") await fetchFeed();
-    else await fetchFavorites();
-  };
-
-  searchEl.addEventListener("keydown", async (e) => {
-    if (e.key === "Enter") {
-      state.q = searchEl.value || "";
-      setFeedExpanded(false);
-      if (state.mode === "feed") await fetchFeed();
-      else await fetchFavorites();
+    // clean previous handlers/timeouts
+    if (__sortMenuOnEnd) {
+      sortMenu.removeEventListener('transitionend', __sortMenuOnEnd);
+      __sortMenuOnEnd = null;
     }
-  });
+    if (__sortMenuCloseT) clearTimeout(__sortMenuCloseT);
+
+    __sortMenuOnEnd = (e)=>{
+      // Only react to the menu's own transition end
+      if (e && e.target !== sortMenu) return;
+      if (__sortMenuCloseT) { clearTimeout(__sortMenuCloseT); __sortMenuCloseT = null; }
+      sortMenu.hidden = true;
+      sortMenu.classList.remove('closing');
+      if (__sortMenuOnEnd) {
+        sortMenu.removeEventListener('transitionend', __sortMenuOnEnd);
+        __sortMenuOnEnd = null;
+      }
+    };
+
+    sortMenu.addEventListener('transitionend', __sortMenuOnEnd);
+
+    // fallback (in case transitionend doesn't fire on some mobile browsers)
+    __sortMenuCloseT = setTimeout(()=>{ if (__sortMenuOnEnd) __sortMenuOnEnd(null); }, 320);
+  }
+
+  function openSortMenu(){
+    if (!sortMenu || !sortBtn) return;
+
+    // cancel close in-flight
+    if (__sortMenuOnEnd) {
+      sortMenu.removeEventListener('transitionend', __sortMenuOnEnd);
+      __sortMenuOnEnd = null;
+    }
+    if (__sortMenuCloseT) { clearTimeout(__sortMenuCloseT); __sortMenuCloseT = null; }
+
+    sortMenu.hidden = false;
+    sortMenu.classList.remove('closing');
+    sortBtn.setAttribute('aria-expanded','true');
+
+    // two RAFs to guarantee the browser commits 'hidden=false' before we add .open
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{
+      if (sortMenu) sortMenu.classList.add('open');
+    }));
+  }
+
+  function toggleSortMenu(){
+    if (!sortMenu || !sortBtn) return;
+    if (sortMenu.hidden) openSortMenu();
+    else closeSortMenu();
+  }
+
+  if (sortBtn && sortMenu) {
+    sortBtn.addEventListener('click', (e)=>{
+      e.preventDefault();
+      toggleSortMenu();
+    });
+
+    document.addEventListener('click', (e)=>{
+      if (!sortWrap || sortMenu.hidden) return;
+      if (sortWrap.contains(e.target)) return;
+      closeSortMenu();
+    });
+
+    document.addEventListener('keydown', (e)=>{
+      if (e.key === 'Escape') closeSortMenu();
+    });
+
+    // Apply immediately on changes
+    sortMenu.addEventListener('change', ()=>{
+      applyFiltersUIToState();
+      render();
+    });
+
+    const minEl = qs('scoreMin');
+    const maxEl = qs('scoreMax');
+    let __filtersCommitT = null;
+    const commit = (immediate=false)=>{
+      if (__filtersCommitT) clearTimeout(__filtersCommitT);
+      const run = ()=>{ applyFiltersUIToState(); render(); };
+      if (immediate) run();
+      else __filtersCommitT = setTimeout(run, 120);
+    };
+    if (minEl) {
+      minEl.addEventListener('input', ()=>commit(false));
+      minEl.addEventListener('change', ()=>commit(true));
+      minEl.addEventListener('blur', ()=>commit(true));
+    }
+    if (maxEl) {
+      maxEl.addEventListener('input', ()=>commit(false));
+      maxEl.addEventListener('change', ()=>commit(true));
+      maxEl.addEventListener('blur', ()=>commit(true));
+    }
+  }
 
   // Tracking: drag-to-delete zone (cards can be dragged onto the trash)
   const z = qs('trashZone');
@@ -3430,7 +3655,36 @@ qs("tabFav").onclick = async () => {
       }
     };
   }
+
+  // -----------------------------
+  // Feed <-> Tracking tab switching (with premium transition)
+  // -----------------------------
+  async function setMode(nextMode){
+    const mode = (nextMode === 'fav') ? 'fav' : 'feed';
+    // Close any open menus (sort dropdown etc.)
+    try { closeSortMenu(); } catch(e) {}
+
+    // Use the premium transition function so BOTH directions animate.
+    await switchMode(mode);
+  }
+
+  const tabFeed = qs('tabFeed');
+  const tabFav  = qs('tabFav');
+  if (tabFeed) tabFeed.onclick = () => { void setMode('feed'); };
+  if (tabFav)  tabFav.onclick  = () => { void setMode('fav'); };
+
+  const btnTracking = document.getElementById('btnTracking');
+  if (btnTracking) {
+    btnTracking.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      // Toggle between views
+      void setMode(state.mode === 'fav' ? 'feed' : 'fav');
+    };
+  }
+
 }
+
 
 
 async function refreshBackendQuiet() {
@@ -3875,3 +4129,162 @@ async function updateEmailAlertsUI(){
 
 
 }
+
+
+// -------------------------
+// Trust score history interactions (tooltip on dots)
+// -------------------------
+async function hydrateTrustHistorySections() {
+  const wraps = Array.from(document.querySelectorAll('.trustHistoryWrap[data-trust-cid]'));
+  for (const w of wraps) {
+    if (w.dataset.trustHydrated === '1') continue;
+    const cid = Number(w.getAttribute('data-trust-cid') || w.dataset.trustCid);
+    if (!Number.isFinite(cid)) continue;
+
+    const points = await fetchTrustHistory(cid, 80);
+    if (!points || !points.length) {
+      // No history yet: hide section
+      w.style.display = 'none';
+      w.dataset.trustHydrated = '1';
+      continue;
+    }
+
+    // Render SVG
+    const svg = buildTrustHistorySvg(points);
+    const chartCard = w.querySelector('.trustChartCard');
+    if (chartCard) {
+      chartCard.innerHTML = `${svg}<div class="trustTooltip" aria-hidden="true"></div>`;
+    }
+
+    // Stats
+    const scores = points.map(p => Number(p.score) || 0);
+    const current = scores[scores.length - 1] ?? 0;
+    const highest = Math.max(...scores);
+    const lowest = Math.min(...scores);
+    const change = current - (scores[0] ?? current);
+
+    const rows = w.querySelectorAll('.trustStatsRow');
+    if (rows && rows.length >= 4) {
+      const setVal = (rowIdx, val) => {
+        const el = rows[rowIdx]?.querySelector('.trustStatsVal');
+        if (el) el.textContent = String(val);
+      };
+      setVal(0, current);
+      setVal(1, highest);
+      setVal(2, lowest);
+      // change row is after divider: it's the last .trustStatsRow
+      const changeRow = w.querySelectorAll('.trustStatsRow')[3];
+      const changeEl = changeRow?.querySelector('.trustStatsVal');
+      if (changeEl) changeEl.textContent = `${change >= 0 ? '+' : ''}${change}`;
+    }
+
+    w.dataset.trustHydrated = '1';
+  }
+}
+
+function initTrustHistoryInteractions() {
+  function hideAll() {
+    document.querySelectorAll('.trustChartCard .trustTooltip.show').forEach((el) => {
+      el.classList.remove('show');
+      el.setAttribute('aria-hidden','true');
+    });
+
+    document.querySelectorAll('.trustChartSvg .hoverLine').forEach((l) => {
+      l.style.display = 'none';
+    });
+    document.querySelectorAll('.trustChartSvg g.pt.active').forEach((pt) => {
+      pt.classList.remove('active');
+    });
+  }
+
+  function showForPoint(ptEl, anchorRect) {
+    const card = ptEl.closest('.trustChartCard');
+    if (!card) return;
+    const tip = card.querySelector('.trustTooltip');
+    if (!tip) return;
+
+    let meta = null;
+    try { meta = JSON.parse(decodeURIComponent(ptEl.getAttribute('data-meta') || '')); } catch {}
+    if (!meta) return;
+
+    const d = meta.ts ? new Date(meta.ts) : new Date();
+    const dateStr = d.toLocaleString(undefined, { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
+
+    const added = Number(meta.sources_added || 0);
+    tip.innerHTML = `
+      <div class="ttDate">${escapeHtml(dateStr)}</div>
+      <div class="ttRow"><span class="ttLabel">${t("ui.trust_score","Trust score")}</span><b>${Number(meta.score || 0)}</b></div>
+      <div class="ttRow"><span class="ttLabel">${t("ui.sources_added","Sources added")}</span><b>+${added}</b></div>
+    `;
+
+    // hover line + active point (like the reference)
+    try {
+      const svg = ptEl.closest('svg');
+      const hoverLine = svg ? svg.querySelector('.hoverLine') : null;
+      const dot = ptEl.querySelector('circle.ptDot');
+      if (svg && hoverLine && dot) {
+        const cx = Number(dot.getAttribute('cx') || 0);
+        if (Number.isFinite(cx)) {
+          hoverLine.setAttribute('x1', String(cx));
+          hoverLine.setAttribute('x2', String(cx));
+          hoverLine.style.display = '';
+        }
+      }
+      svg && svg.querySelectorAll('g.pt.active').forEach((p) => p.classList.remove('active'));
+      ptEl.classList.add('active');
+    } catch {}
+
+    const cardRect = card.getBoundingClientRect();
+    const ar = anchorRect || ptEl.getBoundingClientRect();
+
+    // Initial position near point
+    tip.style.left = `${ar.left - cardRect.left}px`;
+    tip.style.top = `${ar.top - cardRect.top}px`;
+
+    tip.classList.add('show');
+    tip.setAttribute('aria-hidden','false');
+
+    // Clamp after layout
+    requestAnimationFrame(() => {
+      const w = tip.offsetWidth || 180;
+      const h = tip.offsetHeight || 80;
+      let left = (ar.left - cardRect.left) - w / 2;
+      let top  = (ar.top - cardRect.top) - h - 12;
+
+      const pad = 8;
+      left = Math.max(pad, Math.min(left, cardRect.width - w - pad));
+      top  = Math.max(pad, Math.min(top, cardRect.height - h - pad));
+
+      tip.style.left = `${left}px`;
+      tip.style.top  = `${top}px`;
+    });
+  }
+
+  // Hover (desktop) + tap/click (mobile)
+  document.addEventListener('pointerover', (e) => {
+    const tgt = e.target;
+    const pt = tgt && tgt.closest ? tgt.closest('g.pt') : null;
+    if (!pt) return;
+    showForPoint(pt, tgt.getBoundingClientRect ? tgt.getBoundingClientRect() : null);
+  });
+
+  document.addEventListener('click', (e) => {
+    const tgt = e.target;
+    const pt = tgt && tgt.closest ? tgt.closest('g.pt') : null;
+    if (pt) {
+      showForPoint(pt, tgt.getBoundingClientRect ? tgt.getBoundingClientRect() : null);
+      e.stopPropagation();
+      return;
+    }
+    // Click outside: hide all tooltips
+    hideAll();
+  });
+
+  // When a card closes, hide its tooltip
+  document.addEventListener('toggle', (e) => {
+    const details = e.target;
+    if (!details || details.tagName !== 'DETAILS') return;
+    if (details.classList && details.classList.contains('newsDetails') && !details.open) hideAll();
+  }, true);
+}
+initTrustHistoryInteractions();

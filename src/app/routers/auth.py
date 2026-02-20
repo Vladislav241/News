@@ -108,7 +108,7 @@ def register(payload: RegisterIn, request: Request):
     send_email(
         to_email=email,
         subject="Verify your email",
-        text=f"Welcome to CheckNE news.\n\nVerify your email by opening this link:\n{link}\n\nIf you didn't sign up, ignore this email.",
+        text=f"Welcome to CHECKNE.\n\nVerify your email by opening this link:\n{link}\n\nIf you didn't sign up, ignore this email.",
     )
 
     return {"status": "ok", "message": "Verification email sent"}

@@ -1010,6 +1010,20 @@ def run_ingest_cycle() -> dict[str, Any]:
                 sources = db.get_cluster_sources(cid)
                 score, details = compute_credibility(cluster_title=cluster_title, sources=sources)
                 db.upsert_score(cluster_id=cid, credibility_score=score, details=details)
+
+                # Record server-side trust score history point (for Tracking chart)
+                try:
+                    uniq_sources = {
+                        (s.get("source_name") or "").strip().lower()
+                        for s in (sources or [])
+                        if (s.get("source_name") or "").strip()
+                    }
+                    sources_count = len(uniq_sources)
+                    db.record_trust_history_if_changed(cluster_id=int(cid), score=int(score), sources_count=int(sources_count))
+                except Exception:
+                    # History is best-effort; never fail ingest because of it.
+                    pass
+
                 stats["scores_updated"] += 1
             except Exception:
                 stats["errors"] += 1

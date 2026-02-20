@@ -268,8 +268,7 @@ def _render_tracking_update_image(
     # Header logo (simple text logo)
     # Draw a small black block + text to mimic branding
     d.rectangle([W//2 - 260, 110, W//2 - 210, 160], fill=(0,0,0))
-    d.text((W//2 - 190, 102), "CheckNE", font=f_logo, fill=(0,0,0))
-    d.text((W//2 - 60, 148), "news.", font=_load_font("Inter-Bold.ttf", 44), fill=(0,0,0))
+    d.text((W//2 - 190, 102), "CHECKNE.", font=f_logo, fill=(0,0,0))
 
     # Headline
     y = 260
@@ -332,7 +331,7 @@ def _render_tracking_update_image(
     foot_y = H-150
     d.text((W//2 - 250, foot_y), "You’re receiving this email because you’re tracking this event.", font=f_muted, fill=(150,150,150))
     d.line([220, foot_y+50, W-220, foot_y+50], fill=(220,220,220), width=1)
-    d.text((W//2 - 420, foot_y+80), "CheckNE news is an informational service and does not provide factual determinations.", font=f_muted, fill=(170,170,170))
+    d.text((W//2 - 420, foot_y+80), "CHECKNE. is an informational service and does not provide factual determinations.", font=f_muted, fill=(170,170,170))
 
     buf = io.BytesIO()
     img.save(buf, format="PNG", optimize=True)
@@ -417,8 +416,7 @@ def share_image(cluster_id: int, request: Request):
         wx = brand_x
 
     # Use Jersey for the brand wordmark (matches your web UI).
-    cd.text((wx, brand_y - 2), "CheckNE", font=_font(34, family="jersey", weight="regular"), fill=(15, 15, 15))
-    cd.text((wx, brand_y + 22), "news.", font=_font(34, family="jersey", weight="regular"), fill=(15, 15, 15))
+    cd.text((wx, brand_y - 2), "CHECKNE.", font=_font(34, family="jersey", weight="regular"), fill=(15, 15, 15))
 
     # Trust pie (black circle with a white missing wedge)
     pie_cx = right_x0 + right_w // 2
@@ -456,7 +454,7 @@ def share_image(cluster_id: int, request: Request):
     # Bottom reserved space (source line + disclaimer)
     # Keep disclaimer compact... extra vertical room helps long headlines + summaries.
     disclaimer_lines = [
-        "CheckNE news is an informational service and does not provide factual determinations.",
+        "CHECKNE. is an informational service and does not provide factual determinations.",
         "Trust scores reflect automated analysis and may change as new information becomes available.",
     ]
     disclaimer_font = _font(10)
@@ -584,7 +582,7 @@ def share_page(cluster_id: int, request: Request):
         sources = db.get_cluster_sources(int(cluster_id)) or []
         summary = (sources[0].get("description") if sources else "") or ""
 
-    title = meta.get("title") or "CheckNE news"
+    title = meta.get("title") or "CHECKNE."
     desc = _safe_text(summary or "Track credibility across sources.", 180)
 
     # ----- Versioning (чтобы ссылка менялась после обновления новости) -----
@@ -606,7 +604,7 @@ def share_page(cluster_id: int, request: Request):
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>{title} — CheckNE news</title>
+  <title>{title} — CHECKNE.</title>
 
   <!-- Open Graph -->
   <meta property="og:type" content="article" />

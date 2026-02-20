@@ -906,6 +906,71 @@ def get_tracking(user=Depends(require_user)) -> dict[str, Any]:
 
     return {"status": "ok", "count": len(items), "items": items}
 
+
+@router.get("/api/trust-history/{cluster_id}")
+def get_trust_history(cluster_id: int, limit: int = 60, user=Depends(require_user)) -> dict[str, Any]:
+    """Return server-side trust score history for a cluster.
+
+    Used by Tracking UI chart. History is stored on the server so it is stable across devices.
+    """
+    db.ensure_schema()
+    cid = int(cluster_id)
+    rows = db.get_trust_history(cid, limit=limit)
+
+    # If there is no server-side history yet (older clusters / before feature rollout),
+    # seed it with the current snapshot so the UI can show at least 1 point.
+    if not rows:
+        try:
+            score_row = db.get_score(cid) or {}
+            cur_score = int(score_row.get("credibility_score") or 0)
+        except Exception:
+            cur_score = 0
+
+        try:
+            sources = db.get_cluster_sources(cid)
+            uniq_sources = {
+                (s.get("source_name") or "").strip().lower()
+                for s in (sources or [])
+                if (s.get("source_name") or "").strip()
+            }
+            cur_sources_count = len(uniq_sources)
+        except Exception:
+            cur_sources_count = 0
+
+        try:
+            db.record_trust_history_if_changed(cluster_id=cid, score=cur_score, sources_count=cur_sources_count)
+        except Exception:
+            pass
+
+        rows = db.get_trust_history(cid, limit=limit)
+    items: list[dict[str, Any]] = []
+    for r in rows:
+        try:
+            ts = str(r.get("created_at") or "")
+        except Exception:
+            ts = ""
+        try:
+            score = int(r.get("score") or 0)
+        except Exception:
+            score = 0
+        try:
+            sc = int(r.get("sources_count") or 0)
+        except Exception:
+            sc = 0
+        try:
+            delta = int(r.get("sources_delta") or 0)
+        except Exception:
+            delta = 0
+
+        items.append({
+            "ts": ts,
+            "score": score,
+            "sources_count": sc,
+            "sources_added": delta if delta > 0 else 0,
+        })
+
+    return {"status": "ok", "cluster_id": cid, "count": len(items), "items": items}
+
 @router.get("/api/favorites")
 def favorites_get(user=Depends(require_user)) -> dict[str, Any]:
     db.ensure_schema()
