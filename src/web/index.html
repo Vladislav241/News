@@ -52,14 +52,16 @@
       backdrop-filter: blur(10px);
       border-bottom: 1px solid var(--stroke);
     }
-  .headerInner {
+.headerInner{
   max-width: 1040px;
   margin: 0 auto;
   padding: 28px 16px;
+
   display: flex;
   align-items: center;
-  justify-content: flex-start; /* важно */
   gap: 18px;
+
+  justify-content: space-between; /* ✅ равномерно */
 }
 
 
@@ -96,12 +98,14 @@
 
 
 
-  .headerRight{
+ .headerRight{
   display:flex;
   align-items:center;
   gap: 10px;
-  margin-left: auto;   /* важно: кнопки уедут вправо */
+
+  margin-left: 0;             /* ✅ убрали auto */
   justify-content:flex-end;
+  flex: 0 0 auto;             /* ✅ не растягиваем */
 }
 
 
@@ -165,6 +169,195 @@
     .btn:disabled { opacity: .55; cursor:not-allowed; transform:none; }
 
     .muted { color:var(--muted); font-size: 13px; }
+
+    /* -----------------------------
+       Top stories carousel (🔥)
+       ----------------------------- */
+    .topStories{
+      margin-top: 22px;
+      margin-bottom: 18px;
+    }
+    .topCarousel{
+      position: relative;
+      border: 1px solid var(--stroke);
+      border-radius: 22px;
+      background: #fff;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(2,6,23,.05);
+    }
+    .topCarouselViewport{ overflow:hidden; cursor: grab; }
+    .topCarousel.isDragging .topCarouselViewport{ cursor: grabbing; }
+    .topCarousel.isDragging{ user-select:none; }
+    .topCarouselTrack{
+      display:flex;
+      width:100%;
+      transform: translateX(0%);
+      transition: transform .55s cubic-bezier(.2,.9,.2,1);
+      will-change: transform;
+    }
+    .topSlide{
+      width: 100%;
+      flex: 0 0 100%;
+      display:grid;
+      grid-template-columns: 1.05fr .95fr;
+      align-items: stretch;
+      min-height: 260px;
+    }
+    .topSlideLeft{
+      padding: 36px 34px;
+      display:flex;
+      flex-direction: column;
+      gap: 12px;
+      justify-content: center;
+    }
+    .topKicker{
+      display:inline-flex;
+      align-items:center;
+      gap: 8px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      font-size: 12px;
+      color: rgba(15,23,42,.55);
+    }
+    .topKicker .dot{ width: 8px; height: 8px; border-radius: 999px; background: #ff8a00; }
+    .topTitle{
+      font-size: 30px;
+      line-height: 1.12;
+      letter-spacing: -0.02em;
+      margin: 0;
+      color: #0b0b0f;
+    }
+    .topSummary{
+      margin: 0;
+      color: rgba(15,23,42,.70);
+      font-size: 15px;
+      line-height: 1.45;
+      max-width: 56ch;
+    }
+    .topMeta{
+      margin-top: 8px;
+      display:flex;
+      align-items:center;
+      gap: 10px;
+      color: rgba(15,23,42,.55);
+      font-size: 13px;
+    }
+    .topMetaPill{
+      display:inline-flex;
+      align-items:center;
+      gap: 8px;
+      padding: 6px 10px;
+      border: 1px solid rgba(15,23,42,.15);
+      border-radius: 999px;
+      background: rgba(17,17,19,.03);
+      color: rgba(15,23,42,.72);
+      font-weight: 600;
+    }
+    .topMetaPill .tiny{ opacity: .8; font-weight: 700; }
+    .topCta{
+      margin-top: 14px;
+      display:inline-flex;
+      align-items:center;
+      gap: 10px;
+      width: fit-content;
+      border-radius: 999px;
+      border: 1px solid rgba(15,23,42,.15);
+      background: #fff;
+      padding: 10px 14px;
+      cursor: pointer;
+      font-weight: 700;
+      transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
+      box-shadow: 0 10px 22px rgba(2,6,23,.06);
+    }
+    .topCta:hover{ transform: translateY(-1px); box-shadow: 0 16px 30px rgba(2,6,23,.10); background: rgba(17,17,19,.02); }
+    .topCta:active{ transform: translateY(0px); }
+
+    .topSlideRight{
+      position: relative;
+      background: #f5f6f8;
+    }
+    .topImage{
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display:block;
+      filter: saturate(0.92);
+    }
+    .topImageOverlay{
+      position:absolute; inset:0;
+      background: radial-gradient(1200px 300px at 20% 25%, rgba(255,255,255,.7), rgba(255,255,255,0)),
+                  linear-gradient(90deg, rgba(255,255,255,.0), rgba(255,255,255,.04));
+      pointer-events:none;
+    }
+
+    .topNavBtn{
+      position:absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 44px;
+      height: 44px;
+      border-radius: 999px;
+      border: 1px solid rgba(15,23,42,.16);
+      background: rgba(255,255,255,.92);
+      backdrop-filter: blur(8px);
+      cursor:pointer;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      box-shadow: 0 10px 24px rgba(2,6,23,.10);
+      transition: transform .12s ease, background .12s ease;
+      z-index: 2;
+    }
+    .topNavBtn:hover{ background: #fff; transform: translateY(-50%) scale(1.03); }
+    .topNavBtn:active{ transform: translateY(-50%) scale(0.98); }
+    .topNavPrev{ left: 14px; }
+    .topNavNext{ right: 14px; }
+    .topNavBtn span{ font-size: 18px; line-height: 1; }
+
+    .topDots{
+      position:absolute;
+      left: 0; right: 0;
+      bottom: 14px;
+      display:flex;
+      gap: 8px;
+      justify-content:center;
+      align-items:center;
+      z-index: 2;
+    }
+    .topDot{
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #d9d9d9; /* inactive */
+  border: none;
+  cursor:pointer;
+  transition: transform .25s ease, background .25s ease, opacity .25s ease;
+  opacity: .9;
+}
+.topDot:hover{ transform: scale(1.06); opacity: 1; }
+.topDot.on{
+  background: #000; /* active */
+  opacity: 1;
+  transform: scale(1.15);
+}
+
+
+    .topCarouselEmpty{
+      padding: 26px 22px;
+      color: rgba(15,23,42,.62);
+      font-size: 14px;
+    }
+
+    @media (max-width: 860px){
+      .topSlide{ grid-template-columns: 1fr; }
+      .topSlideLeft{ padding: 26px 22px; }
+      .topSlideRight{ min-height: 220px; }
+      .topTitle{ font-size: 24px; }
+      .topSummary{ font-size: 14px; }
+      .topNavBtn{ display:none; }
+      .topDots{ bottom: 12px; }
+    }
 
     /* Top controls panel */
     .panel {
@@ -669,6 +862,131 @@
     .footerLinks { display:flex; flex-direction:column; gap: 6px; }
     .footerLinks a { color: rgba(15,23,42,.75); text-decoration:none; }
     .footerLinks a:hover { text-decoration:underline; }
+
+
+/* New footer layout (CHECKNE style) */
+.siteFooter{ margin-top: 26px; padding: 42px 0 18px; border-top: 1px solid rgba(15,23,42,.12); background: #fff; }
+.siteFooter .footerGrid{ grid-template-columns: 1.45fr 1fr 1fr 1fr; gap: 26px; align-items:start; }
+.footerBrand .footerLogo{ text-decoration:none; }
+.footerTagline{ margin-top: 10px; color: rgba(15,23,42,.55); font-size: 18px; line-height: 1.35; }
+.footerEmail{ display:inline-block; margin-top: 18px; font-weight: 300; font-size: 18px; text-decoration:none; }
+.footerEmail:hover{ text-decoration: underline; }
+
+.footerColTitle{ font-size: 18px; letter-spacing: .01em; }
+.footerLinks .footerLink{ font-size: 18px; line-height: 1.45; }
+
+.footerDivider{ height: 1px; background: rgba(15,23,42,.12); margin: 34px 0 18px; }
+.footerBottom{ max-width: 1040px; margin: 0 auto; padding: 0 16px; display:flex; align-items:center;  justify-content: center; gap: 16px; }
+.footerCopy{ color: rgba(15,23,42,.55); font-size: 14px; }
+
+.footerSocial{
+  margin-top: 14px;
+  display: flex;
+  gap: 10px;
+}
+
+.socialBtn:hover{ transform: translateY(-1px); box-shadow: 0 14px 28px rgba(2,6,23,.10); background: rgba(15,23,42,.03); }
+.footerSocial .socialBtn img{
+  width: 35px;
+  height: 35px;
+  opacity: 1;                 /* можно оставить .8 если хочешь */
+  filter: brightness(0) saturate(100%); /* ← делает чёрным */
+}
+
+/* Info pages (Legal / Support) — premium */
+.infoSection{
+  display:none;
+  padding: 34px 16px 72px;
+}
+.infoShell{
+  max-width: 980px;
+  margin: 0 auto;
+}
+.infoCard{
+  border: 1px solid rgba(15,23,42,.10);
+  border-radius: 22px;
+  background: rgba(255,255,255,.86);
+  box-shadow: 0 28px 60px rgba(2,6,23,.10);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  padding: 26px 26px 22px;
+}
+.infoTopRow{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.infoHeadText{ min-width: 0; }
+.infoKicker{ color: rgba(15,23,42,.50); font-size: 12px; letter-spacing: .10em; text-transform: uppercase; margin-bottom: 6px; }
+.infoTitle{ margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -0.03em; }
+.infoMeta{ color: rgba(15,23,42,.55); font-size: 13px; margin-top: 6px; }
+/* Status page (animated dots) */
+.statusList{ list-style:none; padding:0; margin: 14px 0 0; display:grid; gap: 10px; }
+.statusRow{ display:flex; align-items:center; justify-content:space-between; gap: 16px; padding: 12px 14px; border:1px solid rgba(15,23,42,.10); border-radius: 14px; background: rgba(255,255,255,.75); box-shadow: 0 10px 30px rgba(2,6,23,.06); }
+.statusLeft{ display:flex; align-items:center; gap: 10px; min-width: 0; }
+.statusName{ font-weight: 650; color: rgba(15,23,42,.92); white-space:nowrap; }
+.statusText{ color: rgba(15,23,42,.72); font-size: 14px; }
+.statusDot{ width: 10px; height: 10px; border-radius: 999px; position:relative; flex: 0 0 auto; }
+.statusDot::after{ content:""; position:absolute; inset:-6px; border-radius:999px; opacity:.55; animation: statusPulse 1.6s ease-out infinite; }
+.status-ok{ background: #22c55e; }
+.status-ok::after{ background: rgba(34,197,94,.28); }
+.status-warn{ background: #f59e0b; }
+.status-warn::after{ background: rgba(245,158,11,.28); }
+.status-down{ background: #ef4444; }
+.status-down::after{ background: rgba(239,68,68,.28); }
+@keyframes statusPulse{ 0%{ transform: scale(.25); opacity:.0; } 35%{ opacity:.55; } 100%{ transform: scale(1); opacity:0; } }
+.statusMetaRow{ margin-top: 10px; color: rgba(15,23,42,.55); font-size: 13px; }
+.statusSmallLink{ color: rgba(15,23,42,.70); text-decoration:none; border-bottom: 1px solid rgba(15,23,42,.25); }
+.statusSmallLink:hover{ color: rgba(15,23,42,.9); border-bottom-color: rgba(15,23,42,.55); }
+.infoBack{
+  border: 1px solid rgba(15,23,42,.14);
+  background: rgba(15,23,42,.03);
+  border-radius: 999px;
+  padding: 10px 14px;
+  cursor:pointer;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
+}
+.infoBack:hover{ transform: translateY(-1px); box-shadow: 0 16px 30px rgba(2,6,23,.10); background: rgba(15,23,42,.05); }
+.infoBack:active{ transform: translateY(0px); }
+.infoBody{ color: rgba(15,23,42,.82); font-size: 16px; line-height: 1.7; }
+.infoBody .infoLead{ font-size: 17px; color: rgba(15,23,42,.78); margin-top: 0; }
+.infoBody a{ color: rgba(15,23,42,.90); text-decoration:none; border-bottom: 1px solid rgba(15,23,42,.25); }
+.infoBody a:hover{ border-bottom-color: rgba(15,23,42,.55); }
+.infoBody h2{
+  margin: 22px 0 10px;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(15,23,42,.10);
+}
+.infoBody h3{ margin: 18px 0 8px; font-size: 16px; font-weight: 800; letter-spacing: -0.01em; }
+.infoBody ul{ margin: 10px 0 0 18px; padding: 0; }
+.infoBody li{ margin: 7px 0; }
+.infoBody code{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: .95em; background: rgba(15,23,42,.05); padding: 2px 6px; border-radius: 8px; }
+.infoBody .infoCallout{
+  margin: 14px 0;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(15,23,42,.10);
+  background: rgba(15,23,42,.02);
+}
+
+@media (max-width: 860px){
+  .siteFooter .footerGrid{ grid-template-columns: 1fr 1fr; }
+  .footerBrand{ grid-column: 1 / -1; }
+  .footerBottom{ flex-direction: column; align-items:flex-start; }
+}
+@media (max-width: 520px){
+  .siteFooter{ padding: 28px 0 14px; }
+  .footerTagline, .footerEmail, .footerLinks .footerLink{ font-size: 16px; }
+  .infoTitle{ font-size: 26px; }
+  .infoCard{ padding: 18px 16px; }
+}
    .copyright {
   padding: 25px 0;      /* ✅ сильнее сверху и снизу */
   text-align: center;
@@ -1242,6 +1560,29 @@
 }
 
 
+
+/* ===== Profile (Account) page ===== */
+.profilePage{max-width:1040px;margin:64px auto 0;padding:0 18px 64px;}
+.profileHero{text-align:center;margin:26px 0 26px;}
+.profileHero h2{margin:0 0 10px;font-size:32px;font-weight:400;letter-spacing:-0.02em;}
+.profileHero p{margin:0;color:#111;font-size:20px;line-height:1.5;opacity:.9;}
+.profileGrid{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:stretch;}
+.profileCard{border:1px solid rgba(0,0,0,0.22);border-radius:18px;background:#fff;overflow:hidden;padding:22px;box-shadow:0 10px 30px rgba(0,0,0,0.06);}
+.profileCardTitle{font-size:16px;font-weight:750;letter-spacing:.02em;color:rgba(0,0,0,.78);margin:0 0 14px;}
+.profileRows{display:flex;flex-direction:column;gap:12px;}
+.profileRow{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 14px;border:1px solid rgba(0,0,0,0.10);border-radius:14px;background:rgba(0,0,0,0.02);}
+.profileKey{color:rgba(0,0,0,0.62);font-size:13px;}
+.profileVal{color:#111;font-size:15px;font-weight:600;max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;}
+.profilePills{display:flex;gap:10px;flex-wrap:wrap;margin:2px 0 10px;}
+.profilePill{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;border:1px solid rgba(0,0,0,0.18);background:#fff;font-size:13px;font-weight:750;}
+.profilePill.status{background:rgba(0,0,0,0.04);}
+.profileMeta{color:rgba(0,0,0,0.72);font-size:14px;line-height:1.5;margin:6px 0 12px;}
+.profileActions{display:flex;gap:10px;flex-wrap:wrap;}
+.profileBtn{border-radius:12px;padding:11px 16px;font-size:14px;font-weight:750;cursor:pointer;border:1px solid rgba(0,0,0,0.22);background:#fff;}
+.profileBtn.primary{background:#111;color:#fff;border-color:#111;}
+.profileBtn.primary:active{transform:translateY(1px);}
+.profileBtn.ghost:hover{background:rgba(0,0,0,0.04);}
+@media (max-width:980px){.profileGrid{grid-template-columns:1fr;}}
 
 /* ===== Pricing page (standalone view) ===== */
 .pricingPage{max-width:1040px;margin:64px auto 0;padding:0 18px 64px;}
@@ -1917,16 +2258,32 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
 /* ===== Mobile / small screens ===== */
 @media (max-width: 640px){
   .wrap{ max-width: 100%; padding: 12px 12px 0; }
+
+  /* ✅ делаем 3 зоны: left / center / right */
   .headerInner{
     padding: 14px 12px;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
     gap: 10px;
-    flex-wrap: wrap;
   }
+
+  .brand{ justify-self: start; }
+  .headerCenter{ justify-self: center; }
+  .headerRight{
+    justify-self: end;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-left: 0; /* важно: не flex-auto */
+  }
+
   .brandLogo{ width: 34px; height: 34px; }
   .brandText .top{ font-size: 30px; }
   .brandText .bottom{ font-size: 30px; }
   .tagline{ display:none; }
-  .headerRight{ gap: 8px; margin-left: auto; }
+
   .trackBtn{
     font-size: 15px;
     padding: 8px 10px;
@@ -1945,12 +2302,15 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
     gap: 10px;
   }
   .searchIcon{ width: 22px; height: 22px; }
-  .searchWrap input{
-    font-size: 16px; /* prevents iOS zoom */
-  }
+  .searchWrap input{ font-size: 16px; }
   .searchWrap input::placeholder{ font-size: 16px; }
 }
-
+.headerCenter{
+  flex: 1;                     /* ✅ занимает всё между левым и правым */
+  display: flex;
+  align-items: right;
+  justify-content: right;      /* ✅ Tracking по центру */
+}
 /* Extra-tight phones */
 @media (max-width: 420px){
   .trackBtn span:first-child{ display:none; } /* keep only badge on tiny screens */
@@ -2906,6 +3266,39 @@ body.view-switching #feedView{
 
 /* Prevent iOS zooming on tap/inputs inside tooltip */
 .trustTooltip{ max-width: min(260px, calc(100vw - 32px)); }
+/* mobile header symmetry fix */
+@media (max-width: 720px) {
+  .topbar {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr; /* left - center - right */
+    align-items: center;
+    gap: 10px;
+  }
+
+  .topbar .left {
+    justify-self: start;
+    min-width: 0;
+  }
+
+  .topbar .center {
+    justify-self: center;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .topbar .right {
+    justify-self: end;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+
+  /* чтобы не “раздувало” справа */
+  .account-pill {
+    max-width: 180px;
+  }
+}
 
 </style>
 
@@ -2914,49 +3307,49 @@ body.view-switching #feedView{
 <body>
   <header>
     <div class="headerInner">
-      <!-- Brand: logo + ONE news. (matches the reference) -->
-      <div id="brand" class="brand" aria-label="ONE news" role="button" tabindex="0">
-        <img class="brandLogo" src="/static/icons/Logo.svg" alt="Logo" />
-
-        <div class="brandText"><div class="top">CHECKNE.</div></div>
-      </div>
-
-
-      <div class="headerRight">
-        <button id="btnTracking" class="trackBtn" type="button" aria-label="Tracking">
-          <span>Tracking</span>
-          <span id="trackingCount" class="trackBadge">0</span>
-        </button>
-      
-
-<!-- ✅ Account dropdown -->
-<div class="accountWrap">
-  <button id="btnAccount" class="loginBtn" type="button" aria-label="Account">
-    <span id="accountAvatar" class="accountAvatar" aria-hidden="true">V</span>
-    <span id="accountName" class="accountName">Account</span>
-    <span id="accountPlanPill" class="accountPlanPill" style="display:none;">Pro</span>
-  </button>
-
-<div id="accountMenu" class="accountMenu">
-  <div class="accountMenuHeader">
-    <div class="menuEmailRow">
-      <span class="menuEmailDot" aria-hidden="true"></span>
-      <div id="menuEmail" class="menuEmailPlain"></div>
-    </div>
+  <!-- Brand: logo + ONE news. (matches the reference) -->
+  <div id="brand" class="brand" aria-label="ONE news" role="button" tabindex="0">
+    <img class="brandLogo" src="/static/icons/Logo.svg" alt="Logo" />
+    <div class="brandText"><div class="top">CHECKNE.</div></div>
   </div>
 
-  <div class="accountMenuDivider"></div>
+  <!-- ✅ CENTER: Tracking (чтобы был по центру экрана на мобилке) -->
+  <div class="headerCenter">
+    <button id="btnTracking" class="trackBtn" type="button" aria-label="Tracking">
+      <span>Tracking</span>
+      <span id="trackingCount" class="trackBadge">0</span>
+    </button>
+  </div>
 
-  <button id="menuPricing" type="button">Pricing</button>
-  <button id="menuLogout" type="button">Log out</button>
-</div>
+  <!-- ✅ RIGHT: Account -->
+  <div class="headerRight">
+    <div class="accountWrap">
+      <button id="btnAccount" class="loginBtn" type="button" aria-label="Account">
+        <span id="accountAvatar" class="accountAvatar" aria-hidden="true">V</span>
+        <span id="accountName" class="accountName">Account</span>
+        <span id="accountPlanPill" class="accountPlanPill" style="display:none;">Pro</span>
+      </button>
 
+      <div id="accountMenu" class="accountMenu">
+        <div class="accountMenuHeader">
+          <div class="menuEmailRow">
+            <span class="menuEmailDot" aria-hidden="true"></span>
+            <div id="menuEmail" class="menuEmailPlain"></div>
+          </div>
+        </div>
 
+        <div class="accountMenuDivider"></div>
 
-        <!-- Manual refresh kept for JS compatibility, but hidden in the new design -->
-        <button id="btnRefresh" class="btn hiddenCompat" type="button">Refresh</button>
+        <button id="menuProfile" type="button">Profile</button>
+        <button id="menuPricing" type="button">Pricing</button>
+        <button id="menuLogout" type="button">Log out</button>
       </div>
     </div>
+
+    <!-- Manual refresh kept for JS compatibility, but hidden in the new design -->
+    <button id="btnRefresh" class="btn hiddenCompat" type="button">Refresh</button>
+  </div>
+</div>
   </header>
 
   <!-- Backdrop used by the Feed <-> Tracking page transition -->
@@ -2973,11 +3366,22 @@ body.view-switching #feedView{
 
 
   <div id="feedView" class="wrap">
+
+    <!-- Top stories (🔥) — driven by server feed (is_trending) -->
+    <div id="topStories" class="topStories" aria-label="Top stories">
+      <div class="topCarousel" id="topCarousel" data-ready="0">
+        <div class="topCarouselViewport" id="topCarouselViewport">
+          <div class="topCarouselTrack" id="topCarouselTrack"></div>
+        </div>
+        <div id="topCarouselDots" class="topDots" aria-label="Top stories navigation"></div>
+      </div>
+    </div>
+
     <div class="panel">
       <div class="searchRow">
         <div class="searchWrap">
           <div class="searchIcon" aria-hidden="true"></div>
-          <input id="search" type="text" placeholder="Search news or sources" data-i18n-placeholder="ui.search_placeholder" />
+          <input id="search" type="text" placeholder="Search topics or paste a link" data-i18n-placeholder="ui.search_placeholder" />
         </div>
 
         <!-- Kept for compatibility with existing logic -->
@@ -3089,6 +3493,39 @@ body.view-switching #feedView{
     <div id="cards" class="cards"></div>
   </div>
   <!-- Pricing / Subscriptions -->
+  <section id="profileSection" class="profilePage" aria-label="Account" style="display:none;">
+    <div class="profileHero">
+      <h2>Account</h2>
+      <p>Manage your profile and subscription.</p>
+    </div>
+
+    <div class="profileGrid" role="list">
+      <div class="profileCard" role="listitem">
+        <div class="profileCardTitle">Profile</div>
+        <div class="profileRows">
+          <div class="profileRow"><span class="profileKey">Name</span><span id="profileName" class="profileVal">—</span></div>
+          <div class="profileRow"><span class="profileKey">Email</span><span id="profileEmail" class="profileVal">—</span></div>
+        </div>
+      </div>
+
+      <div class="profileCard" role="listitem">
+        <div class="profileCardTitle">Subscription</div>
+        <div class="profilePills">
+          <span id="profilePlanPill" class="profilePill">Free</span>
+          <span id="profileStatusPill" class="profilePill status">Active</span>
+        </div>
+        <div id="profileRenewText" class="profileMeta"></div>
+
+        <div class="profileActions">
+          <button id="profileManageBtn" class="profileBtn primary" type="button">Manage plan</button>
+          <button id="profileCancelBtn" class="profileBtn ghost" type="button" style="display:none;">Cancel subscription</button>
+          <button id="profileResumeBtn" class="profileBtn ghost" type="button" style="display:none;">Resume subscription</button>
+        </div>
+
+        <div id="profileCancelHint" class="muted" style="margin-top:10px; display:none;"></div>
+      </div>
+    </div>
+  </section>
   <section id="pricingSection" class="pricingPage" aria-label="Pricing" style="display:none;">
     <div class="pricingHero">
       <h2 data-i18n="pricing.hero_title">Track credibility. Stay informed.</h2>
@@ -3280,66 +3717,97 @@ body.view-switching #feedView{
       </div>
     </div>
   </section>
-  <footer>
+  
+  <!-- Info / Legal / Support pages (SPA, header stays visible) -->
+  <section id="infoSection" class="infoSection" aria-label="Information pages">
+    <div class="infoShell">
+      <div class="infoCard">
+        <div class="infoTopRow">
+          <div class="infoHeadText">
+            <div class="infoKicker">CHECKNE • Info</div>
+            <h1 id="infoTitle" class="infoTitle">Title</h1>
+            <div id="infoMeta" class="infoMeta">Last updated: 2026-02-21</div>
+          </div>
+          <button id="infoBackBtn" class="infoBack" type="button" aria-label="Back to home">← Back</button>
+        </div>
 
-  <!-- ✅ Основной контейнер (ограниченная ширина) -->
+        <div id="infoBody" class="infoBody">
+          <!-- injected by app.js -->
+        </div>
+      </div>
+    </div>
+  </section>
+
+<footer class="siteFooter" aria-label="Site footer">
   <div class="footerInner">
     <div class="footerGrid">
-
-      <!-- LOGO COLUMN -->
-      <div>
-        <div class="footerLogo">
-          <img class="footerLogoImg" src="/static/icons/Logo.svg" alt="Logo" />
+      <!-- Brand -->
+      <div class="footerBrand">
+        <a class="footerLogo" href="#/" id="footerHomeLink" aria-label="CHECKNE home">
+          <img class="footerLogoImg" src="/static/icons/Logo.svg" alt="CHECKNE logo" />
           <div class="footerBrandText">
             <div class="top">CHECKNE.</div>
           </div>
-        </div>
+        </a>
+
+        <div class="footerTagline">AI-powered news tracking<br/>and signal intelligence.</div>
+
+        <a class="footerEmail" href="mailto:contact@checkne.com">contact@checkne.com</a>
+          <div class="footerSocial" aria-label="Social links">
+      <a class="socialBtn" href="mailto:contact@checkne.com" aria-label="Email">
+        <img src="/static/icons/gmailfooter.svg" alt="" />
+      </a>
+      <a class="socialBtn" href="#" aria-label="TikTok" data-social="tiktok" onclick="return false;">
+        <img src="/static/icons/tiktofooter.svg" alt="" />
+      </a>
+      <a class="socialBtn" href="#" aria-label="Threads" data-social="threads" onclick="return false;">
+        <img src="/static/icons/tredsfooter.svg" alt="" />
+      </a>
+      <a class="socialBtn" href="#" aria-label="X" data-social="x" onclick="return false;">
+        <img src="/static/icons/xfooter.svg" alt="" />
+      </a>
+    </div>
       </div>
 
-      <!-- Company -->
-      <div>
-        <div class="footerColTitle">Company</div>
-        <div class="footerLinks">
-          <a href="#" onclick="return false;">About Us</a>
-          <a href="#" onclick="return false;">Blog</a>
-          <a href="#" onclick="return false;">Careers</a>
-          <a href="#" onclick="return false;">Contact</a>
-        </div>
+      <!-- Product -->
+      <div class="footerCol">
+        <div class="footerColTitle">Product</div>
+        <nav class="footerLinks" aria-label="Product links">
+          <a class="footerLink" href="#/tracking" data-footer-nav="tracking">Tracking</a>
+          <a class="footerLink" href="#/pricing" data-footer-nav="pricing">Pricing</a>
+        </nav>
       </div>
 
-      <!-- Resources -->
-      <div>
-        <div class="footerColTitle">Resources</div>
-        <div class="footerLinks">
-          <a href="#" onclick="return false;">Help Center</a>
-          <a href="#" onclick="return false;">Documentation</a>
-          <a href="#" onclick="return false;">API</a>
-          <a href="#" onclick="return false;">Status</a>
-        </div>
+      <!-- Support -->
+      <div class="footerCol">
+        <div class="footerColTitle">Support</div>
+        <nav class="footerLinks" aria-label="Support links">
+          <a class="footerLink" href="#/contact" data-footer-nav="contact">Contact</a>
+          <a class="footerLink" href="#/status" data-footer-nav="status">Status</a>
+          <a class="footerLink" href="https://mail.google.com/mail/?view=cm&fs=1&to=support%40checkne.com&su=Help%20request%20%E2%80%94%20CHECKNE&body=Hi%20CHECKNE%20support%2C%0A%0AI%20need%20help%20with%3A%0A%0A%E2%80%94%20What%20I%20expected%3A%0A%E2%80%94%20What%20happened%20instead%3A%0A%E2%80%94%20Steps%20to%20reproduce%3A%0A%E2%80%94%20Device%20/%20browser%3A%0A%0AThanks%21" target="_blank" rel="noopener" data-footer-mail="help">Help</a>
+          <a class="footerLink" href="https://mail.google.com/mail/?view=cm&fs=1&to=support%40checkne.com&su=Bug%20report%20%E2%80%94%20CHECKNE&body=Hi%20CHECKNE%20support%2C%0A%0AI%20found%20a%20bug%3A%0A%0A%E2%80%94%20What%20I%20did%3A%0A%E2%80%94%20What%20I%20expected%3A%0A%E2%80%94%20What%20happened%20instead%3A%0A%E2%80%94%20Screenshots%20/%20links%20%28if%20any%29%3A%0A%E2%80%94%20Device%20/%20browser%3A%0A%0AThanks%21" target="_blank" rel="noopener" data-footer-mail="bug">Report a bug</a>
+        </nav>
       </div>
 
-      <!-- Policy -->
-      <div>
-        <div class="footerColTitle">Policy</div>
-        <div class="footerLinks">
-          <a href="#" onclick="return false;">Privacy Policy</a>
-          <a href="#" onclick="return false;">Terms of Service</a>
-          <a href="#" onclick="return false;">Service</a>
-          <a href="#" onclick="return false;">Cookie Policy</a>
-        </div>
+      <!-- Legal -->
+      <div class="footerCol">
+        <div class="footerColTitle">Legal</div>
+        <nav class="footerLinks" aria-label="Legal links">
+          <a class="footerLink" href="#/privacy" data-footer-nav="privacy">Privacy Policy</a>
+          <a class="footerLink" href="#/terms" data-footer-nav="terms">Terms of Service</a>
+          <a class="footerLink" href="#/cookies" data-footer-nav="cookies">Cookie Policy</a>
+          <a class="footerLink" href="#/impressum" data-footer-nav="impressum">Impressum</a>
+        </nav>
       </div>
-
     </div>
   </div>
 
-  <!-- ✅ Divider теперь ВНЕ контейнера (на всю ширину экрана) -->
-  <div class="footerDivider"></div>
+  <div class="footerDivider" role="presentation"></div>
 
-  <!-- ✅ Copyright тоже отдельно и с отступами -->
-  <div class="copyright">
-    © 2026 CHECKNE. All rights reserved.
+  <div class="footerBottom">
+    <div class="footerCopy">© 2026 CHECKNE. All rights reserved.</div>
+
   </div>
-
 </footer>
 
 

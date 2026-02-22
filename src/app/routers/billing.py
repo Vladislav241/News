@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -49,12 +50,97 @@ def billing_me(user=Depends(require_user)):
     """Returns the current subscription info for the logged-in user."""
     sub = db.get_user_subscription(int(user["id"]))
     if not sub:
-        return {"plan": "free", "status": "active", "interval": "monthly"}
+        return {
+            "plan": "free",
+            "status": "active",
+            "interval": "monthly",
+            "current_period_end": None,
+            "cancel_at_period_end": False,
+        }
     return {
         "plan": sub["plan"],
         "status": sub["status"],
         "interval": sub["billing_interval"],
         "current_period_end": sub["current_period_end"],
+        "cancel_at_period_end": bool(sub.get("cancel_at_period_end")),
+    }
+
+
+@router.post("/api/billing/cancel")
+def cancel_at_period_end(user=Depends(require_user)):
+    """Cancel at period end (Stripe cancel_at_period_end=true)."""
+    current = db.get_user_subscription(int(user["id"]))
+    if not current or not current.get("stripe_subscription_id"):
+        raise HTTPException(status_code=400, detail="No active subscription")
+
+    stripe = _stripe()
+    try:
+        stripe_sub = stripe.Subscription.modify(
+            current["stripe_subscription_id"],
+            cancel_at_period_end=True,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Stripe error: {e}")
+
+    period_end_iso = None
+    if getattr(stripe_sub, "current_period_end", None):
+        period_end_iso = datetime.fromtimestamp(int(stripe_sub.current_period_end), tz=timezone.utc).isoformat()
+
+    db.set_user_subscription(
+        int(user["id"]),
+        plan=(current.get("plan") or "free"),
+        status=stripe_sub.status,
+        billing_interval=(current.get("billing_interval") or "monthly"),
+        stripe_customer_id=current.get("stripe_customer_id"),
+        stripe_subscription_id=current.get("stripe_subscription_id"),
+        current_period_end=period_end_iso,
+        cancel_at_period_end=bool(getattr(stripe_sub, "cancel_at_period_end", False)),
+    )
+
+    return {
+        "ok": True,
+        "status": stripe_sub.status,
+        "current_period_end": period_end_iso,
+        "cancel_at_period_end": bool(getattr(stripe_sub, "cancel_at_period_end", False)),
+    }
+
+
+@router.post("/api/billing/resume")
+def resume_subscription(user=Depends(require_user)):
+    """Undo cancel at period end (Stripe cancel_at_period_end=false)."""
+    current = db.get_user_subscription(int(user["id"]))
+    if not current or not current.get("stripe_subscription_id"):
+        raise HTTPException(status_code=400, detail="No active subscription")
+
+    stripe = _stripe()
+    try:
+        stripe_sub = stripe.Subscription.modify(
+            current["stripe_subscription_id"],
+            cancel_at_period_end=False,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Stripe error: {e}")
+
+    period_end_iso = None
+    if getattr(stripe_sub, "current_period_end", None):
+        period_end_iso = datetime.fromtimestamp(int(stripe_sub.current_period_end), tz=timezone.utc).isoformat()
+
+    db.set_user_subscription(
+        int(user["id"]),
+        plan=(current.get("plan") or "free"),
+        status=stripe_sub.status,
+        billing_interval=(current.get("billing_interval") or "monthly"),
+        stripe_customer_id=current.get("stripe_customer_id"),
+        stripe_subscription_id=current.get("stripe_subscription_id"),
+        current_period_end=period_end_iso,
+        cancel_at_period_end=bool(getattr(stripe_sub, "cancel_at_period_end", False)),
+    )
+
+    return {
+        "ok": True,
+        "status": stripe_sub.status,
+        "current_period_end": period_end_iso,
+        "cancel_at_period_end": bool(getattr(stripe_sub, "cancel_at_period_end", False)),
     }
 
 
@@ -161,6 +247,7 @@ def complete_checkout(session_id: str, user=Depends(require_user)):
         stripe_customer_id=user.get("stripe_customer_id"),
         stripe_subscription_id=sub.get("id"),
         current_period_end=cpe_iso,
+        cancel_at_period_end=bool(sub.get("cancel_at_period_end")),
     )
 
     return {"status": "ok", "plan": plan, "interval": interval, "sub_status": status}
@@ -232,6 +319,7 @@ async def stripe_webhook(request: Request):
                 stripe_customer_id=customer,
                 stripe_subscription_id=sub_id,
                 current_period_end=cpe_iso,
+                cancel_at_period_end=bool(obj.get("cancel_at_period_end")),
             )
 
     return {"received": True}

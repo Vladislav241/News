@@ -1421,6 +1421,8 @@ function updateAuthUI() {
   }
 
   updateAccountPlanPill();
+
+  try{ updateProfileUI(); }catch{}
 }
 
 
@@ -1451,8 +1453,9 @@ async function refreshAuthState() {
 async function refreshBillingState() {
   // If not logged in, treat as free.
   if (!authState.authenticated) {
-    billingState = { plan: 'free', status: 'active', interval: 'monthly' };
+    billingState = { plan: 'free', status: 'active', interval: 'monthly', current_period_end: null, cancel_at_period_end: false };
     updatePricingUI();
+    try{ updateProfileUI(); }catch{}
     return;
   }
   try {
@@ -1463,12 +1466,14 @@ async function refreshBillingState() {
       status: j?.status || 'active',
       interval: j?.interval || 'monthly',
       current_period_end: j?.current_period_end || null,
+      cancel_at_period_end: !!j?.cancel_at_period_end,
     };
   } catch {
     billingState = { plan: 'free', status: 'active', interval: 'monthly' };
   }
   updatePricingUI();
   updateAccountPlanPill();
+  try{ updateProfileUI(); }catch{}
 }
 
 function bindAuthModalUI() {
@@ -1676,29 +1681,427 @@ async function handleAuthQueryParams() {
 // ----------------------------
 function bindPricingUI(){
   const pricingSection = document.getElementById('pricingSection');
+  const profileSection = document.getElementById('profileSection');
   const feedView = document.getElementById('feedView');
   if(!pricingSection || !feedView) return;
+
+
+// Info pages (Legal / Support)
+const infoSection = document.getElementById('infoSection');
+const infoTitleEl = document.getElementById('infoTitle');
+const infoMetaEl  = document.getElementById('infoMeta');
+const infoBodyEl  = document.getElementById('infoBody');
+const infoBackBtn = document.getElementById('infoBackBtn');
+
+// Professional copy (lightweight templates; customize anytime)
+const INFO_PAGES = {
+  contact: {
+    title: "Contact",
+    updated: "2026-02-21",
+    html: `
+      <p class="infoLead">Questions, feedback, partnerships, or support — we’re here to help.</p>
+
+      <div class="infoCallout">
+        <b>Email</b><br/>
+        <a href="mailto:contact@checkne.com">contact@checkne.com</a>
+      </div>
+
+      <h2>Include in your message</h2>
+      <ul>
+        <li>A short description of what you need</li>
+        <li>A link (or screenshot) that shows the issue</li>
+        <li>Your device and browser</li>
+        <li>If it’s billing-related: the email on your account (never send passwords)</li>
+      </ul>
+
+      <h2>Response time</h2>
+      <p>We typically reply on business days. If your request is urgent, put <b>URGENT</b> in the subject line.</p>
+    `
+  },
+  status: {
+  title: "Status",
+  updated: "2026-02-21",
+  html: `
+    <p class="infoLead">Live operational status of CHECKNE services.</p>
+
+    <h2>Current status</h2>
+    <ul class="statusList" id="statusList">
+      <li class="statusRow" data-svc="web_app">
+        <div class="statusLeft">
+          <span class="statusDot status-warn" aria-hidden="true"></span>
+          <span class="statusName">Web app</span>
+        </div>
+        <div class="statusText" data-svc-text="web_app">Checking…</div>
+      </li>
+      <li class="statusRow" data-svc="api">
+        <div class="statusLeft">
+          <span class="statusDot status-warn" aria-hidden="true"></span>
+          <span class="statusName">API</span>
+        </div>
+        <div class="statusText" data-svc-text="api">Checking…</div>
+      </li>
+      <li class="statusRow" data-svc="tracking">
+        <div class="statusLeft">
+          <span class="statusDot status-warn" aria-hidden="true"></span>
+          <span class="statusName">Tracking / ingest</span>
+        </div>
+        <div class="statusText" data-svc-text="tracking">Checking…</div>
+      </li>
+      <li class="statusRow" data-svc="email">
+        <div class="statusLeft">
+          <span class="statusDot status-warn" aria-hidden="true"></span>
+          <span class="statusName">Email notifications</span>
+        </div>
+        <div class="statusText" data-svc-text="email">Checking…</div>
+      </li>
+    </ul>
+
+    <div class="statusMetaRow" id="statusMeta">Checking status…</div>
+
+    <h2>Report an issue</h2>
+    <p>If something looks wrong, send us a message: <a class="statusSmallLink" href="https://mail.google.com/mail/?view=cm&fs=1&to=support%40checkne.com&su=Status%20issue%20%E2%80%94%20CHECKNE&body=Hi%20CHECKNE%20support%2C%0A%0AI%20think%20there%27s%20a%20status%20issue%3A%0A%0A%E2%80%94%20What%20I%20see%3A%0A%E2%80%94%20Link%20%2F%20screenshot%3A%0A%E2%80%94%20Device%20%2F%20browser%3A%0A%0AThanks!" target="_blank" rel="noopener">Open email</a></p>
+  `
+},
+
+  privacy: {
+    title: "Privacy Policy",
+    updated: "2026-02-21",
+    html: `
+      <p class="infoLead">This Privacy Policy explains how CHECKNE (“we”, “us”) processes personal data when you use our website and services.</p>
+
+      <h2>1. Controller</h2>
+      <p>CHECKNE is operated by an individual founder based in Germany (the “Controller”).<br/>
+      Contact: <a href="mailto:support@checkne.com">support@checkne.com</a></p>
+
+      <h2>2. Data we collect</h2>
+      <ul>
+        <li><b>Account data</b> (e.g., email address, authentication identifiers)</li>
+        <li><b>Subscription & billing metadata</b> (e.g., plan, payment status, renewal/cancellation state; we do not store full card details)</li>
+        <li><b>Usage data</b> (e.g., pages viewed, actions taken, error logs, approximate timestamps)</li>
+        <li><b>Technical data</b> (e.g., IP address, device/browser information, cookies/local storage identifiers)</li>
+        <li><b>Support messages</b> you send to us (content + attachments you choose to provide)</li>
+      </ul>
+
+      <h2>3. How we use data</h2>
+      <ul>
+        <li>Provide and operate the Service (authentication, tracking, alerts)</li>
+        <li>Process subscriptions and prevent fraud</li>
+        <li>Improve reliability, performance, and security</li>
+        <li>Communicate with you (service emails, support replies)</li>
+        <li>Comply with legal obligations</li>
+      </ul>
+
+      <h2>4. Legal bases (GDPR)</h2>
+      <ul>
+        <li><b>Contract</b> (Art. 6(1)(b)) — to provide your account and subscription</li>
+        <li><b>Legitimate interests</b> (Art. 6(1)(f)) — security, abuse prevention, service improvement</li>
+        <li><b>Consent</b> (Art. 6(1)(a)) — where required (e.g., non-essential cookies)</li>
+        <li><b>Legal obligation</b> (Art. 6(1)(c)) — accounting/tax and compliance</li>
+      </ul>
+
+      <h2>5. Sharing and processors</h2>
+      <p>We share data only as necessary to run the Service — for example with hosting, analytics (if enabled), email delivery, and payment providers. These providers act as processors under GDPR where applicable.</p>
+
+      <h2>6. International transfers</h2>
+      <p>Some providers may process data outside the EU/EEA. Where required, we rely on appropriate safeguards (such as Standard Contractual Clauses) or other lawful mechanisms.</p>
+
+      <h2>7. Retention</h2>
+      <p>We keep personal data only as long as needed for the purposes above, including legal and accounting requirements. You can request deletion of your account, subject to mandatory retention obligations.</p>
+
+      <h2>8. Security</h2>
+      <p>We use reasonable technical and organizational measures to protect personal data. No method of transmission or storage is 100% secure.</p>
+
+      <h2>9. Your rights</h2>
+      <p>Depending on your location, you may have rights such as access, correction, deletion, portability, restriction, objection, and withdrawing consent. To exercise these rights, email <a href="mailto:support@checkne.com">support@checkne.com</a>.</p>
+
+      <h2>10. Cookies</h2>
+      <p>We use cookies and similar technologies to keep the Service working and remember preferences. See our <a href="#/cookies">Cookie Policy</a> for details.</p>
+
+      <h2>11. Children</h2>
+      <p>The Service is not intended for children. If you believe a child provided personal data, contact us and we will take appropriate steps.</p>
+
+      <h2>12. Changes</h2>
+      <p>We may update this Privacy Policy from time to time. We will update the “Last updated” date and, where appropriate, provide additional notice.</p>
+    `
+  },
+  terms: {
+    title: "Terms of Service",
+    updated: "2026-02-21",
+    html: `
+      <p class="infoLead">These Terms of Service (“Terms”) govern your access to and use of CHECKNE (“Service”). By using the Service, you agree to these Terms.</p>
+
+      <h2>1. Service</h2>
+      <p>CHECKNE provides AI-assisted news tracking and signal intelligence features. We may add, modify, or remove features to improve the Service.</p>
+
+      <h2>2. Accounts</h2>
+      <ul>
+        <li>You must provide accurate information and keep it up to date.</li>
+        <li>You are responsible for your account credentials and all activity under your account.</li>
+        <li>You must not share accounts or use the Service on behalf of someone else without permission.</li>
+      </ul>
+
+      <h2>3. Paid subscriptions</h2>
+      <p>Certain features require a paid subscription.</p>
+      <h3>Billing & renewal</h3>
+      <p>Subscriptions are billed on a recurring basis (monthly or annually, depending on the plan) and renew automatically unless canceled before the renewal date.</p>
+      <h3>Cancellation</h3>
+      <p>You can cancel at any time from your account settings. Cancellation stops future renewals; you keep access until the end of the current paid period.</p>
+      <h3>Refunds</h3>
+      <p>Payments are non-refundable except where required by applicable law.</p>
+
+      <h2>4. Acceptable use</h2>
+      <ul>
+        <li>Do not misuse the Service, attempt to disrupt it, or access it in unauthorized ways.</li>
+        <li>Do not scrape, reverse-engineer, or abuse the Service or its rate limits.</li>
+        <li>Do not upload or distribute unlawful, harmful, or misleading content.</li>
+        <li>Do not use CHECKNE to build a competing product or provide a competing service.</li>
+      </ul>
+
+      <h2>5. Content and third‑party links</h2>
+      <p>CHECKNE may link to third‑party websites and sources. Third‑party content is governed by their terms and policies, and we are not responsible for it.</p>
+
+      <h2>6. AI output disclaimer</h2>
+      <p>The Service uses automated systems and AI-generated analysis. Outputs may be incomplete, inaccurate, or outdated. You are responsible for verifying information before relying on it.</p>
+
+      <h2>7. Disclaimers</h2>
+      <p>The Service is provided “as is” and “as available”. We do not guarantee uninterrupted operation or error-free results.</p>
+
+      <h2>8. Limitation of liability</h2>
+      <p>To the maximum extent permitted by law, CHECKNE is not liable for indirect, incidental, special, consequential, or punitive damages.</p>
+
+      <h2>9. Termination</h2>
+      <p>We may suspend or terminate access if you violate these Terms or to protect the Service, users, or third parties.</p>
+
+      <h2>10. Governing law</h2>
+      <p>These Terms are governed by the laws of Germany.</p>
+
+      <h2>Contact</h2>
+      <p>Questions about these Terms: <a href="mailto:contact@checkne.com?subject=Terms%20question%20%E2%80%94%20CHECKNE">contact@checkne.com</a></p>
+    `
+  },
+  cookies: {
+    title: "Cookie Policy",
+    updated: "2026-02-21",
+    html: `
+      <p class="infoLead">This Cookie Policy explains how CHECKNE uses cookies and similar technologies.</p>
+      <h2>What are cookies?</h2>
+      <p>Cookies are small text files stored on your device to help websites function and remember preferences.</p>
+      <h2>Types of cookies we may use</h2>
+      <ul>
+        <li><b>Essential cookies</b> (required for core functionality and security)</li>
+        <li><b>Preferences cookies</b> (remember language or UI settings)</li>
+        <li><b>Analytics cookies</b> (help us understand usage and improve performance)</li>
+      </ul>
+      <h2>Managing cookies</h2>
+      <p>You can control cookies through your browser settings. Disabling some cookies may affect site functionality.</p>
+      <h2>Contact</h2>
+      <p>Cookie questions: <a href="mailto:contact@checkne.com?subject=Cookie%20question%20%E2%80%94%20CHECKNE">contact@checkne.com</a></p>
+    `
+  },
+  impressum: {
+    title: "Impressum",
+    updated: "2026-02-21",
+    html: `
+      <p class="infoLead">Information according to applicable German law (e.g., § 5 TMG / § 18 MStV, as relevant).</p>
+      <h2>Service provider</h2>
+      <p><b>CHECKNE</b><br/>Contact: <a href="mailto:contact@checkne.com">contact@checkne.com</a></p>
+      <h2>Responsible for content</h2>
+      <p>Responsible person (content): CHECKNE (see contact above).</p>
+      <h2>Disclaimer</h2>
+      <p>Despite careful control, we assume no liability for external links. The operators of linked pages are solely responsible for their content.</p>
+    `
+  }
+};
+
+let __statusPollTimer = null;
+
+function __statusClassFromState(s){
+  const v = String(s || '').toLowerCase();
+  if(v === 'operational' || v === 'ok' || v === 'green') return 'status-ok';
+  if(v === 'degraded' || v === 'warning' || v === 'warn' || v === 'yellow') return 'status-warn';
+  return 'status-down';
+}
+
+function __stopStatusPoll(){
+  if(__statusPollTimer){
+    clearInterval(__statusPollTimer);
+    __statusPollTimer = null;
+  }
+}
+
+async function __refreshStatusOnce(){
+  const meta = document.getElementById('statusMeta');
+  const list = document.getElementById('statusList');
+  if(!list) return;
+
+  if(meta) meta.textContent = 'Checking status…';
+
+  try{
+    const r = await fetch(`${API_BASE}/api/status`, { cache: 'no-store' });
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+
+    const services = (data && data.services) ? data.services : {};
+    const updatedAt = (data && data.generated_at) ? String(data.generated_at) : '';
+
+    Object.keys(services).forEach((k)=>{
+      const item = services[k] || {};
+      const state = item.status || 'down';
+      const text = item.message || state;
+
+      const row = list.querySelector(`[data-svc="${k}"]`);
+      if(!row) return;
+
+      const dot = row.querySelector('.statusDot');
+      if(dot){
+        dot.classList.remove('status-ok','status-warn','status-down');
+        dot.classList.add(__statusClassFromState(state));
+      }
+
+      const t = row.querySelector(`[data-svc-text="${k}"]`);
+      if(t) t.textContent = text;
+    });
+
+    if(meta){
+      meta.textContent = updatedAt ? (`Last checked: ${updatedAt}`) : 'Last checked just now';
+    }
+  }catch(e){
+    // Mark everything as degraded/down if API cannot be reached
+    list.querySelectorAll('.statusRow').forEach((row)=>{
+      const dot = row.querySelector('.statusDot');
+      const t = row.querySelector('.statusText');
+      if(dot){
+        dot.classList.remove('status-ok','status-warn');
+        dot.classList.add('status-down');
+      }
+      if(t) t.textContent = 'Unavailable';
+    });
+    if(meta) meta.textContent = 'Status check failed. Please try again later.';
+  }
+}
+
+function __initStatusPage(){
+  __stopStatusPoll();
+  __refreshStatusOnce();
+  __statusPollTimer = setInterval(__refreshStatusOnce, 20000);
+}
+
+function setInfoPage(slug){
+  if(!infoSection || !infoTitleEl || !infoBodyEl) return;
+
+  const page = INFO_PAGES[slug];
+  if(!page) return;
+
+  // Hide other main views
+  feedView.style.display = 'none';
+  pricingSection.style.display = 'none';
+  if(profileSection) profileSection.style.display = 'none';
+
+  // Render content
+  infoTitleEl.textContent = page.title;
+  if(infoMetaEl) infoMetaEl.textContent = `Last updated: ${page.updated}`;
+  infoBodyEl.innerHTML = page.html;
+
+  if(slug === 'status') __initStatusPage(); else __stopStatusPoll();
+
+  infoSection.style.display = 'block';
+  window.scrollTo({ top: 0, behavior: 'instant' });
+}
+
+function setMainFeed(){
+  if(infoSection) infoSection.style.display = 'none';
+  __stopStatusPoll();
+  pricingSection.style.display = 'none';
+  if(profileSection) profileSection.style.display = 'none';
+  feedView.style.display = 'block';
+  window.scrollTo({ top: 0, behavior: 'instant' });
+}
 
   // Selected plan for the single CTA button under the cards
   let selectedPlan = (billingState?.plan || 'free').toLowerCase();
 
   function setPage(page){
+    // page: 'feed' | 'pricing' | 'info:<slug>'
     if(page === 'pricing'){
+      if(infoSection) infoSection.style.display = 'none';
       feedView.style.display = 'none';
+      if(profileSection) profileSection.style.display = 'none';
       pricingSection.style.display = 'block';
       window.scrollTo({ top: 0, behavior: 'instant' });
       const btn = document.getElementById('btnPricing');
       if(btn) btn.setAttribute('aria-current','page');
-    }else{
+      return;
+    }
+
+    if(page === 'profile'){
+      if(infoSection) infoSection.style.display = 'none';
+      feedView.style.display = 'none';
       pricingSection.style.display = 'none';
-      feedView.style.display = 'block';
+      if(profileSection) profileSection.style.display = 'block';
+      try{ window.scrollTo({ top: 0, behavior: 'instant' }); }catch{}
+      // Keep UI in sync
+      try{ updateProfileUI(); }catch{}
+      return;
+    }
+
+    if(page && page.startsWith('info:')){
+      const slug = page.slice('info:'.length);
       const btn = document.getElementById('btnPricing');
       if(btn) btn.removeAttribute('aria-current');
+      setInfoPage(slug);
+      return;
     }
+
+    // Default: main feed (with tabs/tracking inside)
+    const btn = document.getElementById('btnPricing');
+    if(btn) btn.removeAttribute('aria-current');
+    setMainFeed();
   }
 
   // Expose for other handlers (Tracking / Login, etc.)
   window.__setMainPage = setPage;
+
+window.__openInfoPage = (slug)=> setPage(`info:${slug}`);
+
+// Back button for info pages
+if(infoBackBtn){
+  infoBackBtn.addEventListener('click', ()=>{
+    // Go back to feed by default
+    location.hash = '#/';
+  });
+}
+
+// Hash routing for footer links and shareable URLs
+function routeFromHash(){
+  const h = String(location.hash || '');
+  if(h === '#/pricing' || h.startsWith('#/pricing')){
+    setPage('pricing');
+    return;
+  }
+
+  if(h === '#/account' || h === '#/profile' || h.startsWith('#/account') || h.startsWith('#/profile')){
+    setPage('profile');
+    return;
+  }
+  if(h === '#/tracking' || h.startsWith('#/tracking')){
+    // Ensure we are on the main feed view and then switch to Tracking tab
+    setPage('feed');
+    switchMode('fav');
+    return;
+  }
+  if(h === '#/contact') return setPage('info:contact');
+  if(h === '#/status') return setPage('info:status');
+  if(h === '#/privacy') return setPage('info:privacy');
+  if(h === '#/terms') return setPage('info:terms');
+  if(h === '#/cookies') return setPage('info:cookies');
+  if(h === '#/impressum') return setPage('info:impressum');
+
+  // Default
+  setPage('feed');
+}
+
+window.addEventListener('hashchange', routeFromHash);
+
 
   const btnPricing = document.getElementById('btnPricing');
   if(btnPricing){
@@ -1721,6 +2124,8 @@ function bindPricingUI(){
   const monthlyBtn = document.getElementById('billMonthly');
   const yearlyBtn  = document.getElementById('billYearly');
 
+
+  
   function syncIntervalUI(){
     const isMonthly = (billingInterval === 'monthly');
     if(monthlyBtn){
@@ -1947,6 +2352,124 @@ function updatePricingUI() {
   });
 }
 
+function _fmtPeriodEnd(iso){
+  if(!iso) return '';
+  try{
+    const d = new Date(String(iso));
+    if(Number.isNaN(d.getTime())) return '';
+    return d.toLocaleDateString(undefined, { year:'numeric', month:'short', day:'2-digit' });
+  }catch{
+    return '';
+  }
+}
+
+function _planLabel(plan){
+  const p = String(plan || 'free').toLowerCase();
+  if(p === 'pro') return 'Plus';
+  if(p === 'analyst') return 'Analyst';
+  return 'Free';
+}
+
+function updateProfileUI(){
+  const sec = document.getElementById('profileSection');
+  if(!sec) return;
+
+  const nameEl  = document.getElementById('profileName');
+  const emailEl = document.getElementById('profileEmail');
+
+  const planPill   = document.getElementById('profilePlanPill');
+  const statusPill = document.getElementById('profileStatusPill');
+  const renewText  = document.getElementById('profileRenewText');
+  const cancelHint = document.getElementById('profileCancelHint');
+
+  const btnManage = document.getElementById('profileManageBtn');
+  const btnCancel = document.getElementById('profileCancelBtn');
+  const btnResume = document.getElementById('profileResumeBtn');
+
+  const isAuthed = !!authState?.authenticated;
+  const user = authState?.user || null;
+
+  const name = isAuthed ? displayNameFromUser(user) : '—';
+  const email = isAuthed ? String(user?.email || '').trim() : '';
+
+  if(nameEl) nameEl.textContent = name;
+  if(emailEl) emailEl.textContent = email || '—';
+
+  const plan = String(billingState?.plan || 'free').toLowerCase();
+  const status = String(billingState?.status || 'active');
+  const cancelAt = !!billingState?.cancel_at_period_end;
+  const end = _fmtPeriodEnd(billingState?.current_period_end);
+
+  if(planPill) planPill.textContent = _planLabel(plan);
+  if(statusPill) statusPill.textContent = (status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Active');
+
+  // Actions
+  if(btnManage){
+    btnManage.disabled = !isAuthed;
+    btnManage.onclick = () => { location.hash = '#/pricing'; };
+  }
+
+  if(btnCancel) btnCancel.style.display = 'none';
+  if(btnResume) btnResume.style.display = 'none';
+  if(cancelHint) cancelHint.style.display = 'none';
+
+  if(!isAuthed){
+    if(renewText) renewText.textContent = 'Log in to manage your plan.';
+    return;
+  }
+
+  if(plan === 'free'){
+    if(renewText) renewText.textContent = 'You are on Free. Upgrade anytime to unlock premium features.';
+    return;
+  }
+
+  if(cancelAt){
+    if(renewText) renewText.textContent = end ? `Your subscription is set to cancel on ${end}.` : 'Your subscription is set to cancel at period end.';
+    if(btnResume){
+      btnResume.style.display = '';
+      btnResume.disabled = false;
+      btnResume.onclick = async ()=>{
+        try{
+          btnResume.disabled = true;
+          const r = await fetch(`${API_BASE}/api/billing/resume`, { method:'POST' });
+          const j = await r.json().catch(()=> ({}));
+          if(!r.ok) throw new Error(j?.detail || `HTTP ${r.status}`);
+          await refreshBillingState();
+        }catch(e){
+          alert(String(e?.message || e || 'Failed to resume subscription'));
+        }finally{
+          btnResume.disabled = false;
+        }
+      };
+    }
+    if(cancelHint){
+      cancelHint.style.display = '';
+      cancelHint.textContent = 'You will keep access until the end of your current billing period.';
+    }
+  }else{
+    if(renewText) renewText.textContent = end ? `Renews on ${end}.` : 'Renews automatically unless canceled.';
+    if(btnCancel){
+      btnCancel.style.display = '';
+      btnCancel.disabled = false;
+      btnCancel.onclick = async ()=>{
+        const ok = confirm('Cancel at period end? You will keep access until the end of the current billing period.');
+        if(!ok) return;
+        try{
+          btnCancel.disabled = true;
+          const r = await fetch(`${API_BASE}/api/billing/cancel`, { method:'POST' });
+          const j = await r.json().catch(()=> ({}));
+          if(!r.ok) throw new Error(j?.detail || `HTTP ${r.status}`);
+          await refreshBillingState();
+        }catch(e){
+          alert(String(e?.message || e || 'Failed to cancel subscription'));
+        }finally{
+          btnCancel.disabled = false;
+        }
+      };
+    }
+  }
+}
+
 async function startCheckout(plan, interval) {
   try {
     if (plan === 'free') {
@@ -2046,6 +2569,10 @@ function applyTabs() {
   if (showMoreWrap) showMoreWrap.style.display = isTracking ? "none" : "";
   if (btnRefresh) btnRefresh.style.display = isTracking ? "none" : "";
   if (selectedBar) selectedBar.style.display = isTracking ? "none" : "";
+
+  // Hide Top stories carousel (🔥) when in Tracking tab
+  const topStories = document.getElementById("topStories");
+  if (topStories) topStories.style.display = isTracking ? "none" : "";
 
   updateTrashZone();
   
@@ -2176,6 +2703,369 @@ function onImgErrorToFallback(imgEl) {
         <text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='#8a8a96' font-family='system-ui, -apple-system, Segoe UI, Roboto, Arial' font-size='20'>No related image available</text>
       </svg>`
     );
+}
+
+// -----------------------------
+// Top stories carousel (🔥)
+// Driven by server-side: item.is_trending
+// -----------------------------
+
+const topCarouselState = {
+  items: [],
+  index: 0,
+  timer: null,
+  paused: false,
+  inited: false,
+};
+
+function _topCarouselEls() {
+  return {
+    wrap: document.getElementById('topStories'),
+    root: document.getElementById('topCarousel'),
+    viewport: document.getElementById('topCarouselViewport'),
+    track: document.getElementById('topCarouselTrack'),
+    dots: document.getElementById('topCarouselDots'),
+    prev: document.getElementById('topCarouselPrev'),
+    next: document.getElementById('topCarouselNext'),
+  };
+}
+
+function _pickTopStories(feedItems) {
+  const arr = Array.isArray(feedItems) ? feedItems : [];
+
+  // Prefer items with server-side trending flag.
+  let tops = arr.filter(it => !!it?.is_trending);
+
+  // If none are trending (rare), fall back to most "important" items.
+  if (!tops.length) {
+    tops = [...arr].sort((a, b) => {
+      const ia = Number(a?.importance ?? 0);
+      const ib = Number(b?.importance ?? 0);
+      if (ia !== ib) return ib - ia;
+      const sa = Number(a?.sources_count ?? (a?.sources ? a.sources.length : 0));
+      const sb = Number(b?.sources_count ?? (b?.sources ? b.sources.length : 0));
+      if (sa !== sb) return sb - sa;
+      const ua = Date.parse(a?.updated_at || a?.latest_published_at || a?.created_at || '') || 0;
+      const ub = Date.parse(b?.updated_at || b?.latest_published_at || b?.created_at || '') || 0;
+      return ub - ua;
+    });
+  } else {
+    // Keep deterministic but put "bigger" events first.
+    tops = [...tops].sort((a, b) => {
+      const sa = Number(a?.sources_count ?? (a?.sources ? a.sources.length : 0));
+      const sb = Number(b?.sources_count ?? (b?.sources ? b.sources.length : 0));
+      if (sa !== sb) return sb - sa;
+      const ia = Number(a?.importance ?? 0);
+      const ib = Number(b?.importance ?? 0);
+      if (ia !== ib) return ib - ia;
+      const ua = Date.parse(a?.updated_at || a?.latest_published_at || a?.created_at || '') || 0;
+      const ub = Date.parse(b?.updated_at || b?.latest_published_at || b?.created_at || '') || 0;
+      return ub - ua;
+    });
+  }
+
+  // Keep it compact (premium hero, not a full list)
+  return tops.slice(0, 6);
+}
+
+function _topCarouselStop() {
+  if (topCarouselState.timer) {
+    clearInterval(topCarouselState.timer);
+    topCarouselState.timer = null;
+  }
+}
+
+function _topCarouselStart() {
+  _topCarouselStop();
+  if (!topCarouselState.items || topCarouselState.items.length <= 1) return;
+  topCarouselState.timer = setInterval(() => {
+    if (topCarouselState.paused) return;
+    topCarouselGo(topCarouselState.index + 1);
+  }, 6000);
+}
+
+function topCarouselGo(nextIndex) {
+  const els = _topCarouselEls();
+  if (!els.track || !els.root) return;
+
+  const n = topCarouselState.items.length;
+  if (!n) return;
+
+  let idx = Number(nextIndex) || 0;
+  if (idx < 0) idx = n - 1;
+  if (idx >= n) idx = 0;
+  topCarouselState.index = idx;
+
+  els.track.style.transform = `translateX(-${idx * 100}%)`;
+
+  // dots
+  if (els.dots) {
+    const dots = els.dots.querySelectorAll('.topDot');
+    dots.forEach((d, i) => {
+      if (i === idx) d.classList.add('on');
+      else d.classList.remove('on');
+    });
+  }
+}
+
+function _renderTopCarousel(items) {
+  const els = _topCarouselEls();
+  if (!els.root || !els.track || !els.dots || !els.wrap) return;
+
+  const list = Array.isArray(items) ? items : [];
+  topCarouselState.items = list;
+  topCarouselState.index = 0;
+
+  // If nothing to show, hide the whole block.
+  if (!list.length) {
+    els.wrap.style.display = 'none';
+    els.track.innerHTML = '';
+    els.dots.innerHTML = '';
+    _topCarouselStop();
+    return;
+  }
+  els.wrap.style.display = '';
+
+  // Build slides
+  els.track.innerHTML = '';
+  for (const it of list) {
+    const cid = Number(it?.cluster_id ?? it?.event_id ?? it?.id);
+    const title = String(it?.title || '').trim() || 'Top story';
+    const summary = String(it?.summary || '').trim();
+    const sourceName = pickPrimarySourceName(it);
+    const outlets = Number(it?.sources_count ?? (it?.sources ? it.sources.length : 0));
+    const imgUrl = getNewsImage(it);
+
+    const slide = document.createElement('div');
+    slide.className = 'topSlide';
+    slide.setAttribute('data-id', String(cid || ''));
+
+    const left = document.createElement('div');
+    left.className = 'topSlideLeft';
+
+    const kicker = document.createElement('div');
+    kicker.className = 'topKicker';
+    kicker.innerHTML = `<span class="dot"></span><span>Top story</span>`;
+
+    const h = document.createElement('h2');
+    h.className = 'topTitle';
+    h.textContent = title;
+
+    const p = document.createElement('p');
+    p.className = 'topSummary';
+    p.textContent = summary || 'AI summary is being prepared. Open the card to view details and sources.';
+
+    const meta = document.createElement('div');
+    meta.className = 'topMeta';
+    const pill = document.createElement('span');
+    pill.className = 'topMetaPill';
+    pill.innerHTML = `<span class="tiny">${escapeHtml(sourceName)}</span> · <span>${Number.isFinite(outlets) ? outlets : 0} outlets</span>`;
+    meta.appendChild(pill);
+
+    const cta = document.createElement('button');
+    cta.type = 'button';
+    cta.className = 'topCta';
+    cta.textContent = 'Open story';
+
+    const open = async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!cid) return;
+      // Open the same card from the feed (or inject and open if needed)
+      await ensureItemInFeedAndOpen(cid);
+    };
+
+    slide.addEventListener('click', open);
+    cta.addEventListener('click', open);
+
+    left.appendChild(kicker);
+    left.appendChild(h);
+    left.appendChild(p);
+    left.appendChild(meta);
+    left.appendChild(cta);
+
+    const right = document.createElement('div');
+    right.className = 'topSlideRight';
+
+    const img = document.createElement('img');
+    img.className = 'topImage';
+    img.alt = '';
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    if (imgUrl) img.src = imgUrl;
+    else onImgErrorToFallback(img);
+    img.onerror = () => onImgErrorToFallback(img);
+
+    const overlay = document.createElement('div');
+    overlay.className = 'topImageOverlay';
+
+    right.appendChild(img);
+    right.appendChild(overlay);
+
+    slide.appendChild(left);
+    slide.appendChild(right);
+    els.track.appendChild(slide);
+  }
+
+  // Dots
+  els.dots.innerHTML = '';
+  for (let i = 0; i < list.length; i++) {
+    const d = document.createElement('button');
+    d.type = 'button';
+    d.className = 'topDot' + (i === 0 ? ' on' : '');
+    d.setAttribute('aria-label', `Go to top story ${i + 1}`);
+    d.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      topCarouselGo(i);
+      _topCarouselStart();
+    });
+    els.dots.appendChild(d);
+  }
+
+  // Nav buttons
+  if (els.prev) {
+    els.prev.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      topCarouselGo(topCarouselState.index - 1);
+      _topCarouselStart();
+    };
+  }
+  if (els.next) {
+    els.next.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      topCarouselGo(topCarouselState.index + 1);
+      _topCarouselStart();
+    };
+  }
+
+  // Hover/focus pause
+  if (els.root && !topCarouselState.inited) {
+    topCarouselState.inited = true;
+
+    const pause = () => { topCarouselState.paused = true; };
+    const resume = () => { topCarouselState.paused = false; };
+    els.root.addEventListener('mouseenter', pause);
+    els.root.addEventListener('mouseleave', resume);
+    els.root.addEventListener('focusin', pause);
+    els.root.addEventListener('focusout', resume);
+
+    // Drag / swipe (touch + mouse)
+    let startX = 0;
+    let lastX = 0;
+    let startT = 0;
+    let lastT = 0;
+    let dragging = false;
+    let moved = false;
+
+    const isInteractiveTarget = (target) => {
+      if (!target || !(target instanceof Element)) return false;
+      // Don't hijack drags on buttons/links/inputs (e.g. "Open story", dots)
+      return Boolean(target.closest('a,button,input,textarea,select,[role="button"]'));
+    };
+
+    const widthPx = () => Math.max(1, els.viewport?.clientWidth || els.root?.clientWidth || 1);
+    const setDragTranslate = (dxPx) => {
+      const w = widthPx();
+      // Convert pixels -> % for smooth transforms (no layout reads in loops)
+      const dxPct = (dxPx / w) * 100;
+      const base = -topCarouselState.index * 100;
+      els.track.style.transition = 'none';
+      els.track.style.transform = `translate3d(${base + dxPct}%, 0, 0)`;
+    };
+    const snapBack = () => {
+      els.track.style.transition = 'transform 420ms cubic-bezier(.2,.9,.2,1)';
+      els.track.style.transform = `translate3d(${-topCarouselState.index * 100}%, 0, 0)`;
+    };
+
+    els.root.style.touchAction = 'pan-y'; // allow horizontal swipe, keep vertical scroll
+
+    els.root.addEventListener('pointerdown', (e) => {
+      if (e.button != null && e.button !== 0) return; // left button only
+      if (isInteractiveTarget(e.target)) return;
+      dragging = true;
+      moved = false;
+      startX = lastX = e.clientX;
+      startT = lastT = performance.now();
+      topCarouselState.paused = true;
+      // stop auto-advance while dragging
+      if (_topCarouselTimer) {
+        clearInterval(_topCarouselTimer);
+        _topCarouselTimer = null;
+      }
+      try { els.root.setPointerCapture(e.pointerId); } catch {}
+      els.root.classList.add('isDragging');
+    });
+
+    els.root.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - startX;
+      // simple damping on edges
+      const atStart = topCarouselState.index === 0;
+      const atEnd = topCarouselState.index === topCarouselState.items - 1;
+      let dxAdj = dx;
+      if ((atStart && dx > 0) || (atEnd && dx < 0)) dxAdj = dx * 0.35;
+      if (Math.abs(dxAdj) > 6) moved = true;
+      setDragTranslate(dxAdj);
+      lastX = e.clientX;
+      lastT = performance.now();
+    });
+
+    const endDrag = (e) => {
+      if (!dragging) return;
+      dragging = false;
+      els.root.classList.remove('isDragging');
+
+      const w = widthPx();
+      const dx = (e?.clientX ?? lastX) - startX;
+      const dt = Math.max(1, (performance.now() - startT));
+      const vx = dx / dt; // px per ms
+
+      // if user barely moved, just snap back and allow click
+      if (!moved) {
+        snapBack();
+        topCarouselState.paused = false;
+        _topCarouselStart();
+        return;
+      }
+
+      const threshold = w * 0.18;
+      const fling = Math.abs(vx) > 0.55;
+      if (dx > threshold || (fling && vx > 0)) topCarouselGo(topCarouselState.index - 1);
+      else if (dx < -threshold || (fling && vx < 0)) topCarouselGo(topCarouselState.index + 1);
+      else snapBack();
+
+      topCarouselState.paused = false;
+      _topCarouselStart();
+    };
+
+    els.root.addEventListener('pointerup', endDrag);
+    els.root.addEventListener('pointercancel', endDrag);
+
+    // Prevent accidental clicks after a drag
+    els.root.addEventListener('click', (e) => {
+      if (moved) {
+        e.preventDefault();
+        e.stopPropagation();
+        moved = false;
+      }
+    }, true);
+  }
+
+  // Reset position
+  topCarouselGo(0);
+  _topCarouselStart();
+}
+
+function updateTopStoriesCarousel(feedItems) {
+  try {
+    const tops = _pickTopStories(feedItems);
+    _renderTopCarousel(tops);
+  } catch (e) {
+    console.warn('Top carousel failed:', e);
+  }
 }
 
 function itemPassesFilters(item) {
@@ -3263,6 +4153,9 @@ renderCards(items, {
   animate: false,
 });
 
+  // Hero carousel under header (top stories 🔥)
+  updateTopStoriesCarousel(items);
+
 
   hasInitialFeedLoaded = true;
 
@@ -3471,6 +4364,50 @@ function bindUI() {
   // In the new UI we auto-apply on change.
   qs("country").onchange = qs("btnSave").onclick;
   qs("language").onchange = async () => { await setLanguage(qs("language").value); };
+  // Search (text OR URL)
+  const searchEl = qs("search");
+  const btnSearch = qs("btnSearch");
+
+  // Keep input in sync with state
+  if (searchEl) searchEl.value = state.q || "";
+
+  let __searchT = null;
+  async function applySearch({ reset } = { reset: true }){
+    if (!searchEl) return;
+    state.q = String(searchEl.value || "");
+    savePrefs();
+    setFeedExpanded(false);
+    if (state.mode === "feed") await fetchFeed({ reset: !!reset });
+    else await fetchFavorites();
+  }
+
+  function scheduleSearch(){
+    if (__searchT) clearTimeout(__searchT);
+    __searchT = setTimeout(() => { applySearch({ reset: true }); }, 250);
+  }
+
+  if (btnSearch) btnSearch.onclick = () => applySearch({ reset: true });
+
+  if (searchEl){
+    // live typing (debounced)
+    searchEl.addEventListener("input", scheduleSearch, { passive: true });
+    // paste should apply quickly
+    searchEl.addEventListener("paste", () => setTimeout(() => applySearch({ reset: true }), 0));
+    // Enter applies instantly
+    searchEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter"){
+        e.preventDefault();
+        if (__searchT) clearTimeout(__searchT);
+        applySearch({ reset: true });
+        searchEl.blur();
+      }
+      if (e.key === "Escape"){
+        searchEl.blur();
+      }
+    });
+  }
+
+
 
   // filters init
   syncFiltersStateToUI();
@@ -3839,6 +4776,7 @@ setBilling("monthly");
 const btnAccount = document.getElementById("btnAccount");
 const accountMenu = document.getElementById("accountMenu");
 
+const menuProfile = document.getElementById("menuProfile");
 const menuPricing = document.getElementById("menuPricing");
 const menuLogout = document.getElementById("menuLogout");
 
@@ -3860,14 +4798,21 @@ document.addEventListener("click", (e) => {
   }
 });
 
-// ✅ Pricing click
-menuPricing.addEventListener("click", () => {
-  accountMenu.classList.remove("open");
+// ✅ Profile click
+if(menuProfile){
+  menuProfile.addEventListener("click", () => {
+    accountMenu.classList.remove("open");
+    location.hash = '#/account';
+  });
+}
 
-  // вызвать твой Pricing экран
-  document.getElementById("pricingSection").style.display = "block";
-  document.getElementById("feedView").style.display = "none";
-});
+// ✅ Pricing click
+if(menuPricing){
+  menuPricing.addEventListener("click", () => {
+    accountMenu.classList.remove("open");
+    location.hash = '#/pricing';
+  });
+}
 
 // ✅ Logout click
 menuLogout.addEventListener("click", async () => {

@@ -14,7 +14,7 @@ try:
 except Exception:
     pass
 from fastapi import HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,6 +29,7 @@ from .ingest import run_ingest_cycle, process_fulltext_queue_once
 from .notify import notify_loop
 #from .routers.debug import router as debug_router
 from .routers.health import router as health_router
+from .routers.status import router as status_router
 from .routers.auth import router as auth_router
 from .routers.news import router as news_router
 from .routers.billing import router as billing_router
@@ -114,6 +115,7 @@ def favicon():
 
 # ---------- Routers ----------
 app.include_router(health_router)
+app.include_router(status_router)
 app.include_router(auth_router)
 app.include_router(news_router)
 app.include_router(alerts_router)
@@ -121,6 +123,24 @@ app.include_router(billing_router)
 app.include_router(stats_router)
 app.include_router(share_router)
 app.include_router(debug_router)
+
+# ---------- Friendly SPA routes ----------
+# These paths provide shareable URLs (e.g. /privacy) and redirect into the hash-based SPA.
+SPA_REDIRECTS = {
+    "/pricing": "/#/pricing",
+    "/tracking": "/#/tracking",
+    "/contact": "/#/contact",
+    "/status": "/#/status",
+    "/privacy": "/#/privacy",
+    "/terms": "/#/terms",
+    "/cookies": "/#/cookies",
+    "/impressum": "/#/impressum",
+}
+
+for _path, _target in SPA_REDIRECTS.items():
+    @app.get(_path, include_in_schema=False)
+    def _spa_redirect(_t: str = _target):
+        return RedirectResponse(url=_t)
 
 # Mount the frontend last so it doesn't swallow API routes (and /favicon.ico).
 app.mount("/", StaticFiles(directory="src/web", html=True), name="web")

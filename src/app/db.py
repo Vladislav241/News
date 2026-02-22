@@ -429,6 +429,7 @@ class Database:
                     stripe_customer_id TEXT,
                     stripe_subscription_id TEXT,
                     current_period_end TEXT,
+                    cancel_at_period_end BOOLEAN NOT NULL DEFAULT FALSE,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -436,6 +437,15 @@ class Database:
                 """
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_user_subs_plan ON user_subscriptions(plan);")
+
+            # Lightweight migration for older installs: add cancel_at_period_end if missing.
+            try:
+                conn.execute(
+                    "ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS cancel_at_period_end BOOLEAN NOT NULL DEFAULT FALSE"
+                )
+            except Exception:
+                # Column likely already exists.
+                pass
 
             conn.execute(
                 """
@@ -473,6 +483,7 @@ class Database:
         stripe_customer_id: Optional[str] = None,
         stripe_subscription_id: Optional[str] = None,
         current_period_end: Optional[str] = None,
+        cancel_at_period_end: bool = False,
     ) -> None:
         """Upsert subscription row."""
         conn = self.connect()
@@ -487,6 +498,7 @@ class Database:
                         stripe_customer_id = COALESCE(?, stripe_customer_id),
                         stripe_subscription_id = COALESCE(?, stripe_subscription_id),
                         current_period_end = COALESCE(?, current_period_end),
+                        cancel_at_period_end = ?,
                         updated_at = ?
                     WHERE user_id = ?
                     """,
@@ -497,6 +509,7 @@ class Database:
                         stripe_customer_id,
                         stripe_subscription_id,
                         current_period_end,
+                       bool(cancel_at_period_end),
                         now,
                         int(user_id),
                     ),
@@ -505,8 +518,8 @@ class Database:
                 conn.execute(
                     """
                     INSERT INTO user_subscriptions
-                    (user_id, plan, status, billing_interval, stripe_customer_id, stripe_subscription_id, current_period_end, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (user_id, plan, status, billing_interval, stripe_customer_id, stripe_subscription_id, current_period_end, cancel_at_period_end, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         int(user_id),
@@ -516,6 +529,7 @@ class Database:
                         stripe_customer_id,
                         stripe_subscription_id,
                         current_period_end,
+                        bool(cancel_at_period_end),
                         now,
                         now,
                     ),
