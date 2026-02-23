@@ -452,49 +452,6 @@ function beginModeTransition(toMode){
   wrap.classList.add('page-transition', (toMode === 'fav') ? 'to-tracking' : 'to-feed');
 }
 
-// ----------------------------
-// Premium brand overlay during view transitions (no new files)
-// ----------------------------
-let __brandOverlayCleanupT = null;
-let __brandOverlayStartTs = 0;
-
-function brandOverlayIn(toMode){
-  const overlay = document.getElementById('brandOverlay');
-  if(!overlay) return;
-  const sub = overlay.querySelector('.brandOverlaySub');
-  if(sub){
-    sub.textContent = (toMode === 'fav') ? 'Opening Tracking…' : 'Back to Feed…';
-  }
-  document.body.classList.remove('brand-overlay-out');
-  document.body.classList.add('brand-overlay-in');
-  __brandOverlayStartTs = performance.now();
-}
-
-function brandOverlayOut(){
-  const overlay = document.getElementById('brandOverlay');
-  if(!overlay) return;
-
-  // Ensure the overlay is visible long enough to be readable (premium feel)
-  const elapsed = performance.now() - (__brandOverlayStartTs || 0);
-  const minHold = 650; // ms
-  const delay = elapsed < minHold ? (minHold - elapsed) : 0;
-
-  const doOut = ()=>{
-    document.body.classList.remove('brand-overlay-in');
-    document.body.classList.add('brand-overlay-out');
-
-    if(__brandOverlayCleanupT) window.clearTimeout(__brandOverlayCleanupT);
-    __brandOverlayCleanupT = window.setTimeout(()=>{
-      document.body.classList.remove('brand-overlay-out');
-    }, 520);
-  };
-
-  if(delay > 0){
-    window.setTimeout(doOut, delay);
-  }else{
-    doOut();
-  }
-}
 
 
 function endModeTransition(){
@@ -535,8 +492,6 @@ async function switchMode(targetMode){
 
   __modeAnimating = true;
 
-  // Show premium brand overlay while the next view loads
-  brandOverlayIn(targetMode);
 
   try{
     // 1) “page out” анимация
@@ -570,8 +525,6 @@ async function switchMode(targetMode){
       await fetchFeed({ quiet: true, reset: true });
     }
 
-    // 5) Hide brand overlay (let it fade out while the page animates in)
-    brandOverlayOut();
 
     // 6) “page in” анимация
     endModeTransition();
@@ -580,8 +533,6 @@ async function switchMode(targetMode){
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
   } finally {
-    // Safety: never leave overlay stuck
-    brandOverlayOut();
     window.setTimeout(()=>{ __modeAnimating = false; }, 180);
   }
 }
@@ -820,10 +771,12 @@ function syncFiltersStateToUI() {
 }
 
 function syncThumbToggleUI() {
-  const btn = document.getElementById("thumbToggle");
-  if (!btn) return;
-  btn.classList.toggle("on", !!state.showThumbs);
-  btn.setAttribute("aria-checked", state.showThumbs ? "true" : "false");
+  const el = document.getElementById("thumbToggle");
+  if (!el) return;
+
+  // Checkbox switch (same style as email toggle)
+  el.checked = !!state.showThumbs;
+
   const label = document.querySelector(".thumbToggleLabel");
   if (label) {
     label.textContent = state.showThumbs ? t("ui.hide_thumbs","Hide thumbnails") : t("ui.show_thumbs","Show thumbnails");
@@ -930,26 +883,62 @@ async function fetchTrustHistory(clusterId, limit = 60) {
 
 
 // Build SVG line chart for trust score history (0..100)
-function _catmullRomToBezierPath(coords) {
-  // coords: [{x,y}, ...]
+function _monotoneXToBezierPath(coords) {
+  // Monotone cubic interpolation in X (like d3.curveMonotoneX)
+  // Prevents overshoot/loops and avoids the line 'going backwards'.
   if (!coords || coords.length < 2) return '';
-  if (coords.length === 2) {
-    const a = coords[0], b = coords[1];
+  const pts = coords;
+  if (pts.length === 2) {
+    const a = pts[0], b = pts[1];
     return `M ${a.x.toFixed(2)} ${a.y.toFixed(2)} L ${b.x.toFixed(2)} ${b.y.toFixed(2)}`;
   }
-  const pts = coords;
-  let d = `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = pts[i - 1] || pts[i];
-    const p1 = pts[i];
-    const p2 = pts[i + 1];
-    const p3 = pts[i + 2] || p2;
 
-    const c1x = p1.x + (p2.x - p0.x) / 6;
-    const c1y = p1.y + (p2.y - p0.y) / 6;
-    const c2x = p2.x - (p3.x - p1.x) / 6;
-    const c2y = p2.y - (p3.y - p1.y) / 6;
-    d += ` C ${c1x.toFixed(2)} ${c1y.toFixed(2)} ${c2x.toFixed(2)} ${c2y.toFixed(2)} ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+  // Ensure increasing X (fallback: sort + stable tie-break)
+  const sorted = pts.slice().sort((a, b) => (a.x - b.x) || (a.y - b.y));
+
+  const n = sorted.length;
+  const dx = new Array(n - 1);
+  const dy = new Array(n - 1);
+  const slope = new Array(n - 1);
+  for (let i = 0; i < n - 1; i++) {
+    dx[i] = sorted[i + 1].x - sorted[i].x;
+    dy[i] = sorted[i + 1].y - sorted[i].y;
+    slope[i] = dx[i] ? (dy[i] / dx[i]) : 0;
+  }
+
+  // Tangents
+  const m = new Array(n);
+  m[0] = slope[0];
+  for (let i = 1; i < n - 1; i++) m[i] = (slope[i - 1] + slope[i]) / 2;
+  m[n - 1] = slope[n - 2];
+
+  // Fritsch–Carlson adjustment (keeps the curve from overshooting)
+  for (let i = 0; i < n - 1; i++) {
+    if (slope[i] === 0) {
+      m[i] = 0;
+      m[i + 1] = 0;
+      continue;
+    }
+    const a = m[i] / slope[i];
+    const b = m[i + 1] / slope[i];
+    const h = Math.hypot(a, b);
+    if (h > 3) {
+      const t = 3 / h;
+      m[i] = t * a * slope[i];
+      m[i + 1] = t * b * slope[i];
+    }
+  }
+
+  let d = `M ${sorted[0].x.toFixed(2)} ${sorted[0].y.toFixed(2)}`;
+  for (let i = 0; i < n - 1; i++) {
+    const p0 = sorted[i];
+    const p1 = sorted[i + 1];
+    const h = (p1.x - p0.x);
+    const c1x = p0.x + h / 3;
+    const c1y = p0.y + m[i] * h / 3;
+    const c2x = p1.x - h / 3;
+    const c2y = p1.y - m[i + 1] * h / 3;
+    d += ` C ${c1x.toFixed(2)} ${c1y.toFixed(2)} ${c2x.toFixed(2)} ${c2y.toFixed(2)} ${p1.x.toFixed(2)} ${p1.y.toFixed(2)}`;
   }
   return d;
 }
@@ -965,7 +954,15 @@ function _fmtTickDate(ts) {
 }
 
 function buildTrustHistorySvg(points) {
-  const pts = Array.isArray(points) ? points : [];
+  const ptsRaw = Array.isArray(points) ? points : [];
+  if (!ptsRaw.length) return '';
+
+  // Sort by timestamp so the line never jumps 'back in time'.
+  // Also drop invalid timestamps.
+  const pts = ptsRaw
+    .map(p => ({ ...p, _t: Date.parse(p.ts) }))
+    .filter(p => Number.isFinite(p._t))
+    .sort((a, b) => a._t - b._t);
   if (!pts.length) return '';
 
   const isSmall = (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-width: 720px)').matches);
@@ -1002,21 +999,50 @@ function buildTrustHistorySvg(points) {
   }).join('');
 
   const coords = pts.map((p) => ({ x: xFor(p.ts), y: yFor(p.score), meta: p }));
-  const pathD = _catmullRomToBezierPath(coords);
+  // Monotone curve (no overshoot, no backtracking)
+  const pathD = _monotoneXToBezierPath(coords);
 
-  // x-axis ticks: up to 5 labels based on points
-  const tickIdx = [];
-  if (coords.length >= 1) tickIdx.push(0);
-  if (coords.length >= 3) tickIdx.push(Math.floor((coords.length - 1) * 0.33));
-  if (coords.length >= 4) tickIdx.push(Math.floor((coords.length - 1) * 0.5));
-  if (coords.length >= 5) tickIdx.push(Math.floor((coords.length - 1) * 0.66));
-  if (coords.length >= 2) tickIdx.push(coords.length - 1);
-  const uniqTicks = Array.from(new Set(tickIdx)).sort((a,b)=>a-b).slice(0,5);
-  const xTicks = uniqTicks.map((i) => {
-    const c = coords[i];
-    const label = _fmtTickDate(c.meta.ts);
+  // x-axis ticks: time-based + collision-avoidance (prevents label stacking)
+  const maxTickCount = isSmall ? 4 : 5;
+  const minPx = isSmall ? 78 : 92;
+
+  const tickTimes = [];
+  if (maxT === minT) {
+    tickTimes.push(minT);
+  } else {
+    for (let i = 0; i < maxTickCount; i++) {
+      const t = minT + (i / (maxTickCount - 1)) * (maxT - minT);
+      tickTimes.push(t);
+    }
+  }
+
+  const ticks = [];
+  let lastX = -Infinity;
+  let lastLabel = null;
+  for (const t of tickTimes) {
+    const x = padL + ((t - minT) / (maxT - minT || 1)) * (W - padL - padR);
+    const label = _fmtTickDate(t);
+    if (!label) continue;
+    if (label === lastLabel) continue;
+    if (x - lastX < minPx) continue;
+    ticks.push({ x, label });
+    lastX = x;
+    lastLabel = label;
+  }
+
+  // Always keep first + last visible
+  if (ticks.length >= 2) {
+    ticks[0].x = padL;
+    ticks[ticks.length - 1].x = W - padR;
+  } else if (ticks.length === 1) {
+    ticks[0].x = padL + (W - padL - padR) / 2;
+  } else {
+    ticks.push({ x: padL + (W - padL - padR) / 2, label: _fmtTickDate(minT) });
+  }
+
+  const xTicks = ticks.map((t) => {
     return `
-      <text class="xTick" x="${c.x.toFixed(2)}" y="${(H - 10).toFixed(2)}" text-anchor="middle">${escapeHtml(label)}</text>
+      <text class="xTick" x="${t.x.toFixed(2)}" y="${(H - 10).toFixed(2)}" text-anchor="middle">${escapeHtml(t.label)}</text>
     `;
   }).join('');
 
@@ -1031,8 +1057,8 @@ function buildTrustHistorySvg(points) {
     const enc = encodeURIComponent(JSON.stringify(meta));
     return `
       <g class="pt" data-meta="${enc}">
-        <circle class="ptHalo" cx="${c.x}" cy="${c.y}" r="14"></circle>
-        <circle class="ptDot" cx="${c.x}" cy="${c.y}" r="5"></circle>
+        <circle class="ptHalo" cx="${c.x}" cy="${c.y}" r="0"></circle>
+        <circle class="ptDot" cx="${c.x}" cy="${c.y}" r="9"></circle>
       </g>
     `;
   }).join('');
@@ -1303,23 +1329,43 @@ function closeAuthModal() {
 
 function updateAccountPlanPill() {
   const pill = document.getElementById('accountPlanPill');
-  if (!pill) return;
+  const menuBadge = document.getElementById('menuPlanBadge');
 
-  // Only show for paid plans.
+  // Not logged in -> hide both
   if (!authState.authenticated) {
-    pill.style.display = 'none';
+    if (pill) pill.style.display = 'none';
+    if (menuBadge) menuBadge.style.display = 'none';
     return;
   }
 
-  const plan = (billingState?.plan || 'free').toLowerCase();
-  if (plan === 'pro') {
-    pill.textContent = 'PRO';
-    pill.style.display = 'inline-flex';
-  } else if (plan === 'analyst') {
-    pill.textContent = 'ANALYST';
-    pill.style.display = 'inline-flex';
-  } else {
-    pill.style.display = 'none';
+  const plan = String((billingState && billingState.plan) ? billingState.plan : 'free').toLowerCase();
+
+  // Header pill: only show for paid plans (keeps header clean on mobile)
+  if (pill) {
+    if (plan === 'pro') {
+      pill.textContent = 'PRO';
+      pill.style.display = 'inline-flex';
+    } else if (plan === 'analyst') {
+      pill.textContent = 'ANALYST';
+      pill.style.display = 'inline-flex';
+    } else {
+      pill.style.display = 'none';
+    }
+  }
+
+  // Account menu badge: show for ALL plans (Free/Pro/Analyst) incl. mobile
+  if (menuBadge) {
+    menuBadge.classList.remove('isPro', 'isAnalyst');
+    if (plan === 'pro') {
+      menuBadge.textContent = 'PRO';
+      menuBadge.classList.add('isPro');
+    } else if (plan === 'analyst') {
+      menuBadge.textContent = 'ANALYST';
+      menuBadge.classList.add('isAnalyst');
+    } else {
+      menuBadge.textContent = 'FREE';
+    }
+    menuBadge.style.display = 'inline-flex';
   }
 }
 
@@ -2796,6 +2842,9 @@ function topCarouselGo(nextIndex) {
   if (idx >= n) idx = 0;
   topCarouselState.index = idx;
 
+  // Ensure we animate slide changes even after a drag (dragging sets transition:none).
+  // Let the CSS transition apply by clearing inline override.
+  els.track.style.transition = '';
   els.track.style.transform = `translateX(-${idx * 100}%)`;
 
   // dots
@@ -3004,7 +3053,7 @@ function _renderTopCarousel(items) {
       const dx = e.clientX - startX;
       // simple damping on edges
       const atStart = topCarouselState.index === 0;
-      const atEnd = topCarouselState.index === topCarouselState.items - 1;
+      const atEnd = topCarouselState.index === (topCarouselState.items?.length ? (topCarouselState.items.length - 1) : 0);
       let dxAdj = dx;
       if ((atStart && dx > 0) || (atEnd && dx < 0)) dxAdj = dx * 0.35;
       if (Math.abs(dxAdj) > 6) moved = true;
@@ -4580,8 +4629,8 @@ function bindUI() {
   const thumbToggle = document.getElementById('thumbToggle');
   if (thumbToggle) {
     syncThumbToggleUI();
-    thumbToggle.onclick = () => {
-      state.showThumbs = !state.showThumbs;
+    thumbToggle.onchange = () => {
+      state.showThumbs = !!thumbToggle.checked;
       saveThumbPrefs();
       syncThumbToggleUI();
       // Re-render current list (no network)
@@ -4590,7 +4639,7 @@ function bindUI() {
       } else if (state.mode === 'fav') {
         renderCards(lastFavItems, { incremental: false });
       }
-    };
+        };
   }
 
   // -----------------------------
@@ -4615,8 +4664,9 @@ function bindUI() {
     btnTracking.onclick = (e) => {
       e.preventDefault();
       e.stopPropagation();
-      // Toggle between views
-      void setMode(state.mode === 'fav' ? 'feed' : 'fav');
+      // Always open Tracking.
+      // Do NOT toggle back to Feed on a second tap — this was causing accidental exits.
+      if (state.mode !== 'fav') void setMode('fav');
     };
   }
 
@@ -4731,8 +4781,10 @@ async function main() {
   // cooldown UI tick (UI only; keep it light)
   setInterval(tickCooldownUI, 1000);
 
-  // Enable premium swipe navigation between Feed and Tracking
-  setupSwipeNavigation();
+  // NOTE: Disabled page-level left/right swipe navigation (Feed <-> Tracking)
+  // because it conflicts with carousel/news swipes on mobile.
+  // Users should switch views only via the Tracking button.
+  // setupSwipeNavigation();
 }
 
 const monthlyBtn = document.getElementById("billMonthly");

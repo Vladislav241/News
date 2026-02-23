@@ -325,6 +325,22 @@
       align-items:center;
       z-index: 2;
     }
+
+    /* Desktop: keep dots inside the left (white) content block so they don't sit on top of photos */
+    @media (min-width: 861px){
+      .topDots{
+        left: 34px;
+        right: 48%; /* ~right edge of the left column */
+        bottom: 18px;
+        width: auto;
+        /* Keep dots *inside* the white column but avoid adding a new white background behind them */
+        padding: 0;
+        border-radius: 0;
+        background: transparent;
+        border: none;
+        box-shadow: none;
+      }
+    }
     .topDot{
   width: 12px;
   height: 12px;
@@ -559,15 +575,15 @@
     .trustTooltip .ttLabel{ color: var(--muted); }
     .trustChartHint{ margin-top: 10px; color: rgba(0,0,0,0.55); font-size: 15px; }
     .trustChartSvg text{ fill: rgba(0,0,0,0.28); font-size: 14px; }
-    .trustChartSvg .xTick{ fill: rgba(0,0,0,0.28); font-size: 14px; }
+    .trustChartSvg .xTick{ fill: rgba(0,0,0,0.28); font-size: 13px; }
     .trustChartSvg .gridLine{ stroke: rgba(0,0,0,0.10); stroke-width: 1; }
     .trustChartSvg .axisLine{ stroke: rgba(0,0,0,0.16); stroke-width: 1; }
     .trustChartSvg .hoverLine{ stroke: rgba(0,0,0,0.24); stroke-width: 2; stroke-dasharray: 6 8; }
-    .trustChartSvg .line{ fill: none; stroke: rgba(0,0,0,0.62); stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+    .trustChartSvg .line{ fill: none; stroke: #6F6F6F; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
     .trustChartSvg .pt{ cursor: pointer; pointer-events: all; }
-    .trustChartSvg .ptDot{ fill: rgba(0,0,0,0.86); }
-    .trustChartSvg .ptHalo{ fill: rgba(0,0,0,0.08); }
-    .trustChartSvg .pt.active .ptHalo{ fill: rgba(0,0,0,0.12); }
+    .trustChartSvg .ptDot{ fill: #46494E;  stroke-width: 4; }
+    .trustChartSvg .ptHalo{ fill: rgba(0,0,0,0.06); }
+    .trustChartSvg .pt.active .ptHalo{ fill: rgba(0,0,0,0.10); }
 
     .newsCard.isLow .delta.up{ color: #22c55e; }
     .newsCard.isLow .delta.down{ color: #ef4444; }
@@ -1826,6 +1842,10 @@
   border: none;
   background: transparent;
   text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 
   padding: 12px 14px;
   border-radius: 12px;
@@ -1859,6 +1879,38 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+/* Plan badge in Account menu (visible on mobile too) */
+.menuPlanBadge{
+  margin-left: 8px;
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  border: 1px solid rgba(0,0,0,.14);
+  background: rgba(0,0,0,.04);
+  color: rgba(0,0,0,.78);
+}
+.menuPlanBadge.isPro{
+  background: rgba(0,0,0,.10);
+  border-color: rgba(0,0,0,.18);
+  color: #111;
+}
+.menuPlanBadge.isAnalyst{
+  background: rgba(17,17,19,.12);
+  border-color: rgba(17,17,19,.22);
+  color: #111113;
+}
+
+
+/* Mobile: keep header from overflowing when the plan pill appears */
+@media (max-width: 640px){
+  .accountPlanPill{ display:none !important; }
+  .loginBtn{ max-width: 150px; overflow:hidden; }
+  .accountName{ max-width: 68px; overflow:hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 
     /* --------------------
@@ -2263,7 +2315,7 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
   .headerInner{
     padding: 14px 12px;
     display: grid;
-    grid-template-columns: 1fr auto 1fr;
+    grid-template-columns: 1fr auto auto;
     align-items: center;
     gap: 10px;
   }
@@ -2803,18 +2855,41 @@ body.brand-overlay-out .brandOverlay{
 
 .viewShade{
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0; /* cover footer during transition */
-  background: rgba(15,15,17,0.06);
+  inset: 0;
+  background: rgba(255,255,255,0.98);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 420ms cubic-bezier(0.22,1,0.36,1);
-  backdrop-filter: blur(14px) saturate(1.15);
-  -webkit-backdrop-filter: blur(14px) saturate(1.15);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 220ms cubic-bezier(0.22,1,0.36,1);
 }
 body.view-switching .viewShade{ opacity: 1; }
+
+/* Premium dot loader (black dots bouncing one-by-one) */
+.dotLoader{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.dotLoader span{
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #111113;
+  opacity: .85;
+  transform: translateY(0);
+  animation: dotBounce 900ms ease-in-out infinite;
+}
+.dotLoader span:nth-child(2){ animation-delay: 150ms; }
+.dotLoader span:nth-child(3){ animation-delay: 300ms; }
+
+@keyframes dotBounce{
+  0%, 100% { transform: translateY(0); opacity: .55; }
+  35% { transform: translateY(-7px); opacity: .95; }
+  70% { transform: translateY(0); opacity: .75; }
+}
 
 /* Base state */
 #feedView{
@@ -2824,10 +2899,7 @@ body.view-switching .viewShade{ opacity: 1; }
 }
 
 /* When switching, make it feel like a premium “page” floating above */
-body.view-switching #feedView{
-  box-shadow: 0 22px 90px rgba(0,0,0,0.20);
-  border-radius: 24px;
-}
+body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
 
 /* "Page out" (we add .page-transition + direction class) */
 #feedView.page-transition{
@@ -3340,7 +3412,7 @@ body.view-switching #feedView{
 
         <div class="accountMenuDivider"></div>
 
-        <button id="menuProfile" type="button">Profile</button>
+        <button id="menuProfile" type="button"><span>Profile</span><span id="menuPlanBadge" class="menuPlanBadge" style="display:none;">FREE</span></button>
         <button id="menuPricing" type="button">Pricing</button>
         <button id="menuLogout" type="button">Log out</button>
       </div>
@@ -3353,13 +3425,8 @@ body.view-switching #feedView{
   </header>
 
   <!-- Backdrop used by the Feed <-> Tracking page transition -->
-  <div id="viewShade" class="viewShade" aria-hidden="true"></div>
-  <div id="brandOverlay" class="brandOverlay" aria-hidden="true">
-    <div class="brandOverlayInner">
-      <img class="brandOverlayLogo" src="/static/icons/Logo.svg" alt="">
-      <div class="brandOverlayText">
-        <div class="brandOverlayTitle">CHECKNE.</div>
-        <div class="brandOverlaySub">Loading…</div>
+  <div id="viewShade" class="viewShade" aria-hidden="true"><div class="dotLoader" aria-hidden="true"><span></span><span></span><span></span></div></div>
+<div class="brandOverlaySub">Loading…</div>
       </div>
     </div>
   </div>
@@ -3459,9 +3526,7 @@ body.view-switching #feedView{
         <div class="tags" id="tags"></div>
         <div class="thumbToggleWrap" aria-label="Миниатюры">
           <div class="thumbToggleLabel" data-i18n="ui.miniatures">Miniatures</div>
-          <button id="thumbToggle" class="thumbToggle" type="button" role="switch" aria-checked="false" title="Show/hide thumbnails" data-i18n-title="ui.toggle_thumbs_title">
-            <span class="thumbToggleDot"></span>
-          </button>
+          <label class="switch" aria-label="Show/hide thumbnails"><input id="thumbToggle" type="checkbox" /><span class="slider"></span></label>
         </div>
       </div>
     </div>
