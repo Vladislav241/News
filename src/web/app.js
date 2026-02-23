@@ -1073,12 +1073,20 @@ function buildTrustHistorySvg(points) {
   const plotW = (W - padL - padR);
   const plotH = (H - padT - padB);
 
+  // The plot is clipped to rounded corners. However, the line stroke and dot radius
+  // extend beyond the mathematical plot area (e.g., score=100 sits exactly at padT),
+  // which can make the topmost segment look "cut". Expand the clip region slightly
+  // while keeping gestures limited to the visual plot area.
+  const CLIP_PAD = 12;
+  const clipY = Math.max(0, plotY - CLIP_PAD);
+  const clipH = Math.min(H - clipY, plotH + CLIP_PAD);
+
   return `
   <svg class="trustChartSvg" viewBox="0 0 ${W} ${H}" width="100%" height="260" role="img" aria-label="Trust score history chart"
        data-plot-left="${plotX}" data-plot-right="${plotX + plotW}" data-view-w="${W}" data-view-h="${H}">
     <defs>
       <clipPath id="${clipId}">
-        <rect x="${plotX}" y="${plotY}" width="${plotW}" height="${plotH}" rx="12" ry="12"></rect>
+        <rect x="${plotX}" y="${clipY}" width="${plotW}" height="${clipH}" rx="12" ry="12"></rect>
       </clipPath>
     </defs>
 
@@ -5513,7 +5521,16 @@ function initTrustHistoryZoom(chartCard) {
     const MAX_ZOOM = 20;
 
     // per-chart state
-    const st = { sx: 1, tx: 0, dragging: false, dragStartX: 0, txStart: 0, pinch: null };
+    const st = {
+      sx: 1,
+      tx: 0,
+      dragging: false,
+      dragStartX: 0,
+      txStart: 0,
+      pinch: null,
+      // Remember the last interaction point so +/- zoom from where the user focused.
+      lastViewX: (plotLeft + plotRight) / 2,
+    };
 
     // Keep dots visually circular when we zoom only along X.
     // Without compensation, scaling the plot group on X turns circles into ellipses.
@@ -5559,6 +5576,12 @@ function initTrustHistoryZoom(chartCard) {
       apply();
     }
 
+    function rememberFocusFromClientX(clientX) {
+      // Keep focus inside the plot area for nicer behavior.
+      const viewX = clientXToViewBoxX(clientX);
+      st.lastViewX = clamp(viewX, plotLeft, plotRight);
+    }
+
     function reset() {
       st.sx = 1;
       st.tx = 0;
@@ -5572,8 +5595,9 @@ function initTrustHistoryZoom(chartCard) {
     wrap.querySelectorAll('.trustChartControls .trustCtl').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         const act = btn.getAttribute('data-action');
-        if (act === 'zoomIn') zoomAt((plotLeft + plotRight) / 2, 1.25);
-        else if (act === 'zoomOut') zoomAt((plotLeft + plotRight) / 2, 1 / 1.25);
+        const anchor = Number.isFinite(st.lastViewX) ? st.lastViewX : (plotLeft + plotRight) / 2;
+        if (act === 'zoomIn') zoomAt(anchor, 1.25);
+        else if (act === 'zoomOut') zoomAt(anchor, 1 / 1.25);
         else reset();
         e.preventDefault();
         e.stopPropagation();
@@ -5587,6 +5611,7 @@ function initTrustHistoryZoom(chartCard) {
       const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
       if (!inside) return;
       e.preventDefault();
+      rememberFocusFromClientX(e.clientX);
       const viewX = clientXToViewBoxX(e.clientX);
       const factor = (e.deltaY < 0) ? 1.18 : (1 / 1.18);
       zoomAt(viewX, factor);
@@ -5594,6 +5619,10 @@ function initTrustHistoryZoom(chartCard) {
 
     // Drag to pan (Pointer Events)
     panLayer.addEventListener('pointerdown', (e) => {
+      // Always remember where the user touched/clicked, so subsequent +/- zoom
+      // feels anchored to their intent.
+      rememberFocusFromClientX(e.clientX);
+
       if (st.sx <= 1.001) return; // no pan when not zoomed
       st.dragging = true;
       st.dragStartX = e.clientX;
@@ -5605,6 +5634,7 @@ function initTrustHistoryZoom(chartCard) {
     });
     panLayer.addEventListener('pointermove', (e) => {
       if (!st.dragging) return;
+      rememberFocusFromClientX(e.clientX);
       const r = svg.getBoundingClientRect();
       const dxPx = e.clientX - st.dragStartX;
       // Convert screen px to viewBox units
@@ -5629,6 +5659,7 @@ function initTrustHistoryZoom(chartCard) {
         const a = e.touches[0], b = e.touches[1];
         const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
         const midX = (a.clientX + b.clientX) / 2;
+        rememberFocusFromClientX(midX);
         st.pinch = { dist, sx: st.sx, tx: st.tx, midViewX: clientXToViewBoxX(midX) };
       }
     }, { passive: true });
