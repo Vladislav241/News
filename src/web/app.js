@@ -947,11 +947,13 @@ function _fmtTickDate(ts) {
   try {
     const d = new Date(ts);
     // like "07 Feb"
-    return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
+    return d.toLocaleDateString('en-US', { day: '2-digit', month: 'short' });
   } catch {
     return '';
   }
 }
+
+let _trustChartUid = 0;
 
 function buildTrustHistorySvg(points) {
   const ptsRaw = Array.isArray(points) ? points : [];
@@ -1001,6 +1003,9 @@ function buildTrustHistorySvg(points) {
   const coords = pts.map((p) => ({ x: xFor(p.ts), y: yFor(p.score), meta: p }));
   // Monotone curve (no overshoot, no backtracking)
   const pathD = _monotoneXToBezierPath(coords);
+
+  const uid = (++_trustChartUid);
+  const clipId = `trustClip_${uid}`;
 
   // x-axis ticks: time-based + collision-avoidance (prevents label stacking)
   const maxTickCount = isSmall ? 4 : 5;
@@ -1063,13 +1068,35 @@ function buildTrustHistorySvg(points) {
     `;
   }).join('');
 
+  const plotX = padL;
+  const plotY = padT;
+  const plotW = (W - padL - padR);
+  const plotH = (H - padT - padB);
+
   return `
-  <svg class="trustChartSvg" viewBox="0 0 ${W} ${H}" width="100%" height="260" role="img" aria-label="Trust score history chart">
+  <svg class="trustChartSvg" viewBox="0 0 ${W} ${H}" width="100%" height="260" role="img" aria-label="Trust score history chart"
+       data-plot-left="${plotX}" data-plot-right="${plotX + plotW}" data-view-w="${W}" data-view-h="${H}">
+    <defs>
+      <clipPath id="${clipId}">
+        <rect x="${plotX}" y="${plotY}" width="${plotW}" height="${plotH}" rx="12" ry="12"></rect>
+      </clipPath>
+    </defs>
+
     ${grid}
     <line class="axisLine" x1="${padL}" y1="${padT}" x2="${padL}" y2="${H - padB}"></line>
-    <line class="hoverLine" x1="${padL}" y1="${padT}" x2="${padL}" y2="${H - padB}" style="display:none;"></line>
-    <path class="line" d="${pathD}"></path>
-    ${circles}
+
+    <!-- Pan/zoom gesture layer (behind dots) -->
+    <rect class="trustPanLayer" x="${plotX}" y="${plotY}" width="${plotW}" height="${plotH}" fill="transparent"></rect>
+
+    <!-- Plot layer is clipped + transformed for zoom/pan -->
+    <g class="trustPlot" clip-path="url(#${clipId})">
+      <g class="trustPlotXform" transform="matrix(1 0 0 1 0 0)">
+        <line class="hoverLine" vector-effect="non-scaling-stroke" x1="${padL}" y1="${padT}" x2="${padL}" y2="${H - padB}" style="display:none;"></line>
+        <path class="line" vector-effect="non-scaling-stroke" d="${pathD}"></path>
+        ${circles}
+      </g>
+    </g>
+
     ${xTicks}
   </svg>`;
 }
@@ -1081,7 +1108,10 @@ function buildTrustHistorySectionHtml(item) {
   // We render a placeholder, then hydrate asynchronously from the server.
   return `
     <div class="trustHistoryWrap" data-trust-cid="${cid}">
-      <div class="trustHistoryTitle">${t("ui.trust_score_history","Trust score history")}</div>
+      <div class="trustHistoryHeader">
+        <div class="trustHistoryTitle">${t("ui.trust_score_history","Trust score history")}</div>
+        <div class="trustChartControlsSlot" aria-hidden="true"></div>
+      </div>
       <div class="trustHistoryGrid">
         <div class="trustChartCard">
           <div class="trustChartLoading"></div>
@@ -1096,7 +1126,7 @@ function buildTrustHistorySectionHtml(item) {
           <div class="trustStatsSub">${t("ui.since_publication","Since publication")}</div>
         </div>
       </div>
-      <div class="trustChartHint">${t("ui.chart_hint","Tip: hover or tap a dot for details")}</div>
+      <div class="trustChartHint">${t("ui.chart_hint","Tip: scroll/pinch or use + / − to zoom, drag to pan, then tap a dot for details")}</div>
     </div>
   `;
 }
@@ -2403,7 +2433,7 @@ function _fmtPeriodEnd(iso){
   try{
     const d = new Date(String(iso));
     if(Number.isNaN(d.getTime())) return '';
-    return d.toLocaleDateString(undefined, { year:'numeric', month:'short', day:'2-digit' });
+    return d.toLocaleDateString('en-US', { year:'numeric', month:'short', day:'2-digit' });
   }catch{
     return '';
   }
@@ -2695,7 +2725,7 @@ function formatTimeHHMM(iso) {
     if (!iso) return "";
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return "";
-    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+   return d.toLocaleTimeString('en-US', { hour: "2-digit", minute: "2-digit" });
   } catch {
     return "";
   }
@@ -3260,7 +3290,7 @@ function getWhyScoreState(item) {
   }
 
   // If scoring isn't really computed yet, show limited explanation.
-  const notComputed = /скоринг\s+еще\s+не\s+рассчитан/i.test(expl);
+  const notComputed = /score\s+is\s+not\s+computed\s+yet/i.test(expl) || /scoring\s+is\s+not\s+computed\s+yet/i.test(expl) || /скоринг\s+еще\s+не\s+рассчитан/i.test(expl);
   if (notComputed && factors.length === 0) {
     return { status: "empty", text: t("score.limited", "Score explanation is limited due to insufficient data") };
   }
@@ -3908,7 +3938,7 @@ function renderCards(items, opts) {
   }
 
   if (filtered.length === 0) {
-    cards.innerHTML = `<div class="panel muted">Ничего не найдено (проверь фильтры/поиск).</div>`;
+    cards.innerHTML = `<div class="panel muted">${t("ui.no_results","No results")}</div>`;
     return;
   }
 
@@ -4024,8 +4054,8 @@ function updateLoadMoreBlock(totalCount) {
   const hint = document.createElement('div');
   hint.className = 'loadMoreHint';
   hint.textContent = feedExpanded
-    ? `Показано ${totalCount} новостей`
-    : `Скрыто ${hiddenCountNow} новостей`;
+    ? t("ui.feed.shown","Showing {count} news").replace("{count}", totalCount)
+    : t("ui.feed.hidden","Hidden {count} news").replace("{count}", hiddenCountNow);
 
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -4221,7 +4251,7 @@ renderCards(items, {
 }
 
 
-async function fetchFavorites() {
+async function fetchFavorites(opts = {}) {
   if (!authState.authenticated) {
     openAuthModal('tracking');
     setStatus('');
@@ -4255,10 +4285,11 @@ async function fetchFavorites() {
     lastFavItems = items;
 
     // Tracking page uses server-side deltas (delta_score / delta_sources_count)
-    renderCards(items, { nowTs: Date.now(), newIds: new Set(), suppressNewBadges: true, incremental: false, animate: false });
+    const useIncremental = !!opts.quiet && !opts.reset;
+    renderCards(items, { nowTs: Date.now(), newIds: new Set(), suppressNewBadges: true, incremental: useIncremental, animate: false });
 
     // Hydrate trust history charts (server-side) for newly rendered cards
-    hydrateTrustHistorySections();
+    if (!opts.quiet || opts.reset) hydrateTrustHistorySections();
 
     setStatus(items.length ? '' : 'Tracking is empty. Tap ★ on a news card to add.');
     updateCounts();
@@ -4397,6 +4428,10 @@ function render() {
 function bindUI() {
   qs("country").value = state.country;
   qs("language").value = state.language;
+
+  // Custom country/language picker UI (replaces Safari native select popover)
+  try { initCountryDropdown(); } catch(_) {}
+  try { initLanguageDropdown(); } catch(_) {}
 
   // Apply country/language immediately (we keep the hidden Save button for compatibility).
   qs("btnSave").onclick = async () => {
@@ -4672,6 +4707,194 @@ function bindUI() {
 
 }
 
+// --- Dropdowns (custom, avoids Safari native select popover issues) ---
+// --- Country dropdown ---
+let __countryMenuOpen = false;
+
+function closeCountryMenu(){
+  const menu = document.getElementById('countryMenu');
+  const btn  = document.getElementById('countryBtn');
+  if (!menu || !btn) return;
+  __countryMenuOpen = false;
+  btn.setAttribute('aria-expanded','false');
+  menu.classList.remove('open');
+  window.setTimeout(()=>{ if(!__countryMenuOpen) menu.hidden = true; }, 120);
+}
+
+function openCountryMenu(){
+  const menu = document.getElementById('countryMenu');
+  const btn  = document.getElementById('countryBtn');
+  if (!menu || !btn) return;
+  __countryMenuOpen = true;
+  menu.hidden = false;
+  btn.setAttribute('aria-expanded','true');
+  requestAnimationFrame(()=> menu.classList.add('open'));
+}
+
+function syncCountryBtnLabel(){
+  const sel = document.getElementById('country');
+  const val = document.getElementById('countryBtnValue');
+  if (!sel || !val) return;
+  const opt = sel.options[sel.selectedIndex];
+  val.textContent = (opt && opt.textContent) ? opt.textContent : String(sel.value || '').toUpperCase();
+}
+
+function initCountryDropdown(){
+  const sel = document.getElementById('country');
+  const menu = document.getElementById('countryMenu');
+  const btn  = document.getElementById('countryBtn');
+  if (!sel || !menu || !btn) return;
+
+  function rebuild(){
+    menu.innerHTML = '';
+    const current = String(sel.value || '');
+    for (const opt of Array.from(sel.options || [])) {
+      const v = String(opt.value || '');
+      const label = String(opt.textContent || v).trim();
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'selectItem';
+      item.setAttribute('role','menuitemradio');
+      item.setAttribute('aria-checked', v === current ? 'true' : 'false');
+      item.innerHTML = `<span>${escapeHtml(label)}</span><span class="selectCheck">${v === current ? '✓' : ''}</span>`;
+      item.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (sel.value !== v){
+          sel.value = v;
+          syncCountryBtnLabel();
+          sel.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        closeCountryMenu();
+      };
+      menu.appendChild(item);
+    }
+  }
+
+  rebuild();
+  syncCountryBtnLabel();
+
+  btn.onclick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try { closeSortMenu(); } catch(_) {}
+    try { closeLanguageMenu(); } catch(_) {}
+    if (__countryMenuOpen) closeCountryMenu();
+    else { rebuild(); openCountryMenu(); }
+  };
+
+  sel.addEventListener('change', () => {
+    syncCountryBtnLabel();
+    if (__countryMenuOpen) rebuild();
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!__countryMenuOpen) return;
+    const wrap = document.getElementById('countryWrap');
+    if (wrap && e.target instanceof Node && wrap.contains(e.target)) return;
+    closeCountryMenu();
+  }, { passive: true });
+
+  document.addEventListener('keydown', (e) => {
+    if (!__countryMenuOpen) return;
+    if (e.key === 'Escape') closeCountryMenu();
+  });
+}
+
+// --- Language dropdown (custom, avoids Safari native select popover issues) ---
+let __langMenuOpen = false;
+
+function closeLanguageMenu(){
+  const menu = document.getElementById('languageMenu');
+  const btn  = document.getElementById('languageBtn');
+  if (!menu || !btn) return;
+  __langMenuOpen = false;
+  btn.setAttribute('aria-expanded','false');
+  menu.classList.remove('open');
+  window.setTimeout(()=>{ if(!__langMenuOpen) menu.hidden = true; }, 120);
+}
+
+function openLanguageMenu(){
+  const menu = document.getElementById('languageMenu');
+  const btn  = document.getElementById('languageBtn');
+  if (!menu || !btn) return;
+  __langMenuOpen = true;
+  menu.hidden = false;
+  btn.setAttribute('aria-expanded','true');
+  requestAnimationFrame(()=> menu.classList.add('open'));
+}
+
+function syncLanguageBtnLabel(){
+  const sel = document.getElementById('language');
+  const val = document.getElementById('languageBtnValue');
+  if (!sel || !val) return;
+  const opt = sel.options[sel.selectedIndex];
+  val.textContent = (opt && opt.textContent) ? opt.textContent : String(sel.value || '').toUpperCase();
+}
+
+function initLanguageDropdown(){
+  const sel = document.getElementById('language');
+  const menu = document.getElementById('languageMenu');
+  const btn  = document.getElementById('languageBtn');
+  if (!sel || !menu || !btn) return;
+
+  function rebuild(){
+    menu.innerHTML = '';
+    const current = String(sel.value || '');
+    for (const opt of Array.from(sel.options || [])) {
+      const v = String(opt.value || '');
+      const label = String(opt.textContent || v).trim();
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'selectItem';
+      item.setAttribute('role','menuitemradio');
+      item.setAttribute('aria-checked', v === current ? 'true' : 'false');
+      item.innerHTML = `<span>${escapeHtml(label)}</span><span class="selectCheck">${v === current ? '✓' : ''}</span>`;
+      item.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (sel.value !== v){
+          sel.value = v;
+          syncLanguageBtnLabel();
+          sel.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        closeLanguageMenu();
+      };
+      menu.appendChild(item);
+    }
+  }
+
+  rebuild();
+  syncLanguageBtnLabel();
+
+  btn.onclick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try { closeSortMenu(); } catch(_) {}
+    try { closeCountryMenu(); } catch(_) {}
+    if (__langMenuOpen) closeLanguageMenu();
+    else { rebuild(); openLanguageMenu(); }
+  };
+
+  sel.addEventListener('change', () => {
+    syncLanguageBtnLabel();
+    if (__langMenuOpen) rebuild();
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!__langMenuOpen) return;
+    const wrap = document.getElementById('languageWrap');
+    if (wrap && e.target instanceof Node && wrap.contains(e.target)) return;
+    closeLanguageMenu();
+  }, { passive: true });
+
+  document.addEventListener('keydown', (e) => {
+    if (!__langMenuOpen) return;
+    if (e.key === 'Escape') closeLanguageMenu();
+  });
+}
+
+
 
 
 async function refreshBackendQuiet() {
@@ -4684,6 +4907,78 @@ async function autoUpdateTick(trigger) {
   if (state.mode === "feed") await fetchFeed({ quiet: true });
   else await fetchFavorites();
 }
+
+function initSmartHeader() {
+  const header = document.getElementById('siteHeader') || document.querySelector('header');
+  if (!header) return;
+  header.classList.add('siteHeader');
+
+  // Ensure content is not hidden behind the fixed header.
+  // (CSS uses --headerH for padding-top.)
+  const applyHeaderHeight = () => {
+    const h = Math.max(48, Math.round(header.getBoundingClientRect().height || 0));
+    document.documentElement.style.setProperty('--headerH', `${h}px`);
+  };
+  applyHeaderHeight();
+
+  // Robust scroll position getter (works even if the page uses a scroll container).
+  const getScrollY = () => {
+    const se = document.scrollingElement;
+    if (se) return se.scrollTop || 0;
+    return window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+  };
+
+  let lastY = getScrollY();
+  let ticking = false;
+
+  // Tune these to feel “premium” and avoid jitter.
+  const DELTA = 10;         // ignore tiny scroll noise
+  const HIDE_AFTER = 80;    // only start hiding after some content
+  const SHOW_AT_TOP = 8;    // always show near the top
+
+  function update() {
+    ticking = false;
+    const y = getScrollY();
+    const dy = y - lastY;
+
+    if (Math.abs(dy) < DELTA) {
+      lastY = y;
+      return;
+    }
+
+    if (y <= SHOW_AT_TOP) {
+      header.classList.remove('isHidden');
+      lastY = y;
+      return;
+    }
+
+    if (dy > 0 && y > HIDE_AFTER) {
+      // scrolling down -> hide
+      header.classList.add('isHidden');
+    } else if (dy < 0) {
+      // scrolling up -> show
+      header.classList.remove('isHidden');
+    }
+
+    lastY = y;
+  }
+
+  const onScroll = () => {
+    if (ticking) return;
+    ticking = true;
+    window.requestAnimationFrame(update);
+  };
+
+  // Listen on both window and document to catch scrolls in all setups.
+  window.addEventListener('scroll', onScroll, { passive: true });
+  document.addEventListener('scroll', onScroll, { passive: true, capture: true });
+
+  // If layout changes (rotation/resize), keep header accessible.
+  window.addEventListener('resize', () => {
+    header.classList.remove('isHidden');
+    applyHeaderHeight();
+  }, { passive: true });
+ }
 
 async function main() {
   const hadPrefs = !!localStorage.getItem(STORAGE_KEY);
@@ -4714,6 +5009,7 @@ async function main() {
   await handleBillingQueryParams();
 
   bindUI();
+  initSmartHeader();
   initCookieBanner();
   renderTags();
   syncThumbToggleUI();
@@ -5146,11 +5442,21 @@ async function hydrateTrustHistorySections() {
       continue;
     }
 
+    // Controls live in the header to avoid overlapping the tooltip.
+    // IMPORTANT: inject controls before initTrustHistoryZoom so listeners can bind.
+    const slot = w.querySelector('.trustChartControlsSlot');
+    if (slot) {
+      slot.innerHTML = buildTrustHistoryControlsHtml();
+      slot.setAttribute('aria-hidden', 'false');
+    }
+
     // Render SVG
     const svg = buildTrustHistorySvg(points);
     const chartCard = w.querySelector('.trustChartCard');
     if (chartCard) {
       chartCard.innerHTML = `${svg}<div class="trustTooltip" aria-hidden="true"></div>`;
+      // zoom/pan setup (safe even if user never interacts)
+      initTrustHistoryZoom(chartCard);
     }
 
     // Stats
@@ -5179,6 +5485,175 @@ async function hydrateTrustHistorySections() {
   }
 }
 
+function buildTrustHistoryControlsHtml() {
+  return `
+    <div class="trustChartControls" aria-label="Chart controls">
+      <button class="trustCtl" type="button" data-action="zoomOut" aria-label="Zoom out">−</button>
+      <button class="trustCtl" type="button" data-action="zoomIn" aria-label="Zoom in">+</button>
+      <button class="trustCtl" type="button" data-action="reset" aria-label="Reset zoom">↺</button>
+    </div>
+  `;
+}
+
+function initTrustHistoryZoom(chartCard) {
+  try {
+    const svg = chartCard.querySelector('svg.trustChartSvg');
+    if (!svg) return;
+
+    const xform = svg.querySelector('g.trustPlotXform');
+    const panLayer = svg.querySelector('rect.trustPanLayer');
+    if (!xform || !panLayer) return;
+
+    const plotLeft = Number(svg.getAttribute('data-plot-left') || 0);
+    const plotRight = Number(svg.getAttribute('data-plot-right') || 0);
+    const viewW = Number(svg.getAttribute('data-view-w') || 0);
+    if (!Number.isFinite(plotLeft) || !Number.isFinite(plotRight) || !Number.isFinite(viewW) || viewW <= 0) return;
+
+    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+    const MAX_ZOOM = 20;
+
+    // per-chart state
+    const st = { sx: 1, tx: 0, dragging: false, dragStartX: 0, txStart: 0, pinch: null };
+
+    // Keep dots visually circular when we zoom only along X.
+    // Without compensation, scaling the plot group on X turns circles into ellipses.
+    function updateDotCompensation() {
+      const inv = 1 / (st.sx || 1);
+      svg.querySelectorAll('g.trustPlotXform circle.ptDot, g.trustPlotXform circle.ptHalo').forEach((c) => {
+        const cx = Number(c.getAttribute('cx'));
+        const cy = Number(c.getAttribute('cy'));
+        if (!Number.isFinite(cx) || !Number.isFinite(cy)) return;
+        // Apply inverse X-scale around the circle center.
+        c.setAttribute('transform', `translate(${cx} ${cy}) scale(${inv} 1) translate(${-cx} ${-cy})`);
+      });
+    }
+
+    function boundsFor(sx) {
+      // Keep content covering the plot area (avoid blank gaps).
+      const minTx = plotRight - sx * plotRight;
+      const maxTx = plotLeft - sx * plotLeft;
+      return { minTx, maxTx };
+    }
+
+    function apply() {
+      const b = boundsFor(st.sx);
+      st.tx = clamp(st.tx, b.minTx, b.maxTx);
+      xform.setAttribute('transform', `matrix(${st.sx} 0 0 1 ${st.tx} 0)`);
+      updateDotCompensation();
+      // Cursor feedback
+      panLayer.style.cursor = (st.sx > 1.001) ? (st.dragging ? 'grabbing' : 'grab') : 'default';
+    }
+
+    function clientXToViewBoxX(clientX) {
+      const r = svg.getBoundingClientRect();
+      const px = (clientX - r.left) / (r.width || 1);
+      return clamp(px, 0, 1) * viewW;
+    }
+
+    function zoomAt(viewX, factor) {
+      const next = clamp(st.sx * factor, 1, MAX_ZOOM);
+      if (Math.abs(next - st.sx) < 0.0001) return;
+      // Keep viewX stable under the cursor
+      st.tx = st.tx + (st.sx - next) * viewX;
+      st.sx = next;
+      apply();
+    }
+
+    function reset() {
+      st.sx = 1;
+      st.tx = 0;
+      st.dragging = false;
+      st.pinch = null;
+      apply();
+    }
+
+    // Buttons (controls live in header outside chartCard)
+    const wrap = chartCard.closest('.trustHistoryWrap') || chartCard;
+    wrap.querySelectorAll('.trustChartControls .trustCtl').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const act = btn.getAttribute('data-action');
+        if (act === 'zoomIn') zoomAt((plotLeft + plotRight) / 2, 1.25);
+        else if (act === 'zoomOut') zoomAt((plotLeft + plotRight) / 2, 1 / 1.25);
+        else reset();
+        e.preventDefault();
+        e.stopPropagation();
+      });
+    });
+
+    // Wheel zoom (trackpad/mouse)
+    svg.addEventListener('wheel', (e) => {
+      // Only if inside plot area
+      const r = svg.getBoundingClientRect();
+      const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+      if (!inside) return;
+      e.preventDefault();
+      const viewX = clientXToViewBoxX(e.clientX);
+      const factor = (e.deltaY < 0) ? 1.18 : (1 / 1.18);
+      zoomAt(viewX, factor);
+    }, { passive: false });
+
+    // Drag to pan (Pointer Events)
+    panLayer.addEventListener('pointerdown', (e) => {
+      if (st.sx <= 1.001) return; // no pan when not zoomed
+      st.dragging = true;
+      st.dragStartX = e.clientX;
+      st.txStart = st.tx;
+      try { panLayer.setPointerCapture(e.pointerId); } catch {}
+      apply();
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    panLayer.addEventListener('pointermove', (e) => {
+      if (!st.dragging) return;
+      const r = svg.getBoundingClientRect();
+      const dxPx = e.clientX - st.dragStartX;
+      // Convert screen px to viewBox units
+      const dxView = (dxPx / (r.width || 1)) * viewW;
+      st.tx = st.txStart + dxView;
+      apply();
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    const endDrag = () => {
+      if (!st.dragging) return;
+      st.dragging = false;
+      apply();
+    };
+    panLayer.addEventListener('pointerup', endDrag);
+    panLayer.addEventListener('pointercancel', endDrag);
+    panLayer.addEventListener('pointerleave', endDrag);
+
+    // Pinch zoom (touch)
+    svg.addEventListener('touchstart', (e) => {
+      if (e.touches && e.touches.length === 2) {
+        const a = e.touches[0], b = e.touches[1];
+        const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+        const midX = (a.clientX + b.clientX) / 2;
+        st.pinch = { dist, sx: st.sx, tx: st.tx, midViewX: clientXToViewBoxX(midX) };
+      }
+    }, { passive: true });
+    svg.addEventListener('touchmove', (e) => {
+      if (!st.pinch || !(e.touches && e.touches.length === 2)) return;
+      e.preventDefault();
+      const a = e.touches[0], b = e.touches[1];
+      const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      const ratio = dist / (st.pinch.dist || dist || 1);
+      const next = clamp(st.pinch.sx * ratio, 1, MAX_ZOOM);
+      st.tx = st.pinch.tx + (st.pinch.sx - next) * st.pinch.midViewX;
+      st.sx = next;
+      apply();
+    }, { passive: false });
+    svg.addEventListener('touchend', () => { st.pinch = null; }, { passive: true });
+    svg.addEventListener('touchcancel', () => { st.pinch = null; }, { passive: true });
+
+    // Init
+    apply();
+  } catch {
+    // never break the tracking page if something goes wrong
+  }
+}
+
+
 function initTrustHistoryInteractions() {
   function hideAll() {
     document.querySelectorAll('.trustChartCard .trustTooltip.show').forEach((el) => {
@@ -5205,7 +5680,19 @@ function initTrustHistoryInteractions() {
     if (!meta) return;
 
     const d = meta.ts ? new Date(meta.ts) : new Date();
-    const dateStr = d.toLocaleString(undefined, { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
+   const userLocale = navigator.language || 'en-US';
+
+const datePart = d.toLocaleDateString('en-GB', {
+  day: '2-digit',
+  month: 'short'
+});
+
+const timePart = d.toLocaleTimeString(userLocale, {
+  hour: '2-digit',
+  minute: '2-digit'
+});
+
+const dateStr = `${datePart}, ${timePart}`;
 
     const added = Number(meta.sources_added || 0);
     tip.innerHTML = `

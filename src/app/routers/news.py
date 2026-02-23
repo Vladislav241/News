@@ -272,7 +272,7 @@ def _decorate_cluster_row(c: dict[str, Any], include_sources: bool = True) -> di
         or ((details or {}).get("final_score") if details else 0)
         or 0
     )
-    credibility_explanation = (details or {}).get("summary") if details else "Скоринг ещё не рассчитан."
+    credibility_explanation = (details or {}).get("summary") if details else "Score is not computed yet."
     credibility_factors = (details or {}).get("factors") if details else []
 
     # unique sources count by source_key if present else source_name

@@ -91,17 +91,17 @@ def compute_credibility(cluster_title: str, sources: list[dict[str, Any]]) -> tu
 
     if unique_count <= 1:
         impact = 0
-        desc = "Пока найден только один источник — подтверждений мало."
+        desc = "Only one source found so far — limited confirmation."
     elif unique_count == 2:
         impact = 12
-        desc = "Есть 2 независимых источника — подтверждение начинает формироваться."
+        desc = "There are 2 independent sources — confirmation starts to form."
     elif 3 <= unique_count <= 4:
         impact = 22
-        desc = f"Новость подтверждена {unique_count} независимыми источниками."
+        desc = f"Confirmed by {unique_count} independent sources."
     else:
         impact = 30
-        desc = f"Новость подтверждена {unique_count} независимыми источниками — сильный сигнал."
-    factors.append({"name": "Подтверждение источниками", "impact": impact, "description": desc})
+        desc = f"Confirmed by {unique_count} independent sources — strong signal."
+    factors.append({"name": "Source confirmation", "impact": impact, "description": desc})
 
     weights = []
     for s in sources or []:
@@ -128,25 +128,25 @@ def compute_credibility(cluster_title: str, sources: list[dict[str, Any]]) -> tu
 
     factors.append(
         {
-            "name": "Репутация источников",
+            "name": "Source reputation",
             "impact": rep_impact,
-            "description": f"Средний вес: {avg_w:.2f}, макс.: {max_w:.2f}.",
+            "description": f"Average weight: {avg_w:.2f}, max: {max_w:.2f}.",
         }
     )
     factors.append(
         {
-            "name": "Диверсификация источников",
+            "name": "Source diversity",
             "impact": div_impact,
-            "description": f"Доля сильных/средних/слабых (нормировано): {diversity:.2f}.",
+            "description": f"Share of strong/medium/weak (normalized): {diversity:.2f}.",
         }
     )
 
     if has_clickbait(title):
         factors.append(
             {
-                "name": "Кликбейт/эмоциональная лексика",
+                "name": "Clickbait / emotional wording",
                 "impact": -10,
-                "description": "Заголовок содержит эмоциональные или манипулятивные формулировки.",
+                "description": "The headline uses emotional or manipulative wording.",
             }
         )
 
@@ -161,13 +161,13 @@ def compute_credibility(cluster_title: str, sources: list[dict[str, Any]]) -> tu
 
     negatives = [f for f in factors if f["impact"] < 0]
     if score >= 80:
-        summary = "Высокий балл: событие подтверждается несколькими источниками и/или надёжными СМИ."
+        summary = "High score: confirmed by multiple sources and/or reliable media."
     elif score >= 60:
-        summary = "Средний балл: подтверждения есть, но их пока недостаточно либо источники разного качества."
+        summary = "Medium score: some confirmation exists, but it is still limited or sources vary in quality."
     else:
-        summary = "Низкий балл: мало независимых подтверждений и/или слабая репутация источников."
+        summary = "Low score: few independent confirmations and/or weaker source reputation."
     if negatives:
-        summary += " Есть факторы, которые снижают оценку."
+        summary += " Some factors reduce the score."
 
     details = {
         "final_score": score,

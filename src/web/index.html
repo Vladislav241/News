@@ -46,11 +46,32 @@
 
     /* Layout */
     .wrap { max-width: 1040px; margin: 0 auto; padding: 18px 16px 0; }
+    /*
+      Header is fixed (not sticky) so the hide/reveal animation works
+      reliably across browsers + inside any scroll container.
+      We add top padding to the page via --headerH (set in JS).
+    */
     header {
-      position: sticky; top: 0; z-index: 20;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 50;
       background: #ffffff;
       backdrop-filter: blur(10px);
       border-bottom: 1px solid var(--stroke);
+    }
+
+    body{ padding-top: var(--headerH, 92px); }
+
+    /* Smart header: hide on scroll down, reveal on scroll up */
+    .siteHeader{
+      will-change: transform;
+      transform: translateZ(0);
+      transition: transform .22s ease;
+    }
+    .siteHeader.isHidden{
+      transform: translate3d(0,-110%,0);
     }
 .headerInner{
   max-width: 1040px;
@@ -443,6 +464,54 @@
       padding: 4px 2px;
     }
 
+    .selectWrap{ position:relative; display:flex; align-items:center; }
+    .srOnlySelect{ position:absolute !important; width:1px !important; height:1px !important; opacity:0 !important; pointer-events:none !important; }
+    .selectBtn{
+      display:flex; align-items:center; gap:8px;
+      height: 34px;
+      padding: 0 10px;
+      border:none;
+      background: transparent;
+      font-weight:600;
+      cursor:pointer;
+      color: var(--text);
+    }
+    .selectValue{ font-weight:700; }
+    .selectCaret{ opacity:.7; }
+    .selectMenu{
+      position:absolute;
+      top: calc(100% + 8px);
+      left: 0;
+      min-width: 120px;
+      background: #fff;
+      border:1px solid rgba(15,23,42,.16);
+      border-radius: 14px;
+      box-shadow: 0 18px 40px rgba(2,6,23,.12);
+      padding: 6px;
+      z-index: 60;
+      transform-origin: top left;
+      opacity:0;
+      transform: translateY(-4px) scale(.98);
+      transition: opacity .12s ease, transform .12s ease;
+    }
+    .selectMenu.open{ opacity:1; transform: translateY(0) scale(1); }
+    .selectItem{
+      width:100%;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      padding: 10px 10px;
+      border-radius: 12px;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .selectItem:hover{ background: rgba(15,23,42,.06); }
+    .selectCheck{ opacity:.9; }
+
     .tagsBar{ display:flex; align-items:flex-start; gap:12px; margin-top: 10px; }
     .tags { display:flex; flex-wrap:wrap; gap:8px; flex:1; min-width:0; }
 
@@ -554,7 +623,26 @@
 
     /* Trust score history chart (Tracking details) */
     .trustHistoryWrap{ margin-top: 18px; }
-    .trustHistoryTitle{ font-weight: 900; font-size: 22px; letter-spacing: -0.02em; margin: 10px 0 12px; }
+
+    .trustHistoryHeader{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin: 10px 0 12px; }
+    .trustChartControls{ display:flex; gap:8px; align-items:center; justify-content:flex-end; }
+    .trustCtl{
+      width: 34px; height: 34px;
+      border-radius: 12px;
+      border: 1px solid rgba(15,23,42,.22);
+      background: #fff;
+      font-weight: 900;
+      cursor: pointer;
+      display:flex; align-items:center; justify-content:center;
+      line-height: 1;
+      user-select:none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .trustCtl:active{ transform: translateY(0.5px); }
+    @media (max-width: 720px){
+      .trustCtl{ width: 32px; height: 32px; border-radius: 11px; }
+    }
+    .trustHistoryTitle{ font-weight: 900; font-size: 22px; letter-spacing: -0.02em; margin: 0; }
     /* Keep chart + stats block pinned to the left (avoid stretching across the card) */
     .trustHistoryGrid{ display:inline-grid; grid-template-columns: minmax(520px, 760px) 210px; gap: 18px; align-items: start; justify-content: start; }
     @media (max-width: 720px){ .trustHistoryGrid{ grid-template-columns: 1fr; } }
@@ -3194,6 +3282,14 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
 @media (max-width: 640px){
   .filtersRow .filtersBtn{ margin-left: 0; }
   .filtersDrawer{ top: 10px; right: 10px; left: 10px; width:auto; }
+  /* Mobile layout: Country, then Language; Sort below on the left */
+  .filtersRow{ flex-wrap: wrap; align-items: flex-start; }
+  .filtersRow .field{ flex: 1 1 calc(50% - 10px); min-width: 140px; }
+  .filtersRow .fieldCountry{ order: 1; }
+  .filtersRow .fieldLanguage{ order: 2; }
+  .sortWrap{ margin-left: 0; order: 3; flex: 1 1 100%; width: 100%; }
+  .sortBtn{ justify-content: flex-start; }
+  .sortMenu{ left: 0; right: auto; transform-origin: top left; }
 }
 /* ===== Filters dot hover pulse (premium) ===== */
 @keyframes filterPulse {
@@ -3377,7 +3473,7 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
 </head>
 
 <body>
-  <header>
+  <header id="siteHeader" class="siteHeader">
     <div class="headerInner">
   <!-- Brand: logo + ONE news. (matches the reference) -->
   <div id="brand" class="brand" aria-label="ONE news" role="button" tabindex="0">
@@ -3457,25 +3553,49 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
       </div>
 
       <div class="filtersRow">
-        <div class="field">
+        <div class="field fieldCountry">
           <div class="fieldLabel" data-i18n="ui.country">Country</div>
-          <select id="country">
-            <option value="world">World</option>
-            <option value="us">US</option>
-            <option value="gb">GB</option>
-            <option value="de">DE</option>
-            <option value="fr">FR</option>
-            <option value="ua">UA</option>
-          </select>
+
+          <!-- Custom country picker (keeps popover anchored correctly on iOS/Safari when ancestors are transformed) -->
+          <div class="selectWrap" id="countryWrap">
+            <button id="countryBtn" class="selectBtn" type="button" aria-haspopup="menu" aria-expanded="false">
+              <span id="countryBtnValue" class="selectValue">World</span>
+              <span class="selectCaret" aria-hidden="true">▾</span>
+            </button>
+
+            <div id="countryMenu" class="selectMenu" role="menu" aria-label="Country" hidden></div>
+
+            <!-- Keep the native select for compatibility/state, but visually hide it -->
+            <select id="country" class="srOnlySelect" tabindex="-1" aria-hidden="true">
+              <option value="world">World</option>
+              <option value="us">US</option>
+              <option value="gb">GB</option>
+              <option value="de">DE</option>
+              <option value="fr">FR</option>
+              <option value="ua">UA</option>
+            </select>
+          </div>
         </div>
 
-        <div class="field">
+        <div class="field fieldLanguage">
           <div class="fieldLabel" data-i18n="ui.language">Language</div>
-          <select id="language">
-            <option value="en">EN</option>
-            <option value="de">DE</option>
-            <option value="fr">FR</option>
-          </select>
+
+          <!-- Custom language picker (prevents Safari native select popover misplacement when ancestors are transformed) -->
+          <div class="selectWrap" id="languageWrap">
+            <button id="languageBtn" class="selectBtn" type="button" aria-haspopup="menu" aria-expanded="false">
+              <span id="languageBtnValue" class="selectValue">EN</span>
+              <span class="selectCaret" aria-hidden="true">▾</span>
+            </button>
+
+            <div id="languageMenu" class="selectMenu" role="menu" aria-label="Language" hidden></div>
+
+            <!-- Keep the native select for compatibility/state, but visually hide it -->
+            <select id="language" class="srOnlySelect" tabindex="-1" aria-hidden="true">
+              <option value="en">EN</option>
+              <option value="de">DE</option>
+              <option value="fr">FR</option>
+            </select>
+          </div>
         </div>
         <div class="sortWrap" id="sortWrap">
           <button id="sortBtn" class="sortBtn" type="button" aria-haspopup="menu" aria-expanded="false">
