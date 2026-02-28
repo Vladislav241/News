@@ -10,6 +10,7 @@ from urllib.parse import quote
 
 from .db import db
 from .emailer import send_email
+from .unsubscribe_tokens import create_unsubscribe_token
 
 log = logging.getLogger("news.notify")
 
@@ -55,6 +56,8 @@ def _email_logo_url() -> str:
 
 def _build_email_html(
     *,
+    user_id: int,
+    to_email: str,
     cluster_id: int,
     title: str,
     primary_source: str,
@@ -77,6 +80,16 @@ def _build_email_html(
 
     subject = f"CHECK news — Trust score {direction}: {old_score} → {new_score}"
     view_url = f"{base}/share/{cluster_id}"
+
+    company_name = (os.getenv("COMPANY_NAME") or "CHECKNE").strip()
+    company_addr = (os.getenv("COMPANY_POSTAL_ADDRESS") or "Berlin, Germany").strip()
+    support_email = (os.getenv("SUPPORT_EMAIL") or "support@checkne.com").strip()
+    # One-click unsubscribe token (alerts only)
+    try:
+        unsub_token = create_unsubscribe_token(int(user_id), to_email)
+    except Exception:
+        unsub_token = ""
+    unsub_url = f"{base}/unsubscribe?token={quote(unsub_token)}" if unsub_token else f"{base}/#/tracking"
 
     # Styling notes:
     # - Table layout + inline styles for Gmail/Outlook reliability
@@ -235,6 +248,16 @@ def _build_email_html(
                   CHECK news is an informational service and does not provide factual determinations.<br>
                   Trust scores are based on automated analysis of publicly available sources<br> and may change as new information becomes available.
                 </div>
+                <div style="margin-top:14px;">
+                  <a href="{unsub_url}" style="color:#111;text-decoration:underline;">Unsubscribe from alerts</a>
+                  &nbsp;•&nbsp;
+                  <a href="{base}/#/tracking" style="color:#111;text-decoration:underline;">Manage email alerts</a>
+                  &nbsp;•&nbsp;
+                  <a href="mailto:{support_email}" style="color:#111;text-decoration:underline;">{support_email}</a>
+                </div>
+                <div style="margin-top:10px;color:#777;">
+                  {company_name} • {company_addr}
+                </div>
               </td>
             </tr>
 
@@ -284,7 +307,7 @@ async def _notify_once() -> None:
         email = (t.get("user_email") or "").strip()
 
         # Require verified for local accounts if REQUIRE_EMAIL_VERIFIED is on
-        enforce = (os.getenv("REQUIRE_EMAIL_VERIFIED") or "").strip().lower() in ("1","true","yes")
+        enforce = (os.getenv("REQUIRE_EMAIL_VERIFIED") or "").strip().lower() not in ("0","false","no","off")  # default: True
         if enforce and not bool(int(t.get("user_email_verified") or 0)):
             continue
 
@@ -367,6 +390,8 @@ async def _notify_once() -> None:
 
         # Build + send
         subject, html = _build_email_html(
+            user_id=uid,
+            to_email=email,
             cluster_id=cid,
             title=title,
             primary_source=primary_source,
