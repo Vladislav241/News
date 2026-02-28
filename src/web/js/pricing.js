@@ -1062,17 +1062,81 @@ function getNewsImage(item) {
   // kind: "thumb" | "card" | "hero"
   const kind = arguments.length >= 2 ? String(arguments[1] || "card") : "card";
 
+  const isLikelyImageUrl = (u) => {
+    const s = String(u || '').trim();
+    if (!s) return false;
+    // allow data URIs
+    if (s.startsWith('data:image/')) return true;
+    // allow protocol-relative
+    if (s.startsWith('//')) return true;
+    if (s.startsWith('http://') || s.startsWith('https://')) return true;
+    return false;
+  };
+
+  const pickFromObject = (obj) => {
+    if (!obj || typeof obj !== 'object') return '';
+
+    // Common fields across providers
+    const keys = [
+      'image', 'image_url', 'imageUrl', 'imageURL', 'urlToImage', 'url_to_image',
+      'thumbnail', 'thumbnail_url', 'thumb', 'thumb_url',
+      'hero_image', 'heroImage', 'lead_image_url', 'leadImageUrl',
+      'og_image', 'ogImage', 'open_graph_image', 'openGraphImage',
+      'top_image', 'topImage', 'picture', 'photo',
+    ];
+
+    for (const k of keys) {
+      const v = obj[k];
+      if (typeof v === 'string' && isLikelyImageUrl(v)) return String(v).trim();
+      if (v && typeof v === 'object') {
+        const vv = v.url || v.href || v.src;
+        if (typeof vv === 'string' && isLikelyImageUrl(vv)) return String(vv).trim();
+      }
+    }
+
+    // Nested common containers
+    const nested = [obj.meta, obj.metadata, obj.open_graph, obj.openGraph, obj.og, obj.twitter, obj.images];
+    for (const n of nested) {
+      if (!n) continue;
+      if (typeof n === 'string' && isLikelyImageUrl(n)) return String(n).trim();
+      if (Array.isArray(n)) {
+        for (const it of n) {
+          if (typeof it === 'string' && isLikelyImageUrl(it)) return String(it).trim();
+          if (it && typeof it === 'object') {
+            const vv = it.url || it.href || it.src;
+            if (typeof vv === 'string' && isLikelyImageUrl(vv)) return String(vv).trim();
+          }
+        }
+      } else if (typeof n === 'object') {
+        const vv = n.image || n.image_url || n.imageUrl || n.urlToImage || n.thumbnail || n.thumb || n.url;
+        if (typeof vv === 'string' && isLikelyImageUrl(vv)) return String(vv).trim();
+      }
+    }
+
+    // Heuristic scan: if a key looks image-ish and value is a URL string
+    for (const [k, v] of Object.entries(obj)) {
+      if (typeof v !== 'string') continue;
+      if (!isLikelyImageUrl(v)) continue;
+      const kk = String(k).toLowerCase();
+      if (kk.includes('image') || kk.includes('thumb') || kk.includes('photo') || kk.includes('pic')) {
+        return String(v).trim();
+      }
+    }
+
+    return '';
+  };
+
   const pickRaw = () => {
     // Use an image ONLY if it is tied to the event.
     // Priority:
     // 1) cluster-level fields
     // 2) any image fields from sources
-    const direct = String(item?.image || item?.urlToImage || item?.image_url || "").trim();
+    const direct = pickFromObject(item);
     if (direct) return direct;
 
     const sources = Array.isArray(item?.sources) ? item.sources : [];
     for (const s of sources) {
-      const u = String(s?.image || s?.urlToImage || s?.image_url || "").trim();
+      const u = pickFromObject(s);
       if (u) return u;
     }
     return "";

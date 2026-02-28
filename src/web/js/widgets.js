@@ -915,6 +915,10 @@ function saveLayout(){
         clear();
       };
 
+      // Block long-press selection/callout on mobile browsers
+      btn.addEventListener('contextmenu', (ev) => { try { ev.preventDefault(); } catch {} });
+      btn.addEventListener('dragstart', (ev) => { try { ev.preventDefault(); } catch {} });
+
       // Touch events (best for phones)
       btn.addEventListener('touchstart', (e) => {
         if (btn.classList.contains('isPlus')) return;
@@ -930,7 +934,7 @@ function saveLayout(){
           btn.classList.add('isHold');
           try { navigator.vibrate && navigator.vibrate(12); } catch {}
         }, 320);
-      }, { passive: true });
+      }, { passive: false });
 
       btn.addEventListener('touchmove', (e) => {
         if (!active) return;
@@ -1010,6 +1014,8 @@ function saveLayout(){
       b.type = 'button';
       b.className = 'mwDockBtn';
       b.setAttribute('aria-label', (WIDGETS[w.type]?.name || 'Widget'));
+        // Avoid iOS/Android highlighting/selection during long-press
+        try { b.style.touchAction = 'none'; } catch {}
       const img = document.createElement('img');
       img.alt = '';
       img.src = getIconPath(w.type);
@@ -1044,6 +1050,9 @@ function saveLayout(){
     plus.className = 'mwDockBtn isPlus';
     plus.setAttribute('aria-label', 'Add widget');
     plus.innerHTML = '<span>+</span><span class="mwDockDot" aria-hidden="true"></span>';
+    // Avoid iOS/Android long-press callout
+    plus.addEventListener('contextmenu', (ev) => { try { ev.preventDefault(); } catch {} });
+    plus.addEventListener('dragstart', (ev) => { try { ev.preventDefault(); } catch {} });
     if (items.length >= MAX_TOTAL) plus.classList.add('isDisabled');
     plus.addEventListener('click', () => {
       if (!requireAuth('widgets')) return;
@@ -1104,30 +1113,29 @@ function saveLayout(){
       actions.appendChild(cfg);
     }
 
-    const del = document.createElement('button');
-    del.type = 'button';
-    del.className = 'iconBtn';
-    del.textContent = '✕';
-    del.setAttribute('aria-label', 'Remove');
-    del.addEventListener('click', (e) => {
-      e.preventDefault(); e.stopPropagation();
-      removeWidget(side, widgetId);
-      closeMobileSheet();
-      updateMobileDock();
-    });
-    actions.appendChild(del);
-
+    // Close (X)
     const close = document.createElement('button');
     close.type = 'button';
     close.className = 'iconBtn';
     close.textContent = '✕';
     close.setAttribute('aria-label', 'Close');
     close.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); closeMobileSheet(); });
-    // keep only one X: if we already used ✕ for remove, make close a chevron
-    if (actions.childElementCount >= 2){
-      close.textContent = '⌄';
-    }
     actions.appendChild(close);
+
+    // Delete (red button)
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'mwDeleteBtn';
+    del.innerHTML = '<img class="mwDeleteIcon" alt="" src="/static/icons/Delete.png" />Delete';
+    del.setAttribute('aria-label', 'Delete widget');
+    del.addEventListener('click', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      if (!requireAuth('widgets')) return;
+      removeWidget(side, widgetId);
+      closeMobileSheet();
+      updateMobileDock();
+    });
+    actions.appendChild(del);
 
     body.innerHTML = '';
     // Render inside a card for consistent padding

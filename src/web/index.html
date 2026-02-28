@@ -3639,9 +3639,11 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
       cursor:pointer;
       position: relative;
       flex: 0 0 auto;
-      touch-action: manipulation;
+      touch-action: none;
       user-select: none;
+      -webkit-user-select: none;
       -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
     }
     
     .mwDockBtn.isDisabled{
@@ -3676,7 +3678,7 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
       transform: scale(.98);
     }
     .mwDockBtn:active{ transform: translateY(1px); }
-    .mwDockBtn img{ width: 35px; height: 35x; display:block; }
+    .mwDockBtn img{ width: 35px; height: 35px; display:block; user-select:none; -webkit-user-select:none; pointer-events:none; }
     /* Plus should be circular */
     .mwDockBtn.isPlus{ width: 54px; height: 54px; background:#fff; border-radius: 999px; box-shadow: 0 10px 22px rgba(15,23,42,.14); }
     .mwDockBtn.isPlus span{ font-size: 26px; font-weight: 900; line-height: 1; }
@@ -3715,6 +3717,23 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
     .mwSheetHead{ display:flex; align-items:center; justify-content: space-between; gap: 10px; padding: 12px 12px; border-bottom: 1px solid rgba(15,23,42,.10); }
     .mwSheetTitle{ font-weight: 900; letter-spacing: .01em; }
     .mwSheetActions{ display:flex; align-items:center; gap: 8px; }
+    .mwDeleteBtn{
+      height: 28px;
+      padding: 0 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(239,68,68,.35);
+      background: rgba(239,68,68,.10);
+      color: rgba(127,29,29,.95);
+      font-weight: 800;
+      font-size: 12px;
+      cursor: pointer;
+      display:inline-flex;
+      align-items:center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+    .mwDeleteBtn:hover{ background: rgba(239,68,68,.14); }
+    .mwDeleteIcon{ width: 14px; height: 14px; display:block; }
     .mwSheetBody{ padding: 12px 12px 14px; overflow:auto; }
 
     /* Hide the dock when widgets are disabled (Profile/Pricing/Tracking, etc.) */
@@ -4291,6 +4310,30 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
       .mainCol > *{ max-width: 1040px; }
     }
     
+    /* ============================= */
+/* iOS Safari link color FIX    */
+/* ============================= */
+
+/* Кнопка "+" и все круглые action-кнопки */
+.addBtn,
+.addBtn:link,
+.addBtn:visited,
+.addBtn:hover,
+.addBtn:active {
+  color: #111 !important;
+  -webkit-text-fill-color: #111 !important;
+  text-decoration: none !important;
+}
+
+/* Если внутри используется SVG */
+.addBtn svg {
+  fill: #111 !important;
+}
+
+/* Убрать синюю подсветку при тапе */
+.addBtn {
+  -webkit-tap-highlight-color: transparent;
+}
 </style>
 
 </head>
