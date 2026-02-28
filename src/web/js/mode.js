@@ -1,0 +1,430 @@
+/*
+ * CHECKNE Web App — mode.js
+ * Premium mode transitions + swipe navigation + basic helpers
+ *
+ * Split from the former monolithic app.js to keep responsibilities separated.
+ * Keep files loaded in order (see index.html).
+ */
+
+// =========================
+// Premium mode transition (Feed <-> Tracking) + swipe navigation
+// =========================
+let __modeAnimating = false;
+let __modeLastTarget = null;
+
+function _sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
+
+function beginModeTransition(toMode){
+  const wrap = qs('feedView');
+  if(!wrap) return;
+  __modeLastTarget = toMode;
+  document.body.classList.add('view-switching');
+  wrap.classList.remove('page-in','page-transition','to-feed','to-tracking');
+  wrap.classList.add('page-transition', (toMode === 'fav') ? 'to-tracking' : 'to-feed');
+}
+
+
+
+function endModeTransition(){
+  const wrap = qs('feedView');
+  if(!wrap) return;
+
+  // Apple-like “sheet/page” entrance: minimal, smooth, spring-ish easing.
+  const enteringFromRight = (__modeLastTarget === 'fav');
+
+  // Small offset + tiny scale for depth (no blur/3D rotate).
+  const startX = enteringFromRight ? '36px' : '-36px';
+
+  // Set start state (no transition)
+  wrap.classList.add('page-in');
+  wrap.style.transition = 'none';
+  wrap.style.transform = `translate3d(${startX},0,0) scale(.985)`;
+  wrap.style.opacity = '0';
+
+  // Next frame -> let CSS transitions take over (to normal)
+  requestAnimationFrame(()=>{
+    wrap.style.transition = '';
+    wrap.style.transform = '';
+    wrap.style.opacity = '';
+  });
+
+  window.setTimeout(()=>{
+    wrap.classList.remove('page-in','page-transition','to-feed','to-tracking');
+    wrap.style.transition = '';
+    wrap.style.transform = '';
+    wrap.style.opacity = '';
+    document.body.classList.remove('view-switching');
+  }, 560);
+}
+
+async function switchMode(targetMode){
+  if(__modeAnimating) return;
+  if(state.mode === targetMode) return;
+
+  __modeAnimating = true;
+
+
+  try{
+    // 1) “page out” анимация
+    beginModeTransition(targetMode);
+    await _sleep(140);
+
+    // 2) меняем режим
+    state.mode = targetMode;
+
+    // Widgets: hide on Tracking (fav) to avoid layout clutter.
+    try{
+      if (typeof window.__setWidgetsEnabled === 'function'){
+        window.__setWidgetsEnabled(targetMode === 'feed');
+      }
+    }catch{}
+
+    // 3) ВАЖНО: переносим cards туда, где они должны быть
+    // Если у тебя нет новых mounts (cardsMountFeed/cardsMountTracking) — просто пропусти.
+    // Но если ты делал разметку как я писал раньше — это MUST.
+    const cards = document.getElementById("cards");
+    const feedMount = document.getElementById("cardsMountFeed");
+    const trackMount = document.getElementById("cardsMountTracking");
+
+    if (cards && feedMount && trackMount) {
+      if (targetMode === "fav") trackMount.appendChild(cards);
+      else feedMount.appendChild(cards);
+    }
+
+    // 4) обновляем UI + грузим данные
+    applyTabs();
+
+    if(targetMode === 'fav'){
+      await fetchFavorites();
+    } else {
+      // IMPORTANT: when returning from Tracking -> Feed we must fully reset the cards DOM.
+      // Otherwise incremental rendering can keep Tracking-only blocks (graph/drag UI) in the feed
+      // until a hard reload.
+      await fetchFeed({ quiet: true, reset: true });
+    }
+
+
+    // 6) “page in” анимация
+    endModeTransition();
+
+    // 6) скролл вверх
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  } finally {
+    window.setTimeout(()=>{ __modeAnimating = false; }, 180);
+  }
+}
+
+
+function setupSwipeNavigation(){
+  const wrap = qs('feedView');
+  if(!wrap) return;
+
+  const shade = document.getElementById('viewShade');
+
+  let startX = 0, startY = 0, dx = 0, dy = 0, active = false;
+  let dragging = false;
+  const MAX_PULL = 220; // px (bigger = more “page” movement)
+
+  function clamp(n, a, b){ return Math.max(a, Math.min(b, n)); }
+
+  function resetInline(){
+    wrap.classList.remove('gesture-dragging');
+    wrap.style.transform = '';
+    wrap.style.opacity = '';
+    wrap.style.filter = '';
+    wrap.style.transition = '';
+    document.body.classList.remove('view-switching');
+    if(shade) shade.style.opacity = '';
+  }
+
+  wrap.addEventListener('touchstart', (e)=>{
+    if(!e.touches || !e.touches[0]) return;
+    active = true;
+    dragging = false;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    dx = dy = 0;
+  }, { passive: true });
+
+  // NOTE: passive:false so we can preventDefault when it's a horizontal swipe
+  wrap.addEventListener('touchmove', (e)=>{
+    if(!active || !e.touches || !e.touches[0]) return;
+    dx = e.touches[0].clientX - startX;
+    dy = e.touches[0].clientY - startY;
+
+    // Decide when this becomes a horizontal gesture (don't fight vertical scroll)
+    if(!dragging){
+      if(Math.abs(dx) < 12) return;
+      if(Math.abs(dx) < Math.abs(dy)) return;
+      dragging = true;
+      wrap.classList.add('gesture-dragging');
+      document.body.classList.add('view-switching');
+    }
+
+    if(dragging){
+      e.preventDefault();
+      const pull = clamp(dx, -MAX_PULL, MAX_PULL);
+      const t = Math.min(1, Math.abs(pull) / MAX_PULL);
+      const dir = pull < 0 ? -1 : 1;
+      // Live feedback: iOS-like slide + tiny scale + subtle lift (premium, not flashy)
+      const scale = 1 - t * 0.018;
+      const lift = (t * 6).toFixed(1);
+      wrap.style.transform = `translate3d(${pull}px, ${lift}px, 0) scale(${scale})`;
+      wrap.style.opacity = String(1 - t*0.06);
+      wrap.style.filter = '';
+      if(shade){
+        shade.style.opacity = String(Math.min(1, 0.15 + t*0.55));
+      }
+    }
+  }, { passive: false });
+
+  wrap.addEventListener('touchend', ()=>{
+    if(!active) return;
+    active = false;
+
+    const isHorizontal = dragging && (Math.abs(dx) >= 90) && (Math.abs(dx) > Math.abs(dy));
+
+    // If not a committed swipe -> snap back smoothly
+    if(!isHorizontal){
+      if(dragging){
+        wrap.style.transition = 'transform 260ms cubic-bezier(0.22,1,0.36,1), opacity 260ms cubic-bezier(0.22,1,0.36,1)';
+        wrap.style.transform = 'translate3d(0,0,0) scale(1)';
+        wrap.style.opacity = '1';
+        wrap.style.filter = '';
+        window.setTimeout(resetInline, 240);
+      }
+      dragging = false;
+      return;
+    }
+
+    // Commit swipe
+    resetInline();
+    dragging = false;
+
+    if(dx < 0){
+      // swipe left -> Tracking
+      switchMode('fav');
+    }else{
+      // swipe right -> Feed
+      switchMode('feed');
+    }
+  }, { passive: true });
+
+  wrap.addEventListener('touchcancel', ()=>{
+    active = false;
+    dragging = false;
+    resetInline();
+  }, { passive: true });
+}
+
+function escapeHtml(s) {
+  return (s || "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+}
+
+function getDeviceId() {
+  let id = localStorage.getItem(DEVICE_KEY);
+  if (!id) {
+    id = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random());
+    localStorage.setItem(DEVICE_KEY, id);
+  }
+  return id;
+}
+const DEVICE_ID = getDeviceId();
+
+// Feed policy: when sorting by "Newest", push low-credibility items to the bottom
+// so the top of the list stays "confirmed".
+const CONFIRMED_SCORE_THRESHOLD = 55;
+
+function loadPrefs() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const p = JSON.parse(raw);
+    // Keep interests deterministic & deduplicated (prevents duplicate chips like "technology" twice)
+    const ints = Array.isArray(p.interests) ? p.interests : state.interests;
+    state.interests = [...new Set(ints.map(String))].filter(Boolean);
+    state.country = p.country || state.country;
+    state.language = p.language || state.language;
+  } catch {}
+}
+
+function savePrefs() {
+  const interests = [...new Set((state.interests || []).map(String))].filter(Boolean);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({
+    interests,
+    country: state.country,
+    language: state.language,
+  }));
+}
+
+function loadFilters() {
+  try {
+    const raw = localStorage.getItem(FILTERS_KEY);
+    if (!raw) return;
+    const f = JSON.parse(raw);
+    const so = String(f.sortOrder || 'newest');
+    state.filters.sortOrder = (so === 'low' || so === 'high' || so === 'newest') ? so : 'newest';
+    state.filters.minScore = clamp(Number(f.minScore ?? 0), 0, 100);
+    state.filters.maxScore = clamp(Number(f.maxScore ?? 100), 0, 100);
+    state.filters.onlyConfirmed = !!f.onlyConfirmed;
+    state.filters.onlyAiSummary = !!f.onlyAiSummary;
+  } catch {}
+}
+
+function saveFilters() {
+  localStorage.setItem(FILTERS_KEY, JSON.stringify(state.filters));
+}
+
+function loadThumbPrefs() {
+  try {
+    const raw = localStorage.getItem(THUMBS_KEY);
+    if (raw === null) return;
+    state.showThumbs = raw === '1' || raw === 'true';
+  } catch {}
+}
+
+function saveThumbPrefs() {
+  try {
+    localStorage.setItem(THUMBS_KEY, state.showThumbs ? '1' : '0');
+  } catch {}
+}
+
+function applyFiltersUIToState() {
+  const minEl = qs('scoreMin');
+  const maxEl = qs('scoreMax');
+  const minV = clamp(Number(minEl ? minEl.value : 0), 0, 100);
+  const maxV = clamp(Number(maxEl ? maxEl.value : 100), 0, 100);
+
+  // Ensure min <= max
+  const a = Math.min(minV, maxV);
+  const b = Math.max(minV, maxV);
+
+  state.filters.minScore = a;
+  state.filters.maxScore = b;
+  if (minEl) minEl.value = String(a);
+  if (maxEl) maxEl.value = String(b);
+
+  const checked = document.querySelector('input[name="sortOrder"]:checked');
+  const so = String(checked ? checked.value : 'newest');
+  state.filters.sortOrder = (so === 'low' || so === 'high' || so === 'newest') ? so : 'newest';
+
+  const label = qs('sortBtnValue');
+  if (label) {
+    label.textContent = (state.filters.sortOrder === 'newest') ? 'Newest'
+      : (state.filters.sortOrder === 'low') ? 'Low to High'
+      : 'High to Low';
+  }
+
+  // Extra filters
+  const onlyConfirmedEl = qs('onlyConfirmed');
+  const onlyAiSummaryEl = qs('onlyAiSummary');
+  state.filters.onlyConfirmed = !!(onlyConfirmedEl && onlyConfirmedEl.checked);
+  state.filters.onlyAiSummary = !!(onlyAiSummaryEl && onlyAiSummaryEl.checked);
+
+  saveFilters();
+}
+
+function syncFiltersStateToUI() {
+  const minEl = qs('scoreMin');
+  const maxEl = qs('scoreMax');
+  if (minEl) minEl.value = String(clamp(Number(state.filters.minScore ?? 0), 0, 100));
+  if (maxEl) maxEl.value = String(clamp(Number(state.filters.maxScore ?? 100), 0, 100));
+
+  const so = String(state.filters.sortOrder || 'newest');
+  const input = document.querySelector('input[name="sortOrder"][value="' + so + '"]');
+  if (input) input.checked = true;
+
+  const label = qs('sortBtnValue');
+  if (label) {
+    label.textContent = (so === 'newest') ? 'Newest' : (so === 'low') ? 'Low to High' : 'High to Low';
+  }
+
+  const onlyConfirmedEl = qs('onlyConfirmed');
+  const onlyAiSummaryEl = qs('onlyAiSummary');
+  if (onlyConfirmedEl) onlyConfirmedEl.checked = !!state.filters.onlyConfirmed;
+  if (onlyAiSummaryEl) onlyAiSummaryEl.checked = !!state.filters.onlyAiSummary;
+}
+
+function syncThumbToggleUI() {
+  const el = document.getElementById("thumbToggle");
+  if (!el) return;
+
+  // Checkbox switch (same style as email toggle)
+  el.checked = !!state.showThumbs;
+
+  const label = document.querySelector(".thumbToggleLabel");
+  if (label) {
+    label.textContent = state.showThumbs ? t("ui.hide_thumbs","Hide thumbnails") : t("ui.show_thumbs","Show thumbnails");
+  }
+}
+
+function getFavIds() {
+  try {
+    const raw = localStorage.getItem(FAV_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    const ids = Array.isArray(arr) ? arr.map((x) => Number(x)).filter((x) => Number.isFinite(x)) : [];
+    return [...new Set(ids)];
+  } catch { return []; }
+}
+
+function setFavIds(ids) {
+  const uniq = [...new Set((ids || []).map((x) => Number(x)).filter((x) => Number.isFinite(x)))];
+  localStorage.setItem(FAV_KEY, JSON.stringify(uniq));
+  // legacy counter (hidden)
+  const favCountEl = document.getElementById("favCount");
+  if (favCountEl) favCountEl.textContent = String(uniq.length);
+
+  // new header badge
+  const trackingCountEl = document.getElementById("trackingCount");
+  if (trackingCountEl) trackingCountEl.textContent = String(uniq.length);
+
+
+  // Notify widgets/other UI that tracking changed
+  try {
+    document.dispatchEvent(new CustomEvent("checkne:favsChanged", { detail: { count: uniq.length } }));
+  } catch {}
+}
+
+function isFav(id) { return getFavIds().includes(Number(id)); }
+
+function toggleFav(id) {
+  if (!authState.authenticated) {
+    openAuthModal('tracking');
+    return isFav(id);
+  }
+  id = Number(id);
+  const ids = getFavIds();
+  if (ids.includes(id)) {
+    setFavIds(ids.filter((x) => x !== id));
+    syncFavoritesToServer().catch(() => {});
+    return false;
+  } else {
+    ids.unshift(id);
+    setFavIds(ids);
+    syncFavoritesToServer().catch(() => {});
+    return true;
+  }
+}
+
+function removeFav(id) {
+  if (!authState.authenticated) {
+    openAuthModal('tracking');
+    return false;
+  }
+  // getFavIds() returns numeric ids; keep comparisons numeric
+  id = Number(id);
+  const ids = getFavIds();
+  if (!ids.includes(id)) return false;
+  setFavIds(ids.filter((x) => x !== id));
+  syncFavoritesToServer().catch(() => {});
+  return true;
+}
+
+function loadSeenState() {
+  try { return JSON.parse(localStorage.getItem(SEEN_KEY) || "{}") || {}; }
+  catch { return {}; }
+}
+function saveSeenState(obj) { localStorage.setItem(SEEN_KEY, JSON.stringify(obj || {})); }

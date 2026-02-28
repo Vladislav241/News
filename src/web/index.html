@@ -74,16 +74,17 @@
       transform: translate3d(0,-110%,0);
     }
 .headerInner{
-  max-width: 1040px;
+  max-width: 1400px;
   margin: 0 auto;
-  padding: 28px 16px;
+  padding: 22px 16px;
 
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 18px;
-
-  justify-content: space-between; /* ✅ равномерно */
 }
+.headerCenter{ justify-self: center; }
+.headerRight{ justify-self: end; }
 
 
 
@@ -156,13 +157,24 @@
       padding: 0 6px;
       border-radius: 30px;
       background: #0b0b0f;
-      color: #fff;
+      color: rgba(15,23,42,.78);
       display:inline-flex;
       align-items:center;
       justify-content:center;
       font-weight: 800;
       font-size: 12px;
       line-height: 1;
+    }
+
+    /* Ensure the HEADER tracking counter always stays dark (the Tracking Stats widget
+       reuses the `.trackBadge` class with a light style). */
+    header .trackBadge{
+      background: #0b0b0f;
+      color: #fff;
+      border: none;
+      min-width: 22px;
+      height: 22px;
+      padding: 0 6px;
     }
 
     .loginBtn{
@@ -3468,6 +3480,817 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
   }
 }
 
+
+    /* ===== Side widgets layout ===== */
+    .pageLayout{
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 18px 16px 0;
+      display: grid;
+      grid-template-columns: 260px minmax(0,1fr) 260px;
+      gap: 24px;
+      align-items: start;
+    }
+
+    /* Widgets OFF mode (Profile / Pricing / Info pages, and also Tracking tab)
+       Make the layout collapse to a single centered column. */
+    body.widgets-disabled .sidebar{ display:none !important; }
+    body.widgets-disabled .pageLayout{ grid-template-columns: minmax(0,1fr) !important; }
+    .mainCol{ min-width:0; }
+    /* Keep the main content width consistent with the existing design */
+    .mainCol > .topStories,
+    .mainCol > .panel,
+    .mainCol > .cards,
+    .mainCol > .feedTools,
+    .mainCol > .feedHeader,
+    /* Tracking-only blocks live inside the main column too, so keep them
+       aligned with the Feed width when side widgets are disabled. */
+    .mainCol > #trackingHint,
+    .mainCol > #trackingSettings,
+    .mainCol > #lastUpdated,
+    .mainCol > .topline,
+    .mainCol > .topStories + .panel{
+      max-width: 1040px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    /* Sticky sidebars (keeps widgets visible while scrolling).
+       Note: Safari can be picky with sticky + grid, so we keep it simple and add -webkit-sticky.
+    */
+    .sidebar{
+      position: -webkit-sticky;
+      position: sticky;
+      top: calc(var(--headerH, 92px) + 14px);
+      align-self: start;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      max-height: calc(100vh - (var(--headerH, 92px) + 22px));
+      overflow: auto;
+      padding-bottom: 6px;
+      overscroll-behavior: contain;
+    }
+
+    /* When the sidebar is moved into the mobile drawer, it should fill the drawer width
+       and use normal scrolling (not sticky). */
+    .sidebar.inDrawer{
+      position: static;
+      top: auto;
+      max-height: none;
+      overflow: visible;
+      padding-bottom: 0;
+    }
+
+    /* Mobile widgets drawer (always reachable even when sidebars are hidden) */
+    .widgetsFab{
+      position: fixed;
+      right: 14px;
+      bottom: 14px;
+      z-index: 120;
+      border: 1px solid rgba(15,23,42,.14);
+      background: rgba(255,255,255,.92);
+      backdrop-filter: blur(10px);
+      border-radius: 999px;
+      padding: 10px 14px;
+      display: none; /* JS toggles on small screens */
+      align-items: center;
+      gap: 10px;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 10px 26px rgba(15,23,42,.12);
+    }
+    .widgetsFabDot{ width: 10px; height: 10px; border-radius: 99px; background: var(--black); opacity: .9; }
+
+    .widgetsDrawer{ position: fixed; inset: 0; z-index: 140; display: none; }
+    .widgetsDrawer.isOpen{ display: block; }
+    .widgetsDrawerBackdrop{ position:absolute; inset:0; background: rgba(0,0,0,.36); }
+    .widgetsDrawerSheet{
+      position: absolute;
+      left: 50%;
+      bottom: 14px;
+      transform: translateX(-50%);
+      width: min(980px, calc(100vw - 28px));
+      max-height: calc(100vh - (var(--headerH, 92px) + 28px));
+      background: #fff;
+      border: 1px solid rgba(15,23,42,.12);
+      border-radius: 22px;
+      overflow: hidden;
+      box-shadow: 0 18px 48px rgba(15,23,42,.22);
+      display:flex;
+      flex-direction: column;
+    }
+    .widgetsDrawerHeader{ display:flex; align-items:center; justify-content: space-between; padding: 14px 14px; border-bottom: 1px solid var(--stroke); }
+    .widgetsDrawerTitle{ font-weight: 900; letter-spacing: .01em; }
+    .widgetsDrawerClose{ border: 1px solid var(--stroke); background:#fff; border-radius: 999px; padding: 8px 12px; cursor:pointer; font-weight: 900; }
+    .widgetsDrawerBody{ padding: 12px 14px 14px; overflow: auto; display:grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .widgetsDrawerLabel{ font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em; color: rgba(15,23,42,.56); margin-bottom: 10px; }
+    .widgetsDrawerSlot{ display:flex; flex-direction: column; gap: 16px; }
+
+    @media (max-width: 780px){
+      .widgetsDrawerBody{ grid-template-columns: 1fr; }
+    }
+
+    /* ===== Mobile widgets dock (bottom bar) =====
+       On phones there are no side columns — keep widgets reachable via a bottom dock.
+    */
+    @media (max-width: 980px){
+      /* Collapse the 3-column layout to one column and hide sidebars */
+      .pageLayout{ grid-template-columns: minmax(0,1fr); }
+      .sidebar{ display:none; }
+    }
+
+    /* Space so the bottom dock doesn't cover the feed */
+    body.hasMobileWidgetDock .pageLayout{ padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+
+    .mwDock{
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      transform: none;
+      z-index: 135;
+      width: 100vw;
+      background: rgba(255,255,255,.98);
+      backdrop-filter: blur(10px);
+      border-top: 1px solid rgba(15,23,42,.12);
+      border-left: none;
+      border-right: none;
+      border-bottom: none;
+      border-radius: 0; /* no rounding on mobile bar */
+      box-shadow: 0 -10px 32px rgba(15,23,42,.14);
+      padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+
+      display:none; /* enabled by JS */
+      align-items:center;
+      gap: 10px;
+      justify-content: center; /* empty state */
+    }
+    .mwDock.isOn{ display:flex; }
+    /* Keep the whole group centered so the + shifts left step-by-step as widgets are added */
+    .mwDock.hasItems{ justify-content: center; }
+    .mwDock.isOn{ display:flex; }
+    .mwDockBtn{
+      width: 44px; height: 44px;
+      border-radius: 14px;
+      border: 1px solid rgba(15,23,42,.10);
+      background: rgba(17,17,19,.03);
+      display:flex; align-items:center; justify-content:center;
+      cursor:pointer;
+      position: relative;
+      flex: 0 0 auto;
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    
+    .mwDockBtn.isDisabled{
+      opacity: .45;
+      cursor: not-allowed;
+    }
+    .mwDockBtn.isDisabled:active{ transform: none; }
+.mwDockBtn:active{ transform: translateY(1px); }
+    .mwDockBtn.isDrag{
+      transition: none !important;
+      z-index: 2;
+      box-shadow: 0 14px 28px rgba(15,23,42,.18);
+    }
+    .mwDockHint{
+      position:absolute;
+      left:50%;
+      top:-12px;
+      transform: translateX(-50%);
+      font-size: 11px;
+      color: rgba(15,23,42,.55);
+      background: rgba(255,255,255,.92);
+      border: 1px solid rgba(15,23,42,.12);
+      border-radius: 999px;
+      padding: 4px 8px;
+      display:none;
+      pointer-events:none;
+      white-space:nowrap;
+    }
+    .mwDock.hasItems .mwDockHint{ display:block; }
+.mwDockBtn.isHold{
+      background: rgba(17,17,19,.07);
+      transform: scale(.98);
+    }
+    .mwDockBtn:active{ transform: translateY(1px); }
+    .mwDockBtn img{ width: 35px; height: 35x; display:block; }
+    /* Plus should be circular */
+    .mwDockBtn.isPlus{ width: 54px; height: 54px; background:#fff; border-radius: 999px; box-shadow: 0 10px 22px rgba(15,23,42,.14); }
+    .mwDockBtn.isPlus span{ font-size: 26px; font-weight: 900; line-height: 1; }
+    .mwDockDot{
+      position:absolute;
+      right: 8px;
+      top: 8px;
+      width: 10px; height: 10px;
+      border-radius: 999px;
+      background: var(--black);
+      box-shadow: 0 0 0 2px rgba(255,255,255,.92);
+      opacity: .0;
+      transform: scale(.85);
+    }
+    .mwDockBtn.isActive .mwDockDot{ opacity: .95; transform: scale(1); }
+
+    /* Bottom sheet that shows a selected widget */
+    .mwSheet{ position: fixed; inset: 0; z-index: 145; display:none; }
+    .mwSheet.isOpen{ display:block; }
+    .mwSheetBackdrop{ position:absolute; inset:0; background: rgba(0,0,0,.32); }
+    .mwSheetPanel{
+      position:absolute;
+      left: 50%;
+      bottom: 84px; /* above dock */
+      transform: translateX(-50%);
+      width: min(720px, calc(100vw - 28px));
+      max-height: min(72vh, 640px);
+      background:#fff;
+      border: 1px solid rgba(15,23,42,.12);
+      border-radius: 22px;
+      box-shadow: 0 18px 48px rgba(15,23,42,.22);
+      overflow:hidden;
+      display:flex;
+      flex-direction: column;
+    }
+    .mwSheetHead{ display:flex; align-items:center; justify-content: space-between; gap: 10px; padding: 12px 12px; border-bottom: 1px solid rgba(15,23,42,.10); }
+    .mwSheetTitle{ font-weight: 900; letter-spacing: .01em; }
+    .mwSheetActions{ display:flex; align-items:center; gap: 8px; }
+    .mwSheetBody{ padding: 12px 12px 14px; overflow:auto; }
+
+    /* Hide the dock when widgets are disabled (Profile/Pricing/Tracking, etc.) */
+    body.widgets-disabled .mwDock{ display:none !important; }
+    .widgetCard{
+      background: #fff;
+      border: 1px solid rgba(15,23,42,.10);
+      border-radius: 18px;
+      padding: 12px 12px 12px;
+      overflow: hidden;
+      user-select: none;
+      box-shadow: 0 10px 26px rgba(15,23,42,.08);
+    }
+    .widgetCard[draggable="true"]{ cursor: grab; }
+    .widgetCard.isDragging{ opacity: .55; }
+    .widgetHeader{
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .widgetTitleWrap{
+      display:flex;
+      align-items:center;
+      gap: 10px;
+      min-width: 0;
+    }
+    .widgetIcon{
+      width: 30px; height: 30px;
+      border-radius: 12px;
+      display:flex; align-items:center; justify-content:center;
+      font-size: 16px;
+      border: 1px solid rgba(15,23,42,.10);
+      background: rgba(17,17,19,.03);
+      flex: 0 0 auto;
+    }
+
+    .widgetIconImg{ width: 18px; height: 18px; display:block; }
+    .widgetTitle{
+      font-weight: 800;
+      letter-spacing: .02em;
+      font-size: 12px;
+      text-transform: uppercase;
+      color: rgba(15,23,42,.78);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    /* per-widget accents (subtle, in CHECKNE style) */
+    .widgetCard[data-type="fx_rates"] .widgetIcon{ background: rgba(16,185,129,.10); border-color: rgba(16,185,129,.20); }
+    .widgetCard[data-type="crypto_prices"] .widgetIcon{ background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.24); }
+    .widgetCard[data-type="headlines"] .widgetIcon{ background: rgba(59,130,246,.10); border-color: rgba(59,130,246,.22); }
+    .widgetCard[data-type="tracking_stats"] .widgetIcon{ background: rgba(99,102,241,.10); border-color: rgba(99,102,241,.22); }
+    .widgetCard[data-type="market_clock"] .widgetIcon{ background: rgba(236,72,153,.10); border-color: rgba(236,72,153,.22); }
+
+    /* PRO pills + premium widget UI */
+    .proPill{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      padding:2px 8px;
+      border-radius:999px;
+      font-size:11px;
+      font-weight:700;
+      letter-spacing:.04em;
+      border:1px solid rgba(17,24,39,.14);
+      background: rgba(17,24,39,.06);
+      color: rgba(17,24,39,.72);
+      margin-left:8px;
+    }
+    .widgetPick.isLocked{ opacity:.75; }
+    .widgetPickLock{ margin-top:10px; font-size:12px; color: rgba(17,24,39,.65); }
+
+    .proHint{ font-size:12px; line-height:1.35; color: rgba(17,24,39,.68); margin-bottom:10px; }
+    .proList{ display:flex; flex-direction:column; gap:10px; }
+    .proRow{
+      text-align:left;
+      width:100%;
+      border:1px solid rgba(17,24,39,.10);
+      background: rgba(255,255,255,.75);
+      border-radius:14px;
+      padding:10px 10px;
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:12px;
+      cursor:pointer;
+      transition: transform .12s ease, box-shadow .12s ease;
+    }
+    .proRow:hover{ transform: translateY(-1px); box-shadow: 0 6px 18px rgba(17,24,39,.08); }
+    .proRowTitle{ font-weight:700; font-size:13px; line-height:1.25; }
+    .proRowWhy{ font-size:12px; color: rgba(17,24,39,.62); margin-top:4px; }
+    .proRowBadge, .proRowPct{
+      flex:0 0 auto;
+      min-width:44px;
+      height:28px;
+      padding:0 10px;
+      border-radius:999px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border:1px solid rgba(17,24,39,.12);
+      background: rgba(17,24,39,.04);
+      font-weight:800;
+      font-size:12px;
+      color: rgba(17,24,39,.72);
+    }
+    .proRowPct{ min-width:54px; }
+    .proTitleSm{ font-weight:800; font-size:13px; line-height:1.25; }
+    .proChart{ margin-top:10px; border:1px solid rgba(17,24,39,.10); border-radius:14px; padding:10px; background: rgba(255,255,255,.75); font-size:12px; }
+    .proChart svg{ width:100%; height:auto; display:block; }
+    .proActions{ display:flex; gap:10px; margin-top:10px; }
+    .proActions .btnSoft{ flex:1; }
+
+    .proLocked{ text-align:left; }
+    .proLockedTitle{ font-weight:900; font-size:14px; }
+    .proLockedDesc{ margin-top:6px; font-size:12px; color: rgba(17,24,39,.65); line-height:1.35; }
+    .proLocked .btnBlack{ margin-top:12px; width:100%; }
+    .proEmptyTitle{ font-weight:800; font-size:13px; }
+    .proEmptyDesc{ margin-top:6px; font-size:12px; color: rgba(17,24,39,.65); }
+
+    .proAlertsRow{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 10px; border:1px solid rgba(17,24,39,.10); border-radius:14px; background: rgba(255,255,255,.75); }
+    .proAlertsTitle{ font-weight:800; font-size:13px; }
+    .proAlertsSub{ margin-top:2px; font-size:12px; color: rgba(17,24,39,.65); }
+
+    .entityGrid{ display:flex; flex-wrap:wrap; gap:8px; }
+    .entityChip{ border:1px solid rgba(17,24,39,.10); background: rgba(255,255,255,.75); border-radius:999px; padding:8px 10px; display:inline-flex; align-items:center; gap:8px; cursor:pointer; }
+    .entityName{ font-weight:700; font-size:12px; }
+    .entityCount{ font-weight:800; font-size:12px; color: rgba(17,24,39,.62); border-left:1px solid rgba(17,24,39,.10); padding-left:8px; }
+
+    .miniCarousel{ display:flex; align-items:center; gap:10px; }
+    .miniNav{ width:34px; height:34px; border-radius:12px; border:1px solid rgba(17,24,39,.10); background: rgba(255,255,255,.75); font-size:18px; font-weight:900; cursor:pointer; }
+    .miniSlide{ flex:1; border:1px solid rgba(17,24,39,.10); border-radius:16px; padding:10px; background: rgba(255,255,255,.75); cursor:pointer; }
+    .miniTop{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+    .miniTitle{ font-weight:800; font-size:13px; line-height:1.25; }
+    .miniBadge{ min-width:42px; height:26px; padding:0 10px; border-radius:999px; border:1px solid rgba(17,24,39,.12); background: rgba(17,24,39,.04); display:flex; align-items:center; justify-content:center; font-weight:900; font-size:12px; color: rgba(17,24,39,.72); }
+    .miniChart{ margin-top:10px; border:1px solid rgba(17,24,39,.10); border-radius:14px; padding:8px; font-size:12px; }
+    .miniChart svg{ width:100%; height:auto; display:block; }
+    .miniSub{ margin-top:8px; font-size:12px; color: rgba(17,24,39,.62); }
+    .miniDots{ display:flex; justify-content:center; gap:8px; margin-top:10px; }
+    .miniDot{ width:8px; height:8px; border-radius:999px; border:1px solid rgba(17,24,39,.18); background: rgba(17,24,39,.08); cursor:pointer; }
+    .miniDot.isOn{ background: rgba(17,24,39,.65); }
+
+    .widgetActions{ display:flex; align-items:center; gap: 6px; }
+    .iconBtn{
+      width: 28px; height: 28px;
+      border-radius: 999px;
+      border: 1px solid var(--stroke);
+      background: #fff;
+      cursor: pointer;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size: 14px;
+      line-height: 1;
+    }
+    .iconBtn:hover{ background: rgba(17,17,19,.04); }
+    .miniBtn{
+      height: 30px;
+      padding: 0 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(15,23,42,.12);
+      background: #fff;
+      font-weight: 700;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .miniBtn:hover{ background: rgba(17,17,19,.04); }
+    .widgetBody{ font-size: 14px; color: rgba(15,23,42,.82); }
+    .kvRow{ display:flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid rgba(229,231,235,.7); }
+    .kvRow:last-child{ border-bottom: none; }
+    .kvKey{ color: rgba(15,23,42,.62); }
+    .kvVal{ font-weight: 600; }
+    .miniList{ display:flex; flex-direction: column; gap: 8px; }
+    .miniItem{ display:flex; gap: 10px; align-items:flex-start; }
+    .miniDot{ width: 8px; height: 8px; border-radius: 999px; background: rgba(17,17,19,.75); margin-top: 6px; flex: 0 0 auto; }
+    .miniText{ font-size: 13px; line-height: 1.25; color: rgba(15,23,42,.88); }
+
+    .addWidgetTile{
+      border: 1px dashed rgba(15,23,42,.22);
+      background: rgba(17,17,19,.02);
+      border-radius: 18px;
+      padding: 18px 14px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap: 10px;
+      cursor: pointer;
+      color: rgba(15,23,42,.66);
+      font-weight: 600;
+    }
+    .addWidgetTile:hover{ background: rgba(17,17,19,.04); }
+    
+/* Add widget tile: show only when user is interacting with the sidebars (premium, less clutter) */
+.sidebar .addWidgetTile{
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+  transition: opacity 180ms ease, transform 220ms ease, background 120ms ease;
+}
+.sidebar:hover .addWidgetTile,
+.sidebar .sidebarInner:hover .addWidgetTile,
+.sidebar .addWidgetTile:focus-within{
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+@media (hover: none){
+  .sidebar .addWidgetTile{
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+  }
+}
+
+    .addWidgetPlus{
+      width: 34px; height: 34px;
+      border-radius: 12px;
+      border: 1px solid var(--stroke);
+      display:flex; justify-content:center;
+      font-size: 24px;
+      color: var(--black);
+      background: #fff;
+    }/* Widget modal (picker + settings) */
+.widgetModal{ position: fixed; inset: 0; z-index: 80; display:none; }
+.widgetModal.isOpen{ display:block; }
+.widgetModal .backdrop{ position:absolute; inset:0; background: rgba(0,0,0,.32); }
+
+.widgetModal .sheet{
+  position:absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%,-50%);
+  width: min(560px, calc(100vw - 32px));
+  max-height: min(86vh, 760px);
+  background: #fff;
+  border-radius: 26px;
+  overflow: hidden;
+  box-shadow: 0 18px 60px rgba(0,0,0,.18);
+  border: 1px solid rgba(15,23,42,.06);
+  display:flex;
+  flex-direction: column;
+}
+
+.widgetModal .sheetHeader{
+  padding: 16px 18px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  position: relative;
+  box-shadow: 0 8px 20px rgba(0,0,0,.12);
+  background: #fff;
+}
+.widgetModal .sheetTitle{
+  font-size: 28px;
+  font-weight: 900;
+  letter-spacing: .01em;
+}
+.widgetModal .sheetHeader .iconBtn{ position:absolute; right: 14px; top: 14px; }
+
+/* In picker mode we hide the X to match the reference design.
+   Close still works via backdrop + ESC. */
+.widgetModal[data-mode="pick"] .sheetHeader .iconBtn{ display:none; }
+
+#widgetModalBody{
+  padding: 22px 22px 18px;
+  overflow: auto;
+}
+
+/* Picker layout (1:1 with provided screenshot) */
+.widgetPickerSection{ margin-bottom: 28px; }
+.widgetPickerLabel{
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: .02em;
+  margin: 0 0 14px;
+  color: rgba(17,17,19,.92);
+}
+.widgetGridV2{ display:grid; grid-template-columns: 1fr 1fr; gap: 18px 22px; }
+@media (max-width: 520px){
+  .widgetGridV2{ grid-template-columns: 1fr; }
+}
+
+.widgetPickV2{
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: #fff;
+  border-radius: 22px;
+  padding: 18px 18px;
+  box-shadow: 0 10px 28px rgba(0,0,0,.10);
+  cursor: pointer;
+  display:flex;
+  align-items:flex-start;
+  gap: 12px;
+  position: relative;
+  transition: transform 160ms ease, box-shadow 220ms ease, filter 160ms ease;
+}
+.widgetPickV2:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 14px 34px rgba(0,0,0,.14);
+}
+
+.widgetPickV2.isPro{
+  background: #000;
+  color: #fff;
+  box-shadow: 0 10px 28px rgba(0,0,0,.20);
+}
+.widgetPickV2.isPro:hover{ box-shadow: 0 16px 38px rgba(0,0,0,.26); }
+
+.widgetPickV2.isLocked{ filter: grayscale(.1); opacity: .88; }
+
+.widgetPickIcon{
+  width: 30px; height: 30px;
+  border-radius: 10px;
+  background: #000;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+.widgetPickV2.isPro .widgetPickIcon{ background:#fff; }
+.widgetPickIcon img{ width: 50px; height: 50px; display:block; margin-top: 5px;}
+.widgetPickV2.isPro .widgetPickIcon img{ filter: invert(1); } /* keep icon visible if it's dark */
+
+.widgetPickMeta{ flex: 1 1 auto; min-width: 0; }
+.widgetPickNameV2{ font-weight: 900; font-size: 18px; margin-bottom: 8px; }
+.widgetPickDescV2{ font-size: 14px; line-height: 1.25; color: rgba(17,17,19,.52); }
+.widgetPickV2.isPro .widgetPickDescV2{ color: rgba(255,255,255,.62); }
+
+.widgetPickRadio{
+  width: 22px; height: 22px;
+  border-radius: 99px;
+  border: 1.5px solid rgba(17,17,19,.35);
+  background: rgba(255,255,255,.02);
+  flex: 0 0 auto;
+  margin-left: 8px;
+  margin-top: 2px;
+  position: relative;
+}
+.widgetPickV2.isPro .widgetPickRadio{
+  border-color: rgba(255,255,255,.42);
+  background: rgba(0,0,0,.12);
+}
+.widgetPickV2:active .widgetPickRadio::after{
+  content:"";
+  position:absolute;
+  inset: 5px;
+  border-radius: 99px;
+  background: rgba(17,17,19,.92);
+}
+.widgetPickV2.isPro:active .widgetPickRadio::after{ background: rgba(255,255,255,.92); }
+
+/* Selected state (filled radio persists when the widget is already added) */
+.widgetPickV2.isSelected .widgetPickRadio::after{
+  content:"";
+  position:absolute;
+  inset: 5px;
+  border-radius: 99px;
+  background: rgba(17,17,19,.92);
+}
+.widgetPickV2.isPro.isSelected .widgetPickRadio::after{ background: rgba(255,255,255,.92); }
+
+.widgetPickerCta{
+  display:flex;
+  justify-content:center;
+  padding: 8px 0 6px;
+}
+.widgetGetProBtn{
+  border: 0;
+  background: #000;
+  color: #fff;
+  border-radius: 999px;
+  padding: 14px 46px;
+  font-weight: 900;
+  font-size: 18px;
+  box-shadow: 0 14px 40px rgba(0,0,0,.22);
+  cursor:pointer;
+  transition: transform 150ms ease, box-shadow 200ms ease;
+}
+.widgetGetProBtn:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 18px 50px rgba(0,0,0,.26);
+}
+
+/* Settings footer (kept for configure mode) */
+.widgetFormRow{ display:flex; gap: 10px; align-items:center; margin-top: 10px; }
+.widgetFormRow label{ font-size: 13px; color: rgba(15,23,42,.72); flex: 0 0 auto; }
+.widgetFormRow input, .widgetFormRow select{
+  width: 100%;
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 14px;
+  outline: none;
+}
+.widgetModal .sheetFooter{ display:flex; justify-content:flex-end; gap: 10px; padding: 0 18px 16px; }
+.btnSoft{
+  border: 1px solid var(--stroke);
+  background: #fff;
+  border-radius: 999px;
+  padding: 10px 14px;
+  cursor:pointer;
+  font-weight: 700;
+}
+.btnBlack{
+  border: 1px solid var(--black);
+  background: var(--black);
+  color: #fff;
+  border-radius: 999px;
+  padding: 10px 14px;
+  cursor:pointer;
+  font-weight: 800;
+}
+
+    /* Ghost button (secondary actions inside widgets) */
+    .btnGhost{
+      border: 1px solid var(--stroke);
+      background: rgba(17,17,19,.02);
+      color: var(--black);
+      border-radius: 999px;
+      padding: 10px 14px;
+      cursor: pointer;
+      font-weight: 800;
+      transition: transform .12s ease, background .12s ease;
+    }
+    .btnGhost:hover{ background: rgba(17,17,19,.05); transform: translateY(-1px); }
+    .btnGhost[disabled]{ opacity:.55; cursor: not-allowed; transform:none; }
+
+    /* Tracking Stats widget (premium) */
+    .trackRow{ display:flex; align-items:center; gap:10px; }
+    .trackBadge{
+      display:inline-flex; align-items:center; justify-content:center;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--stroke);
+      background: rgba(17,17,19,.02);
+      font-weight: 800;
+      font-size: 12px;
+      line-height: 1;
+      white-space: nowrap;
+    }
+    .trackBadge.isGood{ border-color: rgba(16,185,129,.35); background: rgba(16,185,129,.08); }
+    .trackBadge.isWarn{ border-color: rgba(245,158,11,.35); background: rgba(245,158,11,.10); }
+    .trackSectionTitle{ font-weight: 900; letter-spacing: .08em; font-size: 12px; color: rgba(15,23,42,.7); text-transform: uppercase; }
+    .trackRecent{ margin-top: 8px; }
+    .trackRecentList{
+      border: 1px solid var(--stroke);
+      border-radius: 14px;
+      overflow: hidden;
+      max-height: 220px;
+      overflow-y: auto;
+      background: rgba(255,255,255,.65);
+    }
+    .trackItem{ display:flex; align-items:stretch; gap:10px; padding: 10px 10px; border-bottom: 1px solid rgba(15,23,42,.06); }
+    .trackItem:last-child{ border-bottom: none; }
+    .trackItemMain{
+      flex: 1;
+      text-align: left;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      padding: 0;
+    }
+    .trackItemTitle{ font-weight: 800; font-size: 13px; line-height: 1.25; color: var(--black); }
+    .trackItemMeta{ display:flex; gap:8px; margin-top: 6px; flex-wrap: wrap; }
+    .trackPill{
+      display:inline-flex; align-items:center; gap:6px;
+      padding: 5px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(15,23,42,.10);
+      background: rgba(17,17,19,.02);
+      font-size: 12px;
+      font-weight: 700;
+      color: rgba(15,23,42,.8);
+      white-space: nowrap;
+    }
+    .trackItemX{
+      width: 34px;
+      height: 34px;
+      border-radius: 999px;
+      border: 1px solid var(--stroke);
+      background: rgba(17,17,19,.02);
+      cursor: pointer;
+      font-size: 20px;
+      line-height: 1;
+      display:flex; align-items:center; justify-content:center;
+      transition: background .12s ease, transform .12s ease;
+    }
+    .trackItemX:hover{ background: rgba(17,17,19,.06); transform: translateY(-1px); }
+    .trackActions{ display:flex; gap: 10px; }
+
+
+/* Multi-select (chips + search) — used in Widget settings */
+.msWrap{ width:100%; }
+.msChips{ display:flex; flex-wrap:wrap; gap:8px; padding: 2px 0 10px; }
+.msHint{ font-size:12px; color: rgba(15,23,42,.55); padding: 6px 2px; }
+.msChip{
+  display:inline-flex; align-items:center; gap:8px;
+  border:1px solid var(--stroke);
+  background: rgba(17,17,19,.02);
+  border-radius: 999px;
+  padding: 8px 10px;
+  cursor:pointer;
+  transition: transform .12s ease, background .12s ease;
+}
+.msChip:hover{ background: rgba(17,17,19,.05); transform: translateY(-1px); }
+.msChipText{ font-size:13px; font-weight: 700; }
+.msChipX{ font-size:16px; line-height:1; opacity:.65; }
+
+.msInputRow{ display:flex; align-items:center; gap:8px; }
+.msInput{
+  width:100%;
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 14px;
+  outline: none;
+}
+.msCaret{
+  width: 38px; height: 38px;
+  border:1px solid var(--stroke);
+  background:#fff;
+  border-radius: 12px;
+  cursor:pointer;
+  font-weight: 900;
+}
+
+.msDropdown{
+  position: relative;
+  margin-top: 10px;
+  border: 1px solid var(--stroke);
+  border-radius: 14px;
+  background: #fff;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: max-height 180ms ease, opacity 160ms ease, transform 180ms ease;
+  pointer-events: none;
+}
+.msDropdown.open{
+  max-height: 320px; /* scroll inside the panel */
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.msRow{
+  width:100%;
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  cursor:pointer;
+  border-bottom: 1px solid rgba(229,231,235,.75);
+}
+.msRow:last-child{ border-bottom:none; }
+.msRow:hover{ background: rgba(17,17,19,.03); }
+.msRowMain{ font-size: 13px; font-weight: 800; }
+.msRowSub{ font-size: 12px; color: rgba(15,23,42,.55); }
+.msEmpty{ padding: 12px; font-size: 13px; color: rgba(15,23,42,.6); }
+
+
+    /* Responsive: hide sidebars on smaller screens */
+    @media (max-width: 1180px){
+      .pageLayout{ grid-template-columns: 1fr; max-width: 1040px; }
+      .sidebar{ display:none; }
+      .mainCol > *{ max-width: 1040px; }
+    }
+    
 </style>
 
 </head>
@@ -3481,16 +4304,15 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
     <div class="brandText"><div class="top">CHECKNE.</div></div>
   </div>
 
-  <!-- ✅ CENTER: Tracking (чтобы был по центру экрана на мобилке) -->
-  <div class="headerCenter">
+  <!-- Spacer column (keeps the header grid stable) -->
+  <div class="headerCenter"></div>
+
+  <!-- ✅ RIGHT: Tracking + Account -->
+  <div class="headerRight">
     <button id="btnTracking" class="trackBtn" type="button" aria-label="Tracking">
       <span>Tracking</span>
       <span id="trackingCount" class="trackBadge">0</span>
     </button>
-  </div>
-
-  <!-- ✅ RIGHT: Account -->
-  <div class="headerRight">
     <div class="accountWrap">
       <button id="btnAccount" class="loginBtn" type="button" aria-label="Account">
         <span id="accountAvatar" class="accountAvatar" aria-hidden="true">V</span>
@@ -3522,13 +4344,10 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
 
   <!-- Backdrop used by the Feed <-> Tracking page transition -->
   <div id="viewShade" class="viewShade" aria-hidden="true"><div class="dotLoader" aria-hidden="true"><span></span><span></span><span></span></div></div>
-<div class="brandOverlaySub">Loading…</div>
-      </div>
-    </div>
-  </div>
+  <div id="pageLayout" class="pageLayout">
+  <aside id="leftSidebar" class="sidebar" aria-label="Left widgets"></aside>
+  <div id="feedView" class="mainCol">
 
-
-  <div id="feedView" class="wrap">
 
     <!-- Top stories (🔥) — driven by server feed (is_trending) -->
     <div id="topStories" class="topStories" aria-label="Top stories">
@@ -3676,9 +4495,11 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
     </div>
 
     <div id="cards" class="cards"></div>
+  
   </div>
-  <!-- Pricing / Subscriptions -->
-  <section id="profileSection" class="profilePage" aria-label="Account" style="display:none;">
+  <aside id="rightSidebar" class="sidebar" aria-label="Right widgets"></aside>
+</div>
+<section id="profileSection" class="profilePage" aria-label="Account" style="display:none;">
     <div class="profileHero">
       <h2>Account</h2>
       <p>Manage your profile and subscription.</p>
@@ -4091,7 +4912,18 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
   </div>
 
  <!-- Cache-bust static JS on deploy by bumping v=... -->
- <script src="/static/app.js?v=2026-02-19-2"></script>
+ <!-- App (split into responsibility-based files; keep order) -->
+<script src="/static/js/core.js?v=2026-02-24" defer></script>
+<script src="/static/js/state.js?v=2026-02-24" defer></script>
+<script src="/static/js/mode.js?v=2026-02-24" defer></script>
+<script src="/static/js/tracking.js?v=2026-02-24" defer></script>
+<script src="/static/js/auth.js?v=2026-02-24" defer></script>
+<script src="/static/js/pricing.js?v=2026-02-24" defer></script>
+<script src="/static/js/carousel.js?v=2026-02-24" defer></script>
+<script src="/static/js/feed.js?v=2026-02-24" defer></script>
+<script src="/static/js/widgets.js?v=2026-02-28-4" defer></script>
+<script src="/static/js/dropdowns.js?v=2026-02-24" defer></script>
+<script src="/static/js/bootstrap.js?v=2026-02-24" defer></script>
 <!-- Share modal -->
 <div id="shareBackdrop" class="shareBackdrop" aria-hidden="true">
   <div class="shareModal" role="dialog" aria-modal="true" aria-labelledby="shareHeroTitle">
@@ -4135,6 +4967,20 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
       <button id="shareNoThanks" class="shareNoThanks" type="button" data-i18n="share.no_thanks">No thanks!</button>
     </div>
 
+  </div>
+</div>
+
+
+<!-- Side widgets: add/configure modal -->
+<div id="widgetModal" class="widgetModal" aria-hidden="true">
+  <div class="backdrop" data-widget-close="1"></div>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="widgetModalTitle">
+    <div class="sheetHeader">
+      <div id="widgetModalTitle" class="sheetTitle">Add widget</div>
+      <button class="iconBtn" type="button" data-widget-close="1" aria-label="Close">✕</button>
+    </div>
+    <div id="widgetModalBody"></div>
+    <div class="sheetFooter" id="widgetModalFooter" style="display:none;"></div>
   </div>
 </div>
 

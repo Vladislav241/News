@@ -36,6 +36,8 @@ from .routers.billing import router as billing_router
 from .routers.stats import router as stats_router
 from .routers.share import router as share_router
 from .routers.alerts import router as alerts_router
+from .routers.image import router as image_router
+from .routers.unsubscribe import router as unsubscribe_router
 from .auth.deps import csrf_origin_check
 from .routers import debug
 from .guest_tracker import mark as mark_guest
@@ -122,6 +124,8 @@ app.include_router(alerts_router)
 app.include_router(billing_router)
 app.include_router(stats_router)
 app.include_router(share_router)
+app.include_router(image_router)
+app.include_router(unsubscribe_router)
 app.include_router(debug_router)
 
 # ---------- Friendly SPA routes ----------
@@ -135,6 +139,7 @@ SPA_REDIRECTS = {
     "/terms": "/#/terms",
     "/cookies": "/#/cookies",
     "/impressum": "/#/impressum",
+    "/email": "/#/email",
 }
 
 for _path, _target in SPA_REDIRECTS.items():

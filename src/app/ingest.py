@@ -11,6 +11,7 @@ from typing import Any
 import feedparser
 import requests
 from bs4 import BeautifulSoup
+from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 
 from .ai import summarize_cluster
 from .clustering import canonical_cluster_key, match_cluster, normalize_title_for_key
@@ -542,21 +543,288 @@ def process_fulltext_queue_once(max_jobs: int = 8, max_workers: int = 6) -> dict
 
 
 # =========================================================
-# IMAGE EXTRACTION (RSS only; avoid blocking)
+# IMAGE EXTRACTION
+#
+# Why images sometimes look low-quality:
+# - Many RSS feeds include only thumbnails (media:thumbnail) or small variants.
+# - The article page often has a higher quality social/hero image.
+#
+# We extract a fast RSS image first, then (budget-limited) upgrade it by fetching
+# the article HTML and picking the best available image.
 # =========================================================
 
 
-def _extract_og_image_from_url(url: str) -> str | None:
+_IMG_EXTS = (".jpg", ".jpeg", ".png", ".webp")
+
+
+def _abs_url(u: str, base: str) -> str:
+    u = (u or "").strip()
+    if not u:
+        return ""
+    return urljoin(base, u)
+
+
+def _parse_srcset(srcset: str, base_url: str) -> list[tuple[str, int]]:
+    out: list[tuple[str, int]] = []
+    s = (srcset or "").strip()
+    if not s:
+        return out
+    for part in s.split(","):
+        chunk = part.strip()
+        if not chunk:
+            continue
+        bits = chunk.split()
+        u = _abs_url(bits[0], base_url)
+        w = 0
+        if len(bits) >= 2 and bits[1].endswith("w"):
+            try:
+                w = int(bits[1][:-1])
+            except Exception:
+                w = 0
+        out.append((u, w))
+    return out
+
+
+def _wordpress_remove_size_suffix(u: str) -> str:
+    # Common: .../image-150x150.jpg -> .../image.jpg
     try:
-        resp = requests.get(url, timeout=6, headers={"User-Agent": "Mozilla/5.0 (NewsAggregator)"})
+        parsed = urlparse(u)
+        path = parsed.path
+        path2 = _re.sub(r"-\d{2,4}x\d{2,4}(?=\.(?:jpe?g|png|webp)$)", "", path, flags=_re.I)
+        if path2 == path:
+            return u
+        return urlunparse(parsed._replace(path=path2))
+    except Exception:
+        return u
+
+
+def _upgrade_resize_params(u: str, target_w: int = 1200) -> str:
+    """Best-effort bump of common resize params (WordPress, etc.)."""
+    try:
+        parsed = urlparse(u)
+        qs = parse_qs(parsed.query or "", keep_blank_values=True)
+
+        # WordPress: ?resize=770%2C513
+        if "resize" in qs and qs["resize"]:
+            raw = qs["resize"][0]
+            parts = [p for p in _re.split(r"[,x]", raw) if p]
+            if parts:
+                try:
+                    w = int(parts[0])
+                except Exception:
+                    w = 0
+                if 0 < w < target_w:
+                    if len(parts) >= 2:
+                        try:
+                            h = int(parts[1])
+                        except Exception:
+                            h = 0
+                        if h > 0 and w > 0:
+                            new_h = max(1, int(h * (target_w / w)))
+                            qs["resize"] = [f"{target_w},{new_h}"]
+                        else:
+                            qs["resize"] = [f"{target_w}"]
+                    else:
+                        qs["resize"] = [f"{target_w}"]
+                    return urlunparse(parsed._replace(query=urlencode(qs, doseq=True)))
+
+        # Generic: ?w=400 / ?width=400
+        for key in ("w", "width"):
+            if key in qs and qs[key]:
+                try:
+                    w = int(qs[key][0])
+                except Exception:
+                    w = 0
+                if 0 < w < target_w:
+                    qs[key] = [str(target_w)]
+                    return urlunparse(parsed._replace(query=urlencode(qs, doseq=True)))
+    except Exception:
+        return u
+
+    return u
+
+
+def _normalize_image_candidate(u: str) -> str:
+    u = (u or "").strip()
+    if not u:
+        return ""
+    u = _wordpress_remove_size_suffix(u)
+    u = _upgrade_resize_params(u, target_w=1200)
+    return u
+
+
+def _is_probably_low_res(u: str) -> bool:
+    s = (u or "").lower()
+    if not s:
+        return True
+    if any(tok in s for tok in ("thumbnail", "thumb", "/thumb/", "small", "_small")):
+        return True
+
+    m = _re.search(r"-(\d{2,4})x(\d{2,4})(?=\.(?:jpe?g|png|webp)(?:\?|$))", s)
+    if m:
+        try:
+            w = int(m.group(1))
+        except Exception:
+            w = 0
+        if 0 < w < 600:
+            return True
+
+    try:
+        parsed = urlparse(u)
+        qs = parse_qs(parsed.query or "")
+        if "resize" in qs and qs["resize"]:
+            raw = qs["resize"][0]
+            parts = [p for p in _re.split(r"[,x]", raw) if p]
+            if parts:
+                try:
+                    w = int(parts[0])
+                except Exception:
+                    w = 0
+                if 0 < w < 600:
+                    return True
+        for key in ("w", "width"):
+            if key in qs and qs[key]:
+                try:
+                    w = int(qs[key][0])
+                except Exception:
+                    w = 0
+                if 0 < w < 600:
+                    return True
+    except Exception:
+        pass
+
+    return False
+
+
+def _extract_best_image_from_html(html: str, base_url: str) -> str | None:
+    if not html:
+        return None
+    soup = BeautifulSoup(html, "html.parser")
+
+    # 1) Meta social tags (usually best)
+    meta_keys = [
+        ("property", "og:image"),
+        ("property", "og:image:secure_url"),
+        ("property", "og:image:url"),
+        ("name", "twitter:image"),
+        ("name", "twitter:image:src"),
+    ]
+    for attr, key in meta_keys:
+        tag = soup.find("meta", attrs={attr: key})
+        if not tag:
+            continue
+        u = _abs_url((tag.get("content") or "").strip(), base_url)
+        u = _normalize_image_candidate(u)
+        if u:
+            return u
+
+    # 1.5) JSON-LD (many publishers, incl. Guardian opinion/comment)
+    try:
+        for script in soup.find_all("script", attrs={"type": "application/ld+json"})[:20]:
+            raw = (script.string or script.get_text("", strip=True) or "").strip()
+            if not raw:
+                continue
+            # JSON-LD can be a dict, list, or contain @graph
+            try:
+                data = json.loads(raw)
+            except Exception:
+                continue
+
+            nodes: list[Any] = []
+            if isinstance(data, list):
+                nodes = data
+            elif isinstance(data, dict):
+                if isinstance(data.get("@graph"), list):
+                    nodes = data.get("@graph") or []
+                else:
+                    nodes = [data]
+
+            def _collect_images(obj: Any) -> list[str]:
+                imgs: list[str] = []
+                if not isinstance(obj, dict):
+                    return imgs
+                val = obj.get("image") or obj.get("thumbnailUrl")
+                if isinstance(val, str):
+                    imgs.append(val)
+                elif isinstance(val, list):
+                    for it in val:
+                        if isinstance(it, str):
+                            imgs.append(it)
+                        elif isinstance(it, dict) and isinstance(it.get("url"), str):
+                            imgs.append(it["url"])
+                elif isinstance(val, dict) and isinstance(val.get("url"), str):
+                    imgs.append(val["url"])
+                return imgs
+
+            best_ld: str | None = None
+            for n in nodes:
+                for cand in _collect_images(n):
+                    u = _normalize_image_candidate(_abs_url(str(cand), base_url))
+                    if u:
+                        best_ld = u
+                        break
+                if best_ld:
+                    break
+            if best_ld:
+                return best_ld
+    except Exception:
+        pass
+
+    # 2) Fallback: search <picture>/<img> and pick largest srcset candidate (incl. lazy attrs)
+    best: tuple[str, int] | None = None
+    # picture source srcset often has the real candidates
+    for source in soup.find_all("source")[:80]:
+        srcset = (source.get("srcset") or source.get("data-srcset") or "").strip()
+        if not srcset:
+            continue
+        cands = _parse_srcset(srcset, base_url)
+        if cands:
+            u, w = max(cands, key=lambda t: t[1])
+            if u and w >= 600:
+                best = (u, w) if (best is None or w > best[1]) else best
+
+    for img in soup.find_all("img")[:80]:
+        srcset = (img.get("srcset") or "").strip()
+        if srcset:
+            cands = _parse_srcset(srcset, base_url)
+            if cands:
+                u, w = max(cands, key=lambda t: t[1])
+                if u and w >= 600:
+                    best = (u, w) if (best is None or w > best[1]) else best
+                    continue
+
+        # Lazy-load patterns
+        src = (
+            (img.get("src") or "")
+            or (img.get("data-src") or "")
+            or (img.get("data-original") or "")
+            or (img.get("data-lazy-src") or "")
+            or (img.get("data-url") or "")
+        )
+        src = _abs_url(str(src).strip(), base_url)
+        if src and src.lower().split("?", 1)[0].endswith(_IMG_EXTS):
+            best = best or (src, 0)
+
+    if best:
+        return _normalize_image_candidate(best[0]) or None
+    return None
+
+
+def _extract_best_image_from_url(url: str) -> str | None:
+    try:
+        resp = requests.get(
+            url,
+            timeout=9,
+            allow_redirects=True,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+            },
+        )
         if resp.status_code != 200:
             return None
-        soup = BeautifulSoup(resp.text, "html.parser")
-        og = soup.find("meta", property="og:image")
-        if not og:
-            return None
-        content = (og.get("content") or "").strip()
-        return content or None
+        return _extract_best_image_from_html(resp.text or "", url)
     except Exception:
         return None
 
@@ -569,21 +837,21 @@ def _extract_image_url(entry: Any) -> str | None:
                 href = (getattr(e, "href", None) or "").strip()
                 typ = (getattr(e, "type", None) or "").strip().lower()
                 if href and (typ.startswith("image") or href.lower().endswith((".jpg", ".jpeg", ".png", ".webp"))):
-                    return href
+                    return _normalize_image_candidate(href) or href
 
         media_content = getattr(entry, "media_content", None)
         if media_content:
             for m in media_content:
                 u = (m.get("url") or "").strip()
                 if u:
-                    return u
+                    return _normalize_image_candidate(u) or u
 
         media_thumb = getattr(entry, "media_thumbnail", None)
         if media_thumb:
             for m in media_thumb:
                 u = (m.get("url") or "").strip()
                 if u:
-                    return u
+                    return _normalize_image_candidate(u) or u
 
         links = getattr(entry, "links", None) or []
         for l in links:
@@ -593,7 +861,7 @@ def _extract_image_url(entry: Any) -> str | None:
                 continue
             looks_like_img = href.lower().split("?", 1)[0].endswith((".jpg", ".jpeg", ".png", ".webp"))
             if looks_like_img and (typ.startswith("image") or typ == ""):
-                return href
+                return _normalize_image_candidate(href) or href
     except Exception:
         return None
 
@@ -861,7 +1129,8 @@ def run_ingest_cycle() -> dict[str, Any]:
                 stats["errors"] += 1
                 logger.exception("insert_article_if_new failed")
 
-        # OG IMAGE enrichment (limited, only for new articles)
+        # Image upgrade (limited, only for new articles)
+        # - If RSS image is missing OR looks like a thumbnail, try the article page.
         try:
             og_budget = 25
             for aid in inserted_article_ids:
@@ -870,18 +1139,19 @@ def run_ingest_cycle() -> dict[str, Any]:
                 art = db.get_article_by_id(aid)
                 if not art:
                     continue
-                if (art.get("image_url") or "").strip():
+                cur_img = (art.get("image_url") or "").strip()
+                if cur_img and not _is_probably_low_res(cur_img):
                     continue
                 url = (art.get("url") or "").strip()
                 if not url:
                     continue
-                og_img = _extract_og_image_from_url(url)
-                if og_img:
-                    db.update_article_image_url(aid, og_img)
+                best = _extract_best_image_from_url(url)
+                if best and best != cur_img:
+                    db.update_article_image_url(aid, best)
                 og_budget -= 1
         except Exception:
             stats["errors"] += 1
-            logger.exception("og:image enrichment failed")
+            logger.exception("image upgrade failed")
 
         touched_clusters: set[int] = set()
 

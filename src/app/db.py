@@ -826,6 +826,29 @@ class Database:
         )
         return (row or {}).get("latest")
 
+    def list_recent_articles_missing_image(self, *, hours: int = 48, limit: int = 50) -> list[dict[str, Any]]:
+        """Return recent articles where image_url is empty."""
+        try:
+            hours_i = max(1, int(hours))
+            lim = max(1, min(int(limit), 500))
+        except Exception:
+            hours_i = 48
+            lim = 50
+
+        since_iso = (datetime.now(timezone.utc) - timedelta(hours=hours_i)).replace(microsecond=0).isoformat()
+        rows = self._fetchall(
+            """
+            SELECT id, url, source_name, inserted_at
+            FROM articles
+            WHERE (image_url IS NULL OR TRIM(image_url) = '')
+              AND inserted_at >= ?
+            ORDER BY inserted_at DESC, id DESC
+            LIMIT ?
+            """,
+            (since_iso, lim),
+        )
+        return [dict(r) for r in rows]
+
     # --------- score/summary ----------
     def upsert_score(self, cluster_id: int, credibility_score: int, details: dict[str, Any]) -> None:
         now = _utc_now_iso()
