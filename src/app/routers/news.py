@@ -786,15 +786,33 @@ async def get_news(
         ]
 
         if q and q.strip():
-            qq = q.strip().lower()
+            qq_raw = q.strip().lower()
+
+            # Search should be resilient for multi-word queries (e.g. trending 🔥 topics).
+            # The old behavior required the *entire* phrase to be a substring, which often produced 0–1 results.
+            # New behavior:
+            #   - tokenize, drop tiny tokens and common stopwords
+            #   - match if ANY remaining token appears in title or sources
+            # This keeps Search useful while also making 🔥 topic filters behave like normal interests.
+            stop = {
+                "the","a","an","and","or","of","to","in","on","for","with","as","at","by","from",
+                "what","who","will","inside","watch","how","why","so","far","live","updates","analysis",
+            }
+            tokens = [t for t in re.split(r"[^a-z0-9]+", qq_raw) if t and len(t) >= 2 and t not in stop]
+            # Fallback: if nothing meaningful remains, keep the original substring behavior.
+            if not tokens:
+                tokens = [qq_raw]
 
             def hit(it: dict[str, Any]) -> bool:
-                if qq in (it.get("title") or "").lower():
+                title = (it.get("title") or "").lower()
+                if any(tok in title for tok in tokens):
                     return True
                 for s in it.get("sources") or []:
-                    if qq in ((s.get("title") or "").lower()):
+                    st = ((s.get("title") or "").lower())
+                    sn = ((s.get("source_name") or "").lower())
+                    if any(tok in st for tok in tokens):
                         return True
-                    if qq in ((s.get("source_name") or "").lower()):
+                    if any(tok in sn for tok in tokens):
                         return True
                 return False
 

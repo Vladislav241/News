@@ -504,6 +504,15 @@ const showTrackingUI = state.mode === 'fav';
 const detailsOpenEl = div.querySelector('details.newsDetails');
 if (detailsOpenEl) {
   detailsOpenEl.addEventListener('toggle', () => {
+  // When a card is opened, remember it as the "current story" for PRO widgets
+  // (Momentum Timeline / Top Charts etc.).
+  // This is intentionally independent from search/topic filters.
+  if (detailsOpenEl.open) {
+    try { window.__currentClusterId = Number(id) || null; } catch {}
+    try { localStorage.setItem('checkne_current_cluster', String(id)); } catch {}
+    try { document.dispatchEvent(new CustomEvent('checkne:currentClusterChanged', { detail: { cluster_id: Number(id) } })); } catch {}
+  }
+
   // если мы сейчас анимируем открытие/закрытие — не трогаем DOM
   if (detailsOpenEl.dataset.animating === '1') {
     setTimeout(() => {
@@ -887,12 +896,16 @@ async function fetchFeed(opts) {
   const signal = options.signal;
 
   const interests = encodeURIComponent((state.interests || []).join(","));
-  const rawQ = (state.q || "").trim();
+  const rawSearchQ = (state.q || "").trim();
+  const rawTopicQ = (state.topicQ || "").trim();
+  // Effective query: Search box has priority. TopicQ is used by 🔥 chips and must not touch the Search input.
+  const rawQ = rawSearchQ || rawTopicQ;
   const q = encodeURIComponent(rawQ);
   const trendId = (state && state.trendClusterId) ? encodeURIComponent(String(state.trendClusterId)) : "";
 
   // If the user pasted a URL into Search, show similar items from the feed.
-  const isUrl = /^https?:\/\//i.test(rawQ);
+  // URL search should only trigger when the user actually pasted a URL into the Search input.
+  const isUrl = /^https?:\/\//i.test(rawSearchQ);
 
   const url = isUrl
     ? `${API_BASE}/api/news/similar?url=${q}` +
@@ -905,7 +918,7 @@ async function fetchFeed(opts) {
       (q ? `&q=${q}` : "");
 
 
-  const feedKey = `${state.country}|${(state.interests || []).join(",")}|${(state.q || "").trim()}|${state.trendClusterId || ""}`;
+  const feedKey = `${state.country}|${(state.interests || []).join(",")}|q=${rawSearchQ}|topic=${rawTopicQ}|${state.trendClusterId || ""}`;
 
   const keyChanged = (typeof currentFeedKey === "string") && (currentFeedKey !== feedKey);
   const shouldReset = forceReset || !currentFeedKey || keyChanged;

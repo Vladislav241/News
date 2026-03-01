@@ -73,6 +73,10 @@ let state = {
   language: "en",
   mode: "feed",
   q: "",
+  // "Trending" (🔥) chips should filter the feed like interests,
+  // but must NOT write into the Search input.
+  // We keep this separate from `q` so the Search UI stays untouched.
+  topicQ: "",
   trendClusterId: null, // when set, feed is focused on a single trending cluster
   cooldownUntil: 0,
 

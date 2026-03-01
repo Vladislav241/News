@@ -63,12 +63,18 @@ function __getSearchEl(){
   try { return qs("search"); } catch { return document.getElementById("search"); }
 }
 
-function __applySearchQuery(q){
+// Apply a "topic" filter (used by 🔥 chips).
+// IMPORTANT: must behave like interests (filter the feed), but must NOT write the topic into Search.
+function __applyTopicQuery(q){
+  // Clear the real search query (and clear input if it had something), so behavior is deterministic.
+  // This does not "write" the topic into the Search box.
   const searchEl = __getSearchEl();
-  if (searchEl) searchEl.value = q || "";
-  state.q = String(q || "");
-  try { savePrefs(); } catch {}
+  if (searchEl && String(searchEl.value || '').trim()) searchEl.value = '';
+  state.q = "";
+
+  state.topicQ = String(q || "").trim();
   try { setFeedExpanded(false); } catch {}
+
   if (state.mode === "feed") {
     try { fetchFeed({ reset: true }); } catch { try { fetchFeed(); } catch {} }
   } else {
@@ -157,19 +163,30 @@ function renderTrendingChips(items){
   for (const t of cleaned){
     const el = __makeTrendChip(t.label);
     el.onclick = async () => {
-      // toggle: if same query already applied -> clear it
-      const current = String(state.q || "").trim();
-      if (current.toLowerCase() === String(t.q || "").trim().toLowerCase()) {
-        __applySearchQuery("");
+      // toggle: if same topic already applied -> clear it
+      const current = String(state.topicQ || "").trim();
+      const next = String(t.q || "").trim();
+      if (current && current.toLowerCase() === next.toLowerCase()) {
+        __applyTopicQuery("");
       } else {
-        __applySearchQuery(t.q);
+        __applyTopicQuery(next);
       }
-      // optional: visual active state
+
+      // visual active state
       try {
         Array.from(tagsEl.querySelectorAll(".tag.trend")).forEach((n) => n.classList.remove("on"));
-        if (String(state.q || "").trim()) el.classList.add("on");
+        if (String(state.topicQ || "").trim()) el.classList.add("on");
       } catch {}
     };
+
+    // mark as active on render
+    try {
+      const current = String(state.topicQ || "").trim();
+      if (current && current.toLowerCase() === String(t.q || "").trim().toLowerCase()) {
+        el.classList.add('on');
+      }
+    } catch {}
+
     tagsEl.appendChild(el);
   }
 }
