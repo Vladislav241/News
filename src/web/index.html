@@ -583,6 +583,11 @@
       transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
     }
     .tag:hover { transform: translateY(-1px); box-shadow: 0 12px 22px rgba(2,6,23,.08); }
+    .tagLabel{ display:inline-block; }
+    .tagFlame{ width:14px; height:14px; margin-left:8px; opacity:.9; vertical-align:-2px; }
+    .tag.trend{ display:inline-flex; align-items:center; gap:0; }
+    .tag.trend.on{ border-color: rgba(2,6,23,.18); box-shadow: 0 12px 22px rgba(2,6,23,.08); }
+
     .tag.on { background: var(--black); color: var(--white); }
 
     /* News list */
@@ -5067,6 +5072,7 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
 <script src="/static/js/mode.js?v=2026-02-24" defer></script>
 <script src="/static/js/tracking.js?v=2026-02-24" defer></script>
 <script src="/static/js/auth.js?v=2026-02-24" defer></script>
+  <script src="/static/js/interests.js?v=2026-03-01"></script>
 <script src="/static/js/pricing.js?v=2026-02-24" defer></script>
 <script src="/static/js/carousel.js?v=2026-02-24" defer></script>
 <script src="/static/js/feed.js?v=2026-02-24" defer></script>

@@ -73,6 +73,7 @@ let state = {
   language: "en",
   mode: "feed",
   q: "",
+  trendClusterId: null, // when set, feed is focused on a single trending cluster
   cooldownUntil: 0,
 
   // UI preferences

@@ -1,4 +1,5 @@
 from __future__ import annotations
+import re
 
 import urllib.parse
 import json
@@ -140,6 +141,11 @@ FEED_KEEP_DAYS = 30
 
 def _days_ago_iso(days: int) -> str:
     dt = datetime.now(timezone.utc) - timedelta(days=days)
+    return dt.replace(microsecond=0).isoformat()
+
+
+def _hours_ago_iso(hours: int) -> str:
+    dt = datetime.now(timezone.utc) - timedelta(hours=hours)
     return dt.replace(microsecond=0).isoformat()
 
 
@@ -507,6 +513,201 @@ def save_preferences(p: Preferences, user=Depends(require_user)) -> dict:
 
     db.upsert_user_preferences(int(user["id"]), json.dumps(interests), country, language)
     return {"status": "ok", "saved": {"interests": interests, "country": country, "language": language}}
+
+
+
+# NOTE: moved to src/app/routers/interests.py
+# Keep this legacy endpoint only for debugging, to avoid route duplication.
+@router.get("/api/interests/trending_v0")
+async def get_trending_interests(
+    country: str = "world",
+    language: str = "all",
+    ui_lang: str = "en",
+    limit: int = 8,
+) -> dict[str, Any]:
+    """
+    Dynamic interests ("Trending") for the UI chips.
+
+    We compute a short list of topic-like labels from the most recent feed items.
+    The goal is UX: compact chips like "Iran", "Trump", "Russia-Ukraine war" —
+    not full headlines.
+
+    This is intentionally lightweight (no heavy ML): it is deterministic inside the
+    current feed snapshot bucket and cached the same way as /api/news.
+    """
+    try:
+        db.ensure_schema()
+
+        country = (country or "world").strip().lower()
+        language = (language or "all").strip().lower()
+        ui_lang = (ui_lang or "en").strip().lower()
+        limit_n = max(2, min(12, int(limit)))
+
+        bucket = _snapshot_bucket()
+        cache_key = _feed_cache_key(
+            interests="__trending__",
+            country=country,
+            language=language,
+            ui_lang=ui_lang,
+            since=None,
+            q=None,
+            limit=limit_n,
+            bucket=bucket,
+            variant="trending",
+        )
+
+        now = time.time()
+        with _FEED_CACHE_LOCK:
+            cached = _FEED_CACHE.get(cache_key)
+            if cached and cached[0] > now:
+                return cached[1]
+
+        # Pull a broader slice and extract topic labels.
+        clusters = db.query_clusters(
+            interests=[],  # all interests
+            country=country,
+            language=language,
+            since_iso=_hours_ago_iso(24),
+            limit=240,
+        )
+
+        # ---- Topic extraction (fast heuristic) ----
+        # We prefer: proper nouns, acronyms, hyphenated entities.
+        # Keep labels compact: <= 22 chars (soft).
+        stop = {
+            "the","a","an","and","or","to","of","in","on","for","with","as","at","by","from",
+            "after","before","over","under","into","about","amid","against","between",
+            "what","why","how","we","you","they","their","our","your","his","her","its",
+            "says","say","said","live","new","latest","update","updates","breaking",
+            "report","reports","reported","watch","video","explainer",
+        }
+
+        def _clean(s: str) -> str:
+            s = (s or "").replace("’", "'").replace("–", "-").replace("—", "-")
+            s = re.sub(r"\s+", " ", s).strip()
+            return s
+
+        def _cands(title: str) -> list[str]:
+            title = _clean(title)
+            out: list[str] = []
+
+            # Hyphen entities: Russia-Ukraine, US-Israel, etc.
+            out += re.findall(r"\b[A-Z][A-Za-z]{1,}-[A-Z][A-Za-z]{1,}(?:-[A-Z][A-Za-z]{1,})?\b", title)
+
+            # Acronyms: US, EU, NATO (avoid 1-letter)
+            out += re.findall(r"\b[A-Z]{2,}\b", title)
+
+            # Proper nouns (up to 3 words): "Donald Trump", "Iran", "European Union"
+            out += re.findall(r"\b[A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,}){0,2}\b", title)
+
+            # Normalize and filter
+            cleaned=[]
+            for x in out:
+                x=_clean(x)
+                if not x: 
+                    continue
+                # drop very generic acronyms
+                if x in {"US","U.S","UK","U.K"}:
+                    x="US" if x.startswith("U") else x
+                # remove common stopwords-only results
+                parts=[p for p in re.split(r"[\s\-]+", x) if p]
+                if len(parts)==1 and parts[0].lower() in stop:
+                    continue
+                if any(p.lower() in stop for p in parts) and len(parts)==1:
+                    continue
+                cleaned.append(x)
+            return cleaned
+
+        # Score by frequency * recency (decay)
+        import math as _math
+        scores: dict[str, float] = {}
+        now_ts = time.time()
+
+        for c in clusters:
+            title = c.get("title") if isinstance(c, dict) else None
+            if not title:
+                continue
+            # recency: use latest_published_at if present
+            ts = None
+            lp = c.get("latest_published_at") if isinstance(c, dict) else None
+            if lp:
+                try:
+                    ts = datetime.fromisoformat(lp.replace("Z","+00:00")).timestamp()
+                except Exception:
+                    ts = None
+            age_h = (now_ts - ts) / 3600.0 if ts else 12.0
+            w = _math.exp(-age_h / 10.0)  # ~10h half-ish
+            w *= 1.0 + 0.07 * float(c.get("sources_count") or 0)
+            w *= 1.0 + 0.03 * float(c.get("importance") or 0)
+
+            for cand in _cands(str(title)):
+                # Skip too-long raw labels early
+                if len(cand) > 38:
+                    continue
+                scores[cand] = scores.get(cand, 0.0) + w
+
+        # Post-process: merge obvious variants and select compact labels
+        def _norm_key(s: str) -> str:
+            s = s.lower().strip()
+            s = s.replace("u.s.", "us").replace("u.s", "us")
+            s = re.sub(r"[^a-z0-9\s\-]+", "", s)
+            s = re.sub(r"\s+", " ", s).strip()
+            return s
+
+        merged: dict[str, tuple[str, float]] = {}
+        for label, sc in scores.items():
+            k = _norm_key(label)
+            if not k:
+                continue
+            if k in merged:
+                # keep the prettier (shorter) display label
+                old_label, old_sc = merged[k]
+                best = label if (len(label) < len(old_label)) else old_label
+                merged[k] = (best, old_sc + sc)
+            else:
+                merged[k] = (label, sc)
+
+        ranked = sorted(merged.values(), key=lambda x: x[1], reverse=True)
+
+        # Build final list:
+        # - keep unique display labels
+        # - enforce compact length by trimming with ellipsis
+        out=[]
+        used=set()
+        for label, sc in ranked:
+            lab=_clean(label)
+            if not lab:
+                continue
+            # avoid duplicates like "Iran" repeated via other variants
+            low=lab.lower()
+            if low in used:
+                continue
+            # Very generic words to avoid as standalone
+            if low in {"world","news","today","live","watch","updates"}:
+                continue
+
+            if len(lab) > 22:
+                lab = lab[:21].rstrip() + "…"
+
+            used.add(lab.lower())
+            out.append({
+                "label": lab,
+                "score": round(float(sc), 3),
+                # the client uses this as q=... (simple deterministic filter)
+                "q": lab.replace("…",""),
+            })
+            if len(out) >= limit_n:
+                break
+
+        payload = {"status": "ok", "count": len(out), "items": out, "snapshot_bucket": bucket}
+
+        with _FEED_CACHE_LOCK:
+            _FEED_CACHE[cache_key] = (time.time() + FEED_SNAPSHOT_SECONDS, payload)
+
+        return payload
+    except Exception as e:
+        print("[/api/interests/trending] failed:", repr(e))
+        return {"status": "ok", "count": 0, "items": [], "error": str(e)}
 
 
 @router.get("/api/news")

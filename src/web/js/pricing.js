@@ -377,23 +377,6 @@ function setMainFeed(){
   // Selected plan for the single CTA button under the cards
   let selectedPlan = (billingState?.plan || 'free').toLowerCase();
 
-  // Optional query params:
-  //  - ?plan=pro|analyst|free   (preselect a card)
-  //  - ?interval=monthly|yearly (preselect billing interval)
-  //  - ?checkout=1              (auto start checkout after render)
-  let __autoCheckout = false;
-  try{
-    const sp = new URLSearchParams(String(location.search || ''));
-    const qpPlan = String(sp.get('plan') || '').toLowerCase();
-    const qpInterval = String(sp.get('interval') || '').toLowerCase();
-    if (qpPlan === 'free' || qpPlan === 'pro' || qpPlan === 'analyst') selectedPlan = qpPlan;
-    if (qpInterval === 'monthly' || qpInterval === 'yearly') {
-      try { setBillingInterval(qpInterval); } catch {}
-      try { billingInterval = qpInterval; } catch {}
-    }
-    __autoCheckout = String(sp.get('checkout') || '') === '1';
-  }catch{}
-
   function setPage(page){
     // page: 'feed' | 'pricing' | 'info:<slug>'
     // Widgets: only show on the main feed page (Tracking tab is handled in mode.js).
@@ -699,16 +682,6 @@ if (mainBtn) {
   // Default state
   syncIntervalUI();
   syncSelectionUI();
-
-  // If opened from widgets with checkout=1, start payment flow immediately.
-  if (__autoCheckout) {
-    setTimeout(() => {
-      try {
-        const btn = document.getElementById('pricingMainCta');
-        if (btn && !btn.disabled) btn.click();
-      } catch {}
-    }, 60);
-  }
 }
 
 
@@ -952,34 +925,7 @@ async function handleBillingQueryParams() {
   }
 }
 
-function renderTags() {
-  const tagsEl = qs("tags");
-  tagsEl.innerHTML = "";
-  [...new Set(DEFAULT_INTERESTS)].forEach((tag) => {
-    const el = document.createElement("div");
-    el.className = "tag" + (state.interests.includes(tag) ? " on" : "");
-    el.textContent = t(`interests.${tag}`, tag);
-    el.onclick = async () => {
-      // Guests can read the top 3 items, but changing interests requires an account.
-      if (!authState?.authenticated) {
-        openAuthModal('interests');
-        return;
-      }
-      if (state.interests.includes(tag)) {
-        state.interests = state.interests.filter((x) => x !== tag);
-        if (state.interests.length === 0) state.interests = ["general"];
-      } else {
-        // Make sure we never introduce duplicates
-        state.interests = [...new Set([...(state.interests || []), tag])];
-      }
-      // Persist interests (account-scoped when logged in; localStorage for guests).
-      try { savePrefs(); } catch {}
-      renderTags();
-      if (state.mode === "feed") await fetchFeed();
-    };
-    tagsEl.appendChild(el);
-  });
-}
+// NOTE: Interests rendering moved to interests.js
 
 function applyTabs() {
   const feed = qs("tabFeed");
