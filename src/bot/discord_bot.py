@@ -42,6 +42,8 @@ def _scalar(sql: str, params: tuple = ()) -> int:
 
 
 intents = discord.Intents.default()
+intents.message_content = True  # required for prefix commands like !stats
+
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 
