@@ -525,6 +525,31 @@ if (detailsOpenEl) {
   if (tw0) tw0.style.display = detailsOpenEl.open ? 'none' : '';
 }
 
+  // ------------------------------------------------------------
+  // Current/active story selection (used by widgets like Momentum)
+  // ------------------------------------------------------------
+  // When a user opens a story in the feed, remember it globally so
+  // sidebar widgets can render insights for the *currently opened*
+  // story (instead of a random / default one).
+  try {
+    const detailsEl = div.querySelector('details.newsDetails');
+    if (detailsEl) {
+      detailsEl.addEventListener('toggle', () => {
+        try {
+          if (!detailsEl.open) return;
+          const cid = Number(item.cluster_id ?? item.event_id ?? item.id);
+          if (!Number.isFinite(cid)) return;
+          // Global hint for widgets (fast path)
+          window.__currentClusterId = cid;
+          // Persist across reloads
+          try { localStorage.setItem('checkne_current_cluster', String(cid)); } catch {}
+          // Notify widgets (best-effort)
+          try { document.dispatchEvent(new CustomEvent('checkne:currentClusterChanged', { detail: { cluster_id: cid } })); } catch {}
+        } catch {}
+      });
+    }
+  } catch {}
+
 return div;
 }
 

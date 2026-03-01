@@ -39,6 +39,7 @@ from .routers.alerts import router as alerts_router
 from .routers.image import router as image_router
 from .routers.unsubscribe import router as unsubscribe_router
 from .routers.report import router as report_router
+from .routers.market import router as market_router
 from .auth.deps import csrf_origin_check
 from .routers import debug
 from .guest_tracker import mark as mark_guest
@@ -129,6 +130,7 @@ app.include_router(image_router)
 app.include_router(unsubscribe_router)
 app.include_router(debug_router)
 app.include_router(report_router)
+app.include_router(market_router)
 
 # ---------- SPA (history routing) ----------
 # Serve clean URLs like /privacy, /terms, /tracking without using # fragments.

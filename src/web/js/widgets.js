@@ -78,10 +78,27 @@
   }
 
   function goPricing(){
+    // Navigate to pricing with optional preselection.
+    // plan: free | pro | analyst
+    // checkout: if true, pricing page will immediately start checkout.
+    return goPricingWith({ plan: 'pro', checkout: false });
+  }
+
+  function goPricingWith(opts){
+    const plan = String(opts?.plan || 'pro').toLowerCase();
+    const checkout = !!opts?.checkout;
+    const interval = String(opts?.interval || 'monthly').toLowerCase();
+    const params = new URLSearchParams();
+    if (plan) params.set('plan', plan);
+    if (checkout) params.set('checkout', '1');
+    if (interval) params.set('interval', interval);
+    const url = `/pricing${params.toString() ? ('?' + params.toString()) : ''}`;
     try {
-      if (typeof window.__navigate === 'function') window.__navigate('/pricing');
-      else location.href = '/pricing';
-    } catch {}
+      if (typeof window.__navigate === 'function') window.__navigate(url);
+      else location.href = url;
+    } catch {
+      try { location.href = url; } catch {}
+    }
   }
 
   function gatePro(){
@@ -95,8 +112,43 @@
     if (pro) return true;
 
     try { if (typeof toast === 'function') toast('🔒 Pro feature — upgrade to unlock.'); } catch {}
-    goPricing();
+    try { if (state?.modal?.open) closeModal(); } catch {}
+    goPricingWith({ plan: 'pro' });
     return false;
+  }
+
+  function getCurrentClusterId(){
+    try {
+      const w = Number(window.__currentClusterId);
+      if (Number.isFinite(w) && w > 0) return w;
+    } catch {}
+    try {
+      const v = localStorage.getItem('checkne_current_cluster');
+      const n = Number(v);
+      if (Number.isFinite(n) && n > 0) return n;
+    } catch {}
+    return null;
+  }
+
+  // Light caching helper to avoid hammering free APIs (and avoid rate-limits).
+  const __wgCache = new Map(); // key -> { t:number, v:any }
+  async function fetchJsonCached(url, ttlMs){
+    const key = String(url);
+    const now = Date.now();
+    const ttl = Number(ttlMs) || 30_000;
+    const hit = __wgCache.get(key);
+    if (hit && (now - hit.t) < ttl) return hit.v;
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 9000);
+    try{
+      const r = await fetch(url, { signal: ctrl.signal, credentials:'omit' });
+      if (!r.ok) throw new Error('http_'+r.status);
+      const data = await r.json();
+      __wgCache.set(key, { t: now, v: data });
+      return data;
+    } finally {
+      clearTimeout(to);
+    }
   }
 
   function getFeedItemsSafe(){
@@ -221,11 +273,11 @@
       settingsUI: null,
     },
     market_clock: {
-      name: "Market Clock",
-      desc: "Berlin + major market session times.",
-      defaults: {},
+      name: "GLOBAL CLOCK",
+      desc: "Choose cities and see local timezones.",
+      defaults: { cities: "Europe/Berlin,Europe/London,America/New_York,Asia/Tokyo", count: 4 },
       render: renderMarketClock,
-      settingsUI: null,
+      settingsUI: marketClockSettingsUI,
     },
 
     // =========================
@@ -346,6 +398,29 @@ const COIN_PRESETS = [
   { value:"avalanche-2", label:"Avalanche (AVAX)" },
   { value:"chainlink", label:"Chainlink (LINK)" },
   { value:"litecoin", label:"Litecoin (LTC)" },
+];
+
+// Global Clock: curated city list (timezone + label)
+const CLOCK_CITIES = [
+  { tz: "Europe/Berlin", label: "Berlin" },
+  { tz: "Europe/London", label: "London" },
+  { tz: "Europe/Paris", label: "Paris" },
+  { tz: "Europe/Warsaw", label: "Warsaw" },
+  { tz: "Europe/Kyiv", label: "Kyiv" },
+  { tz: "Europe/Istanbul", label: "Istanbul" },
+  { tz: "America/New_York", label: "New York" },
+  { tz: "America/Chicago", label: "Chicago" },
+  { tz: "America/Los_Angeles", label: "Los Angeles" },
+  { tz: "America/Toronto", label: "Toronto" },
+  { tz: "America/Sao_Paulo", label: "São Paulo" },
+  { tz: "Asia/Dubai", label: "Dubai" },
+  { tz: "Asia/Tokyo", label: "Tokyo" },
+  { tz: "Asia/Shanghai", label: "Shanghai" },
+  { tz: "Asia/Singapore", label: "Singapore" },
+  { tz: "Asia/Hong_Kong", label: "Hong Kong" },
+  { tz: "Asia/Seoul", label: "Seoul" },
+  { tz: "Asia/Kolkata", label: "Mumbai" },
+  { tz: "Australia/Sydney", label: "Sydney" },
 ];
 
 function parseList(v){
@@ -1236,6 +1311,13 @@ function saveLayout(){
       ["headlines","tracking_stats","pro_action_feed","pro_risk_why","pro_momentum","pro_entities","pro_top_charts"].forEach(refreshWidgetType);
     });
 
+    // When the user opens a different story in the feed, refresh Momentum
+    // (and other story-context widgets) to reflect the currently opened item.
+    document.addEventListener('checkne:currentClusterChanged', () => {
+      try { refreshWidgetType('pro_momentum'); } catch {}
+      try { refreshWidgetType('pro_top_charts'); } catch {}
+    });
+
     // Update Tracking Stats widget when tracking list changes
     document.addEventListener("checkne:favsChanged", () => refreshWidgetType("tracking_stats"));
     window.addEventListener("storage", (e) => {
@@ -1321,6 +1403,22 @@ function saveLayout(){
       card.dataset.type = w.type;
       card.dataset.side = side;
       card.dataset.index = String(idx);
+
+      // If this is a PRO widget and user doesn't have Pro, clicking the card
+      // should open Pricing with Pro preselected (nice upsell UX).
+      if (def.pro && !hasPro()) {
+        card.classList.add('isLocked');
+        card.addEventListener('click', (e) => {
+          // Avoid hijacking clicks on controls inside
+          const t = e?.target;
+          if (t && typeof t.closest === 'function') {
+            if (t.closest('.iconBtn') || t.closest('button') || t.closest('a')) return;
+          }
+          e.preventDefault();
+          e.stopPropagation();
+          goPricingWith({ plan: 'pro' });
+        });
+      }
 
       card.addEventListener("dragstart", (e) => onDragStart(e, side, idx, w.id));
       card.addEventListener("dragend", () => onDragEnd());
@@ -1680,7 +1778,11 @@ function renderPicker(){
     btn.type = "button";
     btn.className = "widgetGetProBtn";
     btn.textContent = "Get Pro";
-    btn.addEventListener("click", () => goPricing());
+    // "Get Pro" should take the user straight to checkout (Pro, monthly).
+    btn.addEventListener("click", () => {
+      try { closeModal(); } catch {}
+      goPricingWith({ plan: 'pro', checkout: true, interval: 'monthly' });
+    });
 
     ctaWrap.appendChild(btn);
     wrap.appendChild(ctaWrap);
@@ -1742,11 +1844,20 @@ function renderPicker(){
     if (!rows) return;
     rows.innerHTML = `<div class="muted" style="font-size:13px;">Loading…</div>`;
 
-    const url = `https://api.frankfurter.app/latest?from=${encodeURIComponent(base)}&to=${encodeURIComponent(symbols.join(","))}`;
+    // Prefer backend proxy (supports more base currencies like UAH).
+    const proxyUrl = `/api/market/fx?base=${encodeURIComponent(base)}&symbols=${encodeURIComponent(symbols.join(','))}`;
+    const fallbackUrl = `https://open.er-api.com/v6/latest/${encodeURIComponent(base)}`;
 
-    fetch(url).then(r => r.json()).then((data) => {
-      const rates = data && data.rates ? data.rates : null;
-      if (!rates) throw new Error("no rates");
+    (async () => {
+      let data = null;
+      try {
+        data = await fetchJsonCached(proxyUrl, 30_000);
+      } catch {
+        // Fallback: public endpoint (may not support all bases on all providers)
+        try { data = await fetchJsonCached(fallbackUrl, 30_000); } catch {}
+      }
+      const rates = data && (data.rates || data?.result === 'success' && data?.rates) ? (data.rates) : null;
+      if (!rates) throw new Error('no_rates');
 
       rows.innerHTML = "";
       symbols.forEach((sym) => {
@@ -1756,7 +1867,7 @@ function renderPicker(){
         row.innerHTML = `<div class="kvKey">${escapeHtml(sym)}</div><div class="kvVal">${formatNum(v)}</div>`;
         rows.appendChild(row);
       });
-    }).catch(() => {
+    })().catch(() => {
       rows.innerHTML = `<div class="muted" style="font-size:13px; margin-bottom:10px;">Couldn’t load rates.</div><button class="miniBtn" type="button">Retry</button>`;
       const btn = rows.querySelector('.miniBtn');
       if (btn) btn.addEventListener('click', () => renderFxRates(root, settings));
@@ -1775,9 +1886,19 @@ function renderPicker(){
     if (!rows) return;
     rows.innerHTML = `<div class="muted" style="font-size:13px;">Loading…</div>`;
 
-    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(coins.join(","))}&vs_currencies=${encodeURIComponent(vs)}`;
+    // Prefer backend proxy (avoids CORS + rate-limit issues), fallback to direct API.
+    const proxyUrl = `/api/market/crypto?vs=${encodeURIComponent(vs)}&coins=${encodeURIComponent(coins.join(','))}`;
+    const directUrl = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(coins.join(","))}&vs_currencies=${encodeURIComponent(vs)}`;
 
-    fetch(url).then(r => r.json()).then((data) => {
+    (async () => {
+      let data = null;
+      try {
+        data = await fetchJsonCached(proxyUrl, 25_000);
+      } catch {
+        try { data = await fetchJsonCached(directUrl, 25_000); } catch {}
+      }
+      if (!data) throw new Error('no_data');
+
       rows.innerHTML = "";
       coins.forEach((id) => {
         const val = data && data[id] ? data[id][vs] : null;
@@ -1786,7 +1907,7 @@ function renderPicker(){
         row.innerHTML = `<div class="kvKey">${escapeHtml(coinLabel(id))}</div><div class="kvVal">${formatMoney(val, vs)}</div>`;
         rows.appendChild(row);
       });
-    }).catch(() => {
+    })().catch(() => {
       rows.innerHTML = `<div class="muted" style="font-size:13px; margin-bottom:10px;">Couldn’t load crypto.</div><button class="miniBtn" type="button">Retry</button>`;
       const btn = rows.querySelector('.miniBtn');
       if (btn) btn.addEventListener('click', () => renderCrypto(root, settings));
@@ -2034,25 +2155,29 @@ function renderPicker(){
     })();
   }
 
-  function renderMarketClock(root){
+  function renderMarketClock(root, settings){
     const now = new Date();
 
-    const berlin = fmtTime(now, "Europe/Berlin");
-    const london = fmtTime(now, "Europe/London");
-    const ny = fmtTime(now, "America/New_York");
-    const tokyo = fmtTime(now, "Asia/Tokyo");
+    const s = settings || {};
+    const list = parseList(s.cities || "Europe/Berlin,Europe/London,America/New_York,Asia/Tokyo");
+    const count = clampInt(Number(s.count ?? 4) || 4, 2, 5);
+    const selected = (list.length ? list : ["Europe/Berlin","Europe/London"]).slice(0, count);
+
+    const rows = selected.map((tz) => {
+      const meta = (CLOCK_CITIES.find(c => c.tz === tz) || null);
+      const label = meta ? meta.label : tz.replace(/_/g,' ').split('/').slice(-1)[0];
+      const t = fmtTime(now, tz);
+      return `<div class="kvRow"><div class="kvKey">${escapeHtml(label)}</div><div class="kvVal">${escapeHtml(t)}</div></div>`;
+    }).join('');
 
     root.innerHTML = `
-      <div class="kvRow"><div class="kvKey">Berlin</div><div class="kvVal">${escapeHtml(berlin)}</div></div>
-      <div class="kvRow"><div class="kvKey">London</div><div class="kvVal">${escapeHtml(london)}</div></div>
-      <div class="kvRow"><div class="kvKey">New York</div><div class="kvVal">${escapeHtml(ny)}</div></div>
-      <div class="kvRow"><div class="kvKey">Tokyo</div><div class="kvVal">${escapeHtml(tokyo)}</div></div>
+      ${rows}
       <div class="muted" style="font-size:12px; margin-top:10px;">Updates every minute.</div>
     `;
 
     // tick
     const tick = () => {
-      try { renderMarketClock(root); } catch {}
+      try { renderMarketClock(root, settings); } catch {}
     };
     setTimeout(tick, 60_000);
   }
@@ -2084,7 +2209,7 @@ function renderPicker(){
       </div>
     `;
     const btn = root.querySelector('[data-pro-upgrade]');
-    if (btn) btn.addEventListener('click', () => goPricing());
+    if (btn) btn.addEventListener('click', () => goPricingWith({ plan: 'pro' }));
     return false;
   }
 
@@ -2161,14 +2286,27 @@ function renderPicker(){
 
   async function renderProMomentum(root){
     if (!_requireProOrRenderUpsell(root)) return;
-    const items = _pickTop(getFeedItemsSafe(), 1);
-    const it = items[0];
-    if (!it) return _proEmpty(root);
-    const cid = Number(it?.cluster_id ?? it?.id);
-    if (!Number.isFinite(cid)) return _proEmpty(root);
+    const currentCid = getCurrentClusterId();
+    const feedItems = getFeedItemsSafe();
+    let it = null;
+    let cid = null;
+
+    if (Number.isFinite(Number(currentCid))) {
+      cid = Number(currentCid);
+      it = (Array.isArray(feedItems) ? feedItems : []).find(x => Number(x?.cluster_id ?? x?.id) === cid) || null;
+    }
+
+    // Fallback: pick the most impactful story if user hasn't opened anything yet.
+    if (!cid || !Number.isFinite(cid)){
+      const items = _pickTop(feedItems, 1);
+      it = items[0] || null;
+      cid = it ? Number(it?.cluster_id ?? it?.id) : null;
+    }
+
+    if (!cid || !Number.isFinite(cid)) return _proEmpty(root);
 
     root.innerHTML = `
-      <div class="proTitleSm">${escapeHtml(String(it?.title || 'Untitled'))}</div>
+      <div class="proTitleSm">${escapeHtml(String(it?.title || 'Selected story'))}</div>
       <div class="proHint" style="margin-top:6px;">Mini chart = your Trust History (0–100) over time. Higher = more consistent across sources.</div>
       <div class="proChart" data-pro-chart>Loading…</div>
       <div class="proActions">
@@ -2180,8 +2318,9 @@ function renderPicker(){
     if (openBtn) openBtn.addEventListener('click', () => openClusterInFeed(cid));
     const searchBtn = root.querySelector('[data-pro-track]');
     if (searchBtn) searchBtn.addEventListener('click', () => {
-      const t = String(it?.title || '').split(' ').slice(0, 2).join(' ');
-      setSearchTerm(t);
+      const t = String(it?.title || '').trim();
+      const q = t ? t.split(' ').slice(0, 2).join(' ') : '';
+      if (q) setSearchTerm(q);
     });
 
     const chartEl = root.querySelector('[data-pro-chart]');
@@ -2458,6 +2597,48 @@ function renderPicker(){
     }
   }
 }
+
+  function marketClockSettingsUI(container, settings){
+    const s = settings || {};
+    const selectedCities = parseList(s.cities || "Europe/Berlin,Europe/London,America/New_York,Asia/Tokyo");
+    const count = clampInt(Number(s.count ?? 4) || 4, 2, 5);
+
+    container.innerHTML = `
+      <div class="muted" style="font-size:13px; line-height:1.35;">
+        Choose which <b>cities</b> to show and how many to display.
+      </div>
+
+      <div class="widgetFormRow" style="margin-top:14px;">
+        <label>Cities</label>
+        <div class="msRoot" data-ms-root="clockCities"></div>
+        <input type="hidden" name="cities" value="${escapeAttr(selectedCities.join(','))}" />
+      </div>
+
+      <div class="widgetFormRow">
+        <label>Count</label>
+        <select name="count">
+          ${[2,3,4,5].map(n => `<option value="${n}" ${n===count?'selected':''}>${n}</option>`).join('')}
+        </select>
+      </div>
+
+      <div class="muted" style="font-size:12px; margin-top:10px;">
+        Tip: pick up to 5 cities. The widget will display the first N (Count) from your selection.
+      </div>
+    `;
+
+    const ms = container.querySelector('[data-ms-root="clockCities"]');
+    const hidden = container.querySelector('input[name="cities"]');
+
+    if (ms && hidden){
+      createMultiSelect(ms, {
+        placeholder: "Search cities…",
+        options: CLOCK_CITIES.map(c => ({ value: c.tz, label: c.label })),
+        selected: selectedCities,
+        max: 5,
+        onChange: (vals) => { hidden.value = vals.join(','); }
+      });
+    }
+  }
 
   function cryptoSettingsUI(container, settings){
   const vs = String((settings && settings.vs) || "eur").toLowerCase().trim() || "eur";
