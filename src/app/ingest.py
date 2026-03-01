@@ -708,6 +708,7 @@ def _extract_best_image_from_html(html: str, base_url: str) -> str | None:
         ("property", "og:image:url"),
         ("name", "twitter:image"),
         ("name", "twitter:image:src"),
+        ("itemprop", "image"),
     ]
     for attr, key in meta_keys:
         tag = soup.find("meta", attrs={attr: key})
@@ -767,6 +768,63 @@ def _extract_best_image_from_html(html: str, base_url: str) -> str | None:
                     break
             if best_ld:
                 return best_ld
+    except Exception:
+        pass
+
+
+    # 1b) JSON-LD (NYT/DW often store image here)
+    try:
+        import json as _json
+        import re as _re
+
+        for sc in soup.find_all("script", attrs={"type": "application/ld+json"}):
+            raw = (sc.string or sc.get_text() or "").strip()
+            if not raw:
+                continue
+
+            # Some pages embed multiple objects or extra text; try to isolate JSON.
+            m = _re.search(r"(\{.*\}|\[.*\])", raw, flags=_re.S)
+            if m:
+                raw = m.group(1)
+
+            data = _json.loads(raw)
+
+            def _pick_img(o):
+                if isinstance(o, dict):
+                    for k in ("image", "thumbnailUrl"):
+                        if k in o and o[k]:
+                            v = o[k]
+                            if isinstance(v, str):
+                                return v
+                            if isinstance(v, list) and v:
+                                first = v[0]
+                                if isinstance(first, str):
+                                    return first
+                                if isinstance(first, dict):
+                                    u = first.get("url")
+                                    if isinstance(u, str):
+                                        return u
+                            if isinstance(v, dict):
+                                u = v.get("url")
+                                if isinstance(u, str):
+                                    return u
+                    for vv in o.values():
+                        got = _pick_img(vv)
+                        if got:
+                            return got
+                elif isinstance(o, list):
+                    for it in o:
+                        got = _pick_img(it)
+                        if got:
+                            return got
+                return None
+
+            img = _pick_img(data)
+            if isinstance(img, str):
+                img = _abs_url(img.strip(), base_url)
+                img = _normalize_image_candidate(img) if img else None
+                if img:
+                    return img
     except Exception:
         pass
 
