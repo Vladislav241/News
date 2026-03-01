@@ -54,11 +54,26 @@
   }
 
   function getPlan(){
-    try { return String((typeof billingState !== 'undefined' && billingState?.plan) ? billingState.plan : 'free').toLowerCase(); } catch { return 'free'; }
+    try{
+      if (typeof billingState === 'undefined' || !billingState) return null;
+      const p = billingState?.plan;
+      if (p === null || typeof p === 'undefined') return null;
+      return String(p).toLowerCase();
+    }catch{
+      return null;
+    }
   }
+
+  // Treat any non-free plan as having access to Pro widgets.
+  // This makes the frontend resilient if the backend introduces new paid tiers.
   function hasPro(){
     const p = getPlan();
-    return p === 'pro' || p === 'analyst';
+    if (!p) return null; // unknown/loading
+    if (p === 'free') return false;
+    // common paid tiers
+    if (p === 'pro' || p === 'analyst' || p === 'plus' || p === 'premium' || p === 'enterprise' || p === 'business') return true;
+    // fallback: any other non-free value counts as paid
+    return true;
   }
 
   function goPricing(){
@@ -69,7 +84,15 @@
   }
 
   function gatePro(){
-    if (hasPro()) return true;
+    const pro = hasPro();
+    // If billing is still loading, don't mislead the user with an upgrade prompt.
+    if (pro === null){
+      try { if (typeof toast === 'function') toast('Checking your subscription…'); } catch {}
+      try { if (typeof refreshBillingState === 'function') refreshBillingState(); } catch {}
+      return false;
+    }
+    if (pro) return true;
+
     try { if (typeof toast === 'function') toast('🔒 Pro feature — upgrade to unlock.'); } catch {}
     goPricing();
     return false;
@@ -1171,6 +1194,13 @@ function saveLayout(){
     state.layout = loadLayout();
     renderAll();
 
+    // Hard reload (Cmd+Shift+R) can cause widgets to render before some app state is ready.
+    // Re-render once after full window load so widgets refetch and recover without needing delete/re-add.
+    window.addEventListener('load', () => {
+      try { if (!(state && state.modal && state.modal.open)) renderAll(); } catch {}
+      try { updateMobileDock(); } catch {}
+    }, { once:true });
+
     // Mobile bottom dock (phones)
     updateMobileDock();
     window.addEventListener('resize', () => updateMobileDock(), { passive: true });
@@ -1184,12 +1214,33 @@ function saveLayout(){
     setupSidebarFollow(left, right);
 
     // Re-render headlines widget after feed updates (best-effort)
-    document.addEventListener("checkne:feedRendered", () => refreshWidgetType("headlines"));
+    document.addEventListener("checkne:feedRendered", () => {
+      // Feed-driven widgets should refresh after the feed is actually rendered.
+      // On hard reload some widgets may render before feed data exists; this makes them self-heal.
+      ["headlines","tracking_stats","pro_action_feed","pro_risk_why","pro_momentum","pro_entities","pro_top_charts"].forEach(refreshWidgetType);
+    });
 
     // Update Tracking Stats widget when tracking list changes
     document.addEventListener("checkne:favsChanged", () => refreshWidgetType("tracking_stats"));
     window.addEventListener("storage", (e) => {
       if (e && e.key === "news_favs_v1") refreshWidgetType("tracking_stats");
+    });
+
+    // If billing plan loads/changes after widgets init, re-render so PRO widgets unlock correctly.
+    document.addEventListener("checkne:billingUpdated", () => {
+      try { renderAll(); } catch {}
+      try { if (state?.modal?.open) openModal(); } catch {}
+      try {
+        // If a mobile sheet is open, refresh its content (it may have been locked before billing loaded).
+        if (mobileSheet && mobileSheet.classList.contains('isOpen') && state?.mobile?.activeId){
+          const wid = state.mobile.activeId;
+          const left = (state.layout?.left || []).some(x => x.id === wid);
+          const right = (state.layout?.right || []).some(x => x.id === wid);
+          const side = left ? 'left' : (right ? 'right' : null);
+          if (side) openMobileSheet(side, wid);
+        }
+      } catch {}
+      try { updateMobileDock(); } catch {}
     });
 
     // Close modal actions
@@ -1509,6 +1560,8 @@ function saveLayout(){
 
   function openSettings(side, widgetId){
     if (!requireAuth('widgets')) return;
+    // On mobile we may have a bottom sheet open for the widget — close it before showing the settings modal.
+    try { closeMobileSheet(true); } catch {}
     state.modal = { open:true, mode:"settings", side, widgetId };
     openModal();
   }
@@ -1997,7 +2050,12 @@ function renderPicker(){
   }
 
   function _requireProOrRenderUpsell(root){
-    if (hasPro()) return true;
+    const pro = hasPro();
+    if (pro === null){
+      root.textContent = 'Loading…';
+      return false;
+    }
+    if (pro) return true;
     root.innerHTML = `
       <div class="proLocked">
         <div class="proLockedTitle">Pro widget</div>

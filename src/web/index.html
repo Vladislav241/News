@@ -749,6 +749,24 @@
     .newsCard.isLow .shareBtn{ border-color: rgba(255,255,255,.18); }
     .shareIcon{ width: 18px; height: 18px; object-fit: contain; display:block; }
 
+    /* Report button (top-right on cards) */
+    .reportBtn{
+      width: 44px;
+      height: 34px;
+      border-radius: 12px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background: transparent;
+      border: 0px solid rgba(15,23,42,.22);
+      cursor: pointer;
+      padding: 0;
+      margin-left: -25px;
+      opacity: .92;
+    }
+    .reportBtn:hover{ filter: brightness(.98); opacity: 1; }
+    .reportIcon{ width: 18px; height: 18px; object-fit: contain; display:block; }
+
     /* External link icon (to match the Figma card actions) */
     .openBtn{
       width: 44px;
@@ -2185,6 +2203,94 @@
       text-align: center;
     }
     .shareNoThanks:hover{ color: #374151; }
+
+    /* --------------------
+       Report modal
+       -------------------- */
+    .reportBackdrop{
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.55);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      z-index: 10000;
+    }
+    .reportBackdrop.isOpen{ display:flex; }
+
+    .reportModal{
+      width: min(560px, 94vw);
+      background: #fff;
+      border-radius: 26px;
+      border: 1px solid rgba(0,0,0,0.18);
+      box-shadow: 0 28px 80px rgba(0,0,0,0.20);
+      overflow: hidden;
+      animation: reportModalIn .22s ease;
+    }
+    @keyframes reportModalIn{
+      from{ opacity:0; transform: translateY(10px) scale(.98); }
+      to{ opacity:1; transform: translateY(0) scale(1); }
+    }
+    .reportHeader{
+      padding: 18px 20px;
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(15,23,42,.08);
+    }
+    .reportHeaderLeft{ display:flex; flex-direction: column; gap: 2px; }
+    .reportTitle{ font-size: 16px; font-weight: 800; color: #111113; }
+    .reportSub{ font-size: 12px; color: rgba(15,23,42,.62); }
+    .reportClose{
+      width: 38px; height: 38px;
+      border-radius: 12px;
+      border: 1px solid rgba(15,23,42,.16);
+      background: transparent;
+      cursor: pointer;
+      font-size: 18px;
+      line-height: 1;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+    .reportBody{ padding: 18px 20px 20px; display:grid; gap: 12px; }
+    .reportField{ display:grid; gap: 6px; text-align:left; }
+    .reportLabel{ font-size: 12px; font-weight: 800; letter-spacing:.06em; color: rgba(15,23,42,.62); text-transform: uppercase; }
+    .reportSelect, .reportTextarea{
+      width: 100%;
+      border-radius: 14px;
+      border: 1px solid rgba(0,0,0,.14);
+      background: rgba(0,0,0,.02);
+      padding: 12px 12px;
+      font-size: 14px;
+      outline: none;
+    }
+    .reportTextarea{ min-height: 110px; resize: vertical; background: rgba(0,0,0,.01); }
+    .reportFooter{ padding: 0 20px 20px; display:flex; gap: 10px; justify-content: flex-end; }
+    .reportBtnGhost{
+      height: 44px;
+      padding: 0 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(0,0,0,.14);
+      background: rgba(0,0,0,.02);
+      cursor: pointer;
+      font-weight: 700;
+      color: #111113;
+    }
+    .reportBtnPrimary{
+      height: 44px;
+      padding: 0 16px;
+      border-radius: 14px;
+      border: 1px solid #0b0b0b;
+      background: #0b0b0b;
+      cursor: pointer;
+      font-weight: 800;
+      color: #fff;
+    }
+    .reportBtnPrimary:disabled{ opacity: .6; cursor: not-allowed; }
 /* --------------------
    Share modal (fixed)
    -------------------- */
@@ -4964,6 +5070,7 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
 <script src="/static/js/pricing.js?v=2026-02-24" defer></script>
 <script src="/static/js/carousel.js?v=2026-02-24" defer></script>
 <script src="/static/js/feed.js?v=2026-02-24" defer></script>
+<script src="/static/js/report.js?v=2026-03-01" defer></script>
 <script src="/static/js/widgets.js?v=2026-02-28-4" defer></script>
 <script src="/static/js/dropdowns.js?v=2026-02-24" defer></script>
 <script src="/static/js/bootstrap.js?v=2026-02-24" defer></script>
@@ -5010,6 +5117,37 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
       <button id="shareNoThanks" class="shareNoThanks" type="button" data-i18n="share.no_thanks">No thanks!</button>
     </div>
 
+  </div>
+</div>
+
+
+<!-- Report modal -->
+<div id="reportBackdrop" class="reportBackdrop" aria-hidden="true">
+  <div class="reportModal" role="dialog" aria-modal="true" aria-labelledby="reportTitle">
+    <div class="reportHeader">
+      <div class="reportHeaderLeft">
+        <div id="reportTitle" class="reportTitle">Report this news</div>
+        <div class="reportSub">Cluster ID: <span id="reportClusterId"></span></div>
+      </div>
+      <button class="reportClose" type="button" data-report-close="1" aria-label="Close">✕</button>
+    </div>
+
+    <div class="reportBody">
+      <div class="reportField">
+        <div class="reportLabel">Reason</div>
+        <select id="reportReason" class="reportSelect" aria-label="Reason"></select>
+      </div>
+
+      <div class="reportField">
+        <div class="reportLabel">Details</div>
+        <textarea id="reportMessage" class="reportTextarea" placeholder="Optional: explain what’s wrong…"></textarea>
+      </div>
+    </div>
+
+    <div class="reportFooter">
+      <button class="reportBtnGhost" type="button" data-report-close="1">Cancel</button>
+      <button id="reportSendBtn" class="reportBtnPrimary" type="button">Send report</button>
+    </div>
   </div>
 </div>
 

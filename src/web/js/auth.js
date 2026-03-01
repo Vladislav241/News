@@ -237,8 +237,8 @@ function updateAuthUI() {
   }
 
   updateAccountPlanPill();
-
   try{ updateProfileUI(); }catch{}
+  try{ document.dispatchEvent(new CustomEvent('checkne:billingUpdated', { detail: { plan: (billingState?.plan||'free'), status: (billingState?.status||'active') } })); }catch{}
 }
 
 
@@ -272,6 +272,7 @@ async function refreshBillingState() {
     billingState = { plan: 'free', status: 'active', interval: 'monthly', current_period_end: null, cancel_at_period_end: false };
     updatePricingUI();
     try{ updateProfileUI(); }catch{}
+    try{ document.dispatchEvent(new CustomEvent('checkne:billingUpdated', { detail: { plan: (billingState?.plan||'free'), status: (billingState?.status||'active') } })); }catch{}
     return;
   }
   try {
@@ -290,6 +291,7 @@ async function refreshBillingState() {
   updatePricingUI();
   updateAccountPlanPill();
   try{ updateProfileUI(); }catch{}
+  try{ document.dispatchEvent(new CustomEvent('checkne:billingUpdated', { detail: { plan: (billingState?.plan||'free'), status: (billingState?.status||'active') } })); }catch{}
 }
 
 function bindAuthModalUI() {

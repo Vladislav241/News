@@ -269,6 +269,11 @@ const showTrackingUI = state.mode === 'fav';
     <img class="shareIcon" src="/static/icons/Share.svg" alt="Share" />
   </button>`;
 
+  // Report button (opens report modal -> sends to Discord webhook).
+  const reportHtml = `<button class="reportBtn" type="button" title="Report" aria-label="Report">
+    <img class="reportIcon" src="/static/icons/Report.svg" alt="Report" />
+  </button>`;
+
   // Tracking toggle (replaces the old star button).
   // Visual contract:
   // - tracked   => white toggle
@@ -298,6 +303,7 @@ const showTrackingUI = state.mode === 'fav';
                 ${deltaHtml}
                 ${iconHtml}
                 ${shareHtml}
+                ${reportHtml}
               </div>
             </div>
             <div class="newsMeta">${metaLine}</div>
@@ -425,6 +431,22 @@ const showTrackingUI = state.mode === 'fav';
       e.preventDefault();
       e.stopPropagation();
       await shareCluster(item);
+    };
+  }
+
+  const reportBtn = div.querySelector('.reportBtn');
+  if (reportBtn) {
+    reportBtn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      try {
+        if (typeof window.openReportModal === 'function') {
+          window.openReportModal({
+            cluster_id: Number(item.cluster_id ?? item.event_id ?? 0),
+            title: item.title || 'Event',
+          });
+        }
+      } catch {}
     };
   }
 
