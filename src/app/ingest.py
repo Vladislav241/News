@@ -1028,7 +1028,44 @@ def _parse_rss_sources() -> dict[str, Any]:
     cfg = db.get_config()
     if cfg.rss_sources_json:
         try:
-            return json.loads(cfg.rss_sources_json)
+            custom = json.loads(cfg.rss_sources_json)
+
+            # "Fail open" merge: if the DB config is partial (common in production),
+            # keep custom overrides but fill missing country/language/topic buckets
+            # from DEFAULT_RSS_SOURCES so the standard interests (business/tech/etc)
+            # still get content.
+            def _merge(defaults: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
+                out: dict[str, Any] = {}
+                for country, by_lang in (defaults or {}).items():
+                    out[country] = {}
+                    for lang, by_topic in (by_lang or {}).items():
+                        out[country][lang] = {}
+                        for topic, items in (by_topic or {}).items():
+                            out[country][lang][topic] = list(items or [])
+
+                for country, by_lang in (overrides or {}).items():
+                    out.setdefault(country, {})
+                    for lang, by_topic in (by_lang or {}).items():
+                        out[country].setdefault(lang, {})
+                        for topic, items in (by_topic or {}).items():
+                            cur = list(out[country][lang].get(topic) or [])
+                            add = list(items or [])
+                            # de-dup by URL
+                            seen = {str(x.get("url") or "").strip() for x in cur if isinstance(x, dict)}
+                            for it in add:
+                                if not isinstance(it, dict):
+                                    continue
+                                u = str(it.get("url") or "").strip()
+                                if not u or u in seen:
+                                    continue
+                                cur.append(it)
+                                seen.add(u)
+                            out[country][lang][topic] = cur
+                return out
+
+            if isinstance(custom, dict):
+                return _merge(DEFAULT_RSS_SOURCES, custom)
+            return DEFAULT_RSS_SOURCES
         except Exception:
             logger.exception("Failed to parse RSS_SOURCES_JSON, using DEFAULT_RSS_SOURCES")
     return DEFAULT_RSS_SOURCES

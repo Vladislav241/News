@@ -1559,12 +1559,63 @@ class Database:
         params.append(max(1, min(400, int(limit))))
         rows = self._fetchall(sql, tuple(params))
 
+        def _infer_topic_from_title(title: str) -> str:
+            """Best-effort topic inference for legacy rows.
+
+            Production DBs can contain clusters where `topic` is missing or overly
+            broad (e.g. "general"). The UI interest chips should still work
+            reasonably, so we infer a topic from the title as a fallback.
+            """
+            t = (title or "").lower()
+
+            # Keep this deterministic and lightweight (no ML). It's only a fallback.
+            if any(k in t for k in (
+                "stock", "stocks", "market", "inflation", "economy", "economic", "trade",
+                "bank", "banks", "earnings", "ipo", "bond", "bonds", "crypto", "bitcoin", "ethereum"
+            )):
+                return "business"
+            if any(k in t for k in (
+                "artificial intelligence", "machine learning", " ai", "ai ", "chip", "chips",
+                "semiconductor", "iphone", "android", "google", "apple", "microsoft", "openai",
+                "cyber", "hack", "hacker", "ransomware", "software", "app", "technology", "tech"
+            )):
+                return "technology"
+            if any(k in t for k in (
+                "election", "parliament", "congress", "senate", "minister", "president", "prime minister",
+                "labour", "conservative", "republican", "democrat", "campaign", "vote", "voting",
+                "ukraine", "russia", "israel", "gaza", "iran", "china", "taiwan", "sanctions"
+            )):
+                return "politics"
+            if any(k in t for k in (
+                "study", "research", "scientist", "nasa", "space", "planet", "asteroid",
+                "climate", "warming", "physics", "chemistry", "biology"
+            )):
+                return "science"
+            if any(k in t for k in (
+                "match", "league", "goal", "tournament", "championship", "nba", "nfl", "mlb", "nhl",
+                "fifa", "uefa", "premier league", "tennis", "boxing", "ufc"
+            )):
+                return "sports"
+            if any(k in t for k in (
+                "health", "hospital", "doctor", "vaccine", "covid", "flu", "disease",
+                "cancer", "mental health", "diet", "obesity"
+            )):
+                return "health"
+            return "general"
+
         if interests_norm:
+            # If "general" is selected, treat it as a broad feed (no topic filtering).
+            if "general" in interests_norm:
+                return rows
+
             filtered: list[dict[str, Any]] = []
             for r in rows:
-                t = (r.get("title") or "").lower()
-                topic = (r.get("topic") or "").lower()
-                if any(i == topic or i in t for i in interests_norm):
+                title_l = (r.get("title") or "").lower()
+                topic_l = (r.get("topic") or "").strip().lower()
+                inferred = _infer_topic_from_title(title_l) if (not topic_l or topic_l == "general") else topic_l
+
+                # Union semantics across selected interests.
+                if any(i == inferred or i in title_l for i in interests_norm):
                     filtered.append(r)
             rows = filtered
 

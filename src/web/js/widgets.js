@@ -5,6 +5,7 @@
 
 (function(){
   const STORAGE_KEY = "checkne_widgets_v1";
+  const INIT_KEY = "checkne_widgets_init_v1";
   const MAX_PER_SIDE = 3;
   const MAX_TOTAL = 5; // total widgets across both sides (and on mobile dock)
 
@@ -763,6 +764,7 @@ function uid(){
   function loadLayout(){
     const raw = localStorage.getItem(STORAGE_KEY);
     const parsed = raw ? safeParse(raw) : null;
+    const inited = localStorage.getItem(INIT_KEY) === '1';
 
     // Use stored layout if it looks valid (even if it's empty arrays).
     let layout = (parsed && typeof parsed === "object") ? parsed : null;
@@ -770,15 +772,18 @@ function uid(){
     const hasSides = layout && Object.prototype.hasOwnProperty.call(layout, "left") && Object.prototype.hasOwnProperty.call(layout, "right");
     if (!hasSides) layout = null;
 
+    const makeDefault = () => ({
+      left: [{ id: uid(), type: "fx_rates", settings: { ...WIDGETS.fx_rates.defaults } }],
+      right: [
+        { id: uid(), type: "crypto_prices", settings: { ...WIDGETS.crypto_prices.defaults } },
+        { id: uid(), type: "headlines", settings: { ...WIDGETS.headlines.defaults } },
+      ],
+    });
+
     // First-time users (no storage yet) get a sensible default.
     if (!layout){
-      layout = {
-        left: [{ id: uid(), type: "fx_rates", settings: { ...WIDGETS.fx_rates.defaults } }],
-        right: [
-          { id: uid(), type: "crypto_prices", settings: { ...WIDGETS.crypto_prices.defaults } },
-          { id: uid(), type: "headlines", settings: { ...WIDGETS.headlines.defaults } },
-        ],
-      };
+      layout = makeDefault();
+      try { localStorage.setItem(INIT_KEY, '1'); } catch {}
     }
 
     // Normalize + validate (and allow fully empty layouts).
@@ -801,6 +806,14 @@ function uid(){
     layout.left = normalizeList(layout.left).slice(0, MAX_PER_SIDE);
     layout.right = normalizeList(layout.right).slice(0, MAX_PER_SIDE);
 
+    // If we have a stored layout but it ended up empty and the user never
+    // successfully initialized widgets (common after hard refreshes or migrations),
+    // restore the default 3-widget layout.
+    if (!inited && (layout.left.length + layout.right.length) === 0){
+      layout = makeDefault();
+      try { localStorage.setItem(INIT_KEY, '1'); } catch {}
+    }
+
     // Enforce global max across both sides
     while ((layout.left.length + layout.right.length) > MAX_TOTAL){
       if (layout.right.length) layout.right.pop();
@@ -816,6 +829,7 @@ function uid(){
   }
 function saveLayout(){
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state.layout));
+    try { localStorage.setItem(INIT_KEY, '1'); } catch {}
   }
 
   const state = {
