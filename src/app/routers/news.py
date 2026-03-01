@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from ..db import db
 from ..auth.deps import get_current_user_optional, require_user
-from ..ingest import run_ingest_cycle
+from ..ingest import run_ingest_cycle, backfill_article_images
 from ..scoring import compute_importance, compute_credibility
 from ..translate import translate_feed_items
 
@@ -1022,6 +1022,31 @@ def refresh(request: Request) -> dict[str, Any]:
     _REFRESH_STATE["last_ts_by_ip"][client_ip] = now
     stats = run_ingest_cycle()
     return {"status": "ok", "ingest": stats, "cooldown_seconds": REFRESH_COOLDOWN_SECONDS}
+
+
+@router.post("/api/news/backfill-images")
+async def backfill_images(request: Request) -> dict[str, Any]:
+    """Admin-only: backfill missing article images (fix older cards with no preview image)."""
+    cfg = db.get_config()
+    token_required = (cfg.refresh_token or "").strip()
+    if not token_required:
+        raise HTTPException(status_code=403, detail="Manual backfill is disabled")
+
+    token = request.headers.get("x-refresh-token", "").strip()
+    if token != token_required:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+    payload = {}
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+
+    days = payload.get("days", 365)
+    limit = payload.get("limit", 400)
+    budget = payload.get("budget", 60)
+    stats = backfill_article_images(days=days, limit=limit, budget=budget)
+    return {"status": "ok", "images": stats}
 
 
 # -----------------

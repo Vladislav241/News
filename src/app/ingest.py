@@ -865,6 +865,64 @@ def _extract_image_url(entry: Any) -> str | None:
     except Exception:
         return None
 
+
+def backfill_article_images(*, days: int = 365, limit: int = 200, budget: int = 25) -> dict[str, Any]:
+    """Backfill missing article images by scraping the article page for a good image.
+
+    Why this exists:
+      - RSS image extraction isn't consistent across feeds.
+      - Older rows might have been saved before you improved extraction.
+
+    Safety:
+      - bounded by (days, limit, budget) because each successful attempt is an external request.
+    """
+    db.ensure_schema()
+    try:
+        days_i = max(1, int(days))
+    except Exception:
+        days_i = 365
+    try:
+        limit_i = max(1, min(int(limit), 2000))
+    except Exception:
+        limit_i = 200
+    try:
+        budget_i = max(0, min(int(budget), 500))
+    except Exception:
+        budget_i = 25
+
+    updated = 0
+    attempted = 0
+    scanned = 0
+
+    rows = db.list_articles_missing_image(days=days_i, limit=limit_i)
+    scanned = len(rows)
+
+    for r in rows:
+        if budget_i <= 0:
+            break
+        aid = int(r.get("id") or 0)
+        url = (r.get("url") or "").strip()
+        if not aid or not url:
+            continue
+
+        attempted += 1
+        best = _extract_best_image_from_url(url)
+        if best:
+            try:
+                db.update_article_image_url(aid, best)
+                updated += 1
+            except Exception:
+                logger.exception("backfill update_article_image_url failed")
+        budget_i -= 1
+
+    return {
+        "scanned": scanned,
+        "attempted": attempted,
+        "updated": updated,
+        "days": days_i,
+        "limit": limit_i,
+    }
+
     return None
 
 
@@ -1152,6 +1210,14 @@ def run_ingest_cycle() -> dict[str, Any]:
         except Exception:
             stats["errors"] += 1
             logger.exception("image upgrade failed")
+
+        # Backfill missing images for older rows (bounded)
+        # This helps fix clusters/cards that were generated before improving image extraction.
+        try:
+            stats["images_backfilled"] = backfill_article_images(days=365, limit=120, budget=12)
+        except Exception:
+            stats["errors"] += 1
+            logger.exception("image backfill failed")
 
         touched_clusters: set[int] = set()
 

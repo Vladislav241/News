@@ -849,6 +849,33 @@ class Database:
         )
         return [dict(r) for r in rows]
 
+    def list_articles_missing_image(self, *, days: int = 365, limit: int = 200) -> list[dict[str, Any]]:
+        """Return articles (optionally within last N days) where image_url is empty.
+
+        This is used for backfilling older content after improving image extraction.
+        Keep it bounded with (days, limit) because it can trigger external requests.
+        """
+        try:
+            days_i = max(1, int(days))
+            lim = max(1, min(int(limit), 2000))
+        except Exception:
+            days_i = 365
+            lim = 200
+
+        since_iso = _utc_days_ago_iso(days_i)
+        rows = self._fetchall(
+            """
+            SELECT id, url, source_name, inserted_at
+            FROM articles
+            WHERE (image_url IS NULL OR TRIM(image_url) = '')
+              AND inserted_at >= ?
+            ORDER BY inserted_at DESC, id DESC
+            LIMIT ?
+            """,
+            (since_iso, lim),
+        )
+        return [dict(r) for r in rows]
+
     # --------- score/summary ----------
     def upsert_score(self, cluster_id: int, credibility_score: int, details: dict[str, Any]) -> None:
         now = _utc_now_iso()
