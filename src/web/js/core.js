@@ -251,6 +251,91 @@ const TRACKING_HISTORY_KEY = "news_tracking_history_v1";
 const FILTERS_KEY = "news_filters_v1";
 const THUMBS_KEY = "news_thumbs_v1";
 
+// ---------------------------------
+// Scoped storage (per-account safely)
+// ---------------------------------
+// Problem this solves:
+// - Without scoping, localStorage favorites/seen/deltas leak between accounts
+//   on the same device and can even overwrite another user's server favorites.
+//
+// We scope ONLY tracking-related keys (favorites + seen/deltas).
+// Preferences/filters stay per-device.
+
+function __isAuthed() {
+  try {
+    if (typeof authState !== 'undefined' && authState && authState.authenticated) return true;
+  } catch {}
+  try { return document.documentElement?.dataset?.authed === '1'; } catch {}
+  return false;
+}
+
+function __userStorageId() {
+  try {
+    const u = (typeof authState !== 'undefined' && authState) ? (authState.user || null) : null;
+    const id = u?.id ?? u?.user_id ?? null;
+    if (id !== null && id !== undefined && String(id).trim()) return String(id).trim();
+    const email = (u?.email || '').trim().toLowerCase();
+    if (email) return email;
+  } catch {}
+  return '';
+}
+
+function getDeviceId() {
+  try {
+    let id = localStorage.getItem(DEVICE_KEY);
+    if (id && String(id).trim()) return String(id);
+    // Simple random id; good enough for storage scoping.
+    id = (Math.random().toString(36).slice(2) + Date.now().toString(36)).slice(0, 20);
+    localStorage.setItem(DEVICE_KEY, id);
+    return id;
+  } catch {
+    return 'device';
+  }
+}
+
+function scopedKey(baseKey, scope = null) {
+  // explicit scope (used for migrations)
+  const s = scope || (__isAuthed() ? (`u:${__userStorageId()}`) : (`g:${getDeviceId()}`));
+  return `${baseKey}__${s}`;
+}
+
+function migrateScopedKey(baseKey, fromScope, toScope) {
+  // Move baseKey__fromScope -> baseKey__toScope if target doesn't exist.
+  try {
+    const fromK = scopedKey(baseKey, fromScope);
+    const toK = scopedKey(baseKey, toScope);
+    if (localStorage.getItem(toK) != null) return;
+    const val = localStorage.getItem(fromK);
+    if (val == null) return;
+    localStorage.setItem(toK, val);
+    localStorage.removeItem(fromK);
+  } catch {}
+}
+
+function readJSONStorage(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    return JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+}
+
+function writeJSONStorage(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+}
+
+// Convenience helpers for tracking-related keys
+function getScopedFavKey() { return scopedKey(FAV_KEY, __isAuthed() ? (`u:${__userStorageId()}`) : null); }
+function getScopedSeenKey() { return scopedKey(SEEN_KEY, __isAuthed() ? (`u:${__userStorageId()}`) : null); }
+function getScopedDeltaKey() { return scopedKey(TRACKING_DELTA_KEY, __isAuthed() ? (`u:${__userStorageId()}`) : null); }
+function getScopedHistoryKey() { return scopedKey(TRACKING_HISTORY_KEY, __isAuthed() ? (`u:${__userStorageId()}`) : null); }
+
+// Guest keys are still used ONLY for a one-time migration into the first login.
+function getGuestScope() { return `g:${getDeviceId()}`; }
+function getUserScope() { return __isAuthed() ? (`u:${__userStorageId()}`) : ''; }
+
 // ----------------------
 // i18n (UI + AI summaries)
 // ----------------------
@@ -345,6 +430,5 @@ async function setLanguage(lang, { persist = true, refetch = true } = {}) {
     await fetchFeed({ reset: true });
   }
 }
-
 
 

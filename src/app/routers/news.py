@@ -460,13 +460,53 @@ def _fetch_title_from_url(url: str) -> str:
 
 
 @router.get("/api/preferences")
-def get_preferences() -> dict:
-    return {"status": "ok", "note": "preferences are stored on frontend (localStorage) for now"}
+def get_preferences(user=Depends(get_current_user_optional)) -> dict:
+    """Return UI preferences.
+
+    - Guests: defaults.
+    - Authenticated users: stored per account in DB (persists across devices).
+    """
+    db.ensure_schema()
+
+    defaults = {"interests": ["general"], "country": "world", "language": "en"}
+    if not user:
+        return {"status": "ok", "preferences": defaults, "scope": "guest"}
+
+    row = db.get_user_preferences(int(user["id"]))
+    if not row:
+        return {"status": "ok", "preferences": defaults, "scope": "user"}
+
+    try:
+        interests = json.loads(row.get("interests_json") or "[]")
+        if not isinstance(interests, list):
+            interests = []
+    except Exception:
+        interests = []
+    interests = [str(x).strip().lower() for x in interests if str(x).strip()]
+    if not interests:
+        interests = defaults["interests"]
+
+    prefs = {
+        "interests": interests,
+        "country": (row.get("country") or defaults["country"]),
+        "language": (row.get("language") or defaults["language"]),
+    }
+    return {"status": "ok", "preferences": prefs, "scope": "user"}
 
 
 @router.post("/api/preferences")
-def save_preferences(p: Preferences) -> dict:
-    return {"status": "ok", "saved": p.model_dump()}
+def save_preferences(p: Preferences, user=Depends(require_user)) -> dict:
+    db.ensure_schema()
+    interests = [str(x).strip().lower() for x in (p.interests or []) if str(x).strip()]
+    if not interests:
+        interests = ["general"]
+    interests = sorted(set(interests))
+
+    country = (p.country or "world").strip().lower() or "world"
+    language = (p.language or "en").strip().lower() or "en"
+
+    db.upsert_user_preferences(int(user["id"]), json.dumps(interests), country, language)
+    return {"status": "ok", "saved": {"interests": interests, "country": country, "language": language}}
 
 
 @router.get("/api/news")

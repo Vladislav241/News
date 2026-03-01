@@ -36,7 +36,7 @@ document.addEventListener("click", (e) => {
 if(menuProfile){
   menuProfile.addEventListener("click", () => {
     accountMenu.classList.remove("open");
-    location.hash = '#/account';
+    try { if (typeof window.__navigate === 'function') window.__navigate('/account'); else location.href = '/account'; } catch(_) {}
   });
 }
 
@@ -44,7 +44,7 @@ if(menuProfile){
 if(menuPricing){
   menuPricing.addEventListener("click", () => {
     accountMenu.classList.remove("open");
-    location.hash = '#/pricing';
+    try { if (typeof window.__navigate === 'function') window.__navigate('/pricing'); else location.href = '/pricing'; } catch(_) {}
   });
 }
 
@@ -79,6 +79,18 @@ menuLogout.addEventListener("click", async () => {
     billingState = null;
     updateAuthUI();
     updatePricingUI();
+
+    // Clear Tracking UI state so nothing from the previous account is visible.
+    try {
+      const trackingCountEl = document.getElementById('trackingCount');
+      if (trackingCountEl) trackingCountEl.textContent = '0';
+    } catch {}
+    try {
+      state.trackingItems = [];
+      if (state.mode === 'fav') {
+        renderCards([], { incremental: false });
+      }
+    } catch {}
 
     alert("Logged out!");
 
@@ -256,6 +268,118 @@ main();
 let _emailAlertsInit = false;
 let _emailAlertsLast = null;
 
+// Consent modal for enabling email notifications
+let _emailConsentModal = null;
+
+function _emailConsentKey(){
+  try{
+    const uid = authState?.user?.id;
+    return uid ? `checkne_email_consent_v1_u${uid}` : 'checkne_email_consent_v1_guest';
+  }catch{ return 'checkne_email_consent_v1_guest'; }
+}
+
+function ensureEmailConsentModal(){
+  if (_emailConsentModal) return _emailConsentModal;
+
+  const buildLegalUrl = (path) => {
+    try{
+      const p = String(path || '/');
+      return location.origin + (p.startsWith('/') ? p : ('/' + p));
+    }catch{
+      return String(path || '/');
+    }
+  };
+
+  // Minimal styling (scoped)
+  const style = document.createElement('style');
+  style.textContent = `
+  .ecmBack{ position:fixed; inset:0; background:rgba(0,0,0,.46); display:none; align-items:center; justify-content:center; z-index:9999; padding:16px; }
+  .ecmBack.open{ display:flex; }
+  .ecmBack{ -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+  .ecmCard{ width:min(560px, calc(100vw - 32px)); border-radius:22px; background:#fff; color:#111; box-shadow:0 24px 70px rgba(0,0,0,.28); overflow:hidden; border:1px solid rgba(15,23,42,.10); }
+  .ecmHead{ padding:20px 20px 10px; font-weight:900; font-size:20px; letter-spacing:-.01em; }
+  .ecmBody{ padding:0 20px 16px; font-size:14.5px; line-height:1.55; color:rgba(15,23,42,.82); }
+  .ecmHint{ margin-top:10px; padding:10px 12px; border-radius:14px; background:rgba(15,23,42,.04); border:1px solid rgba(15,23,42,.08); font-size:13px; color:rgba(15,23,42,.78); }
+  .ecmLinks{ display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
+  .ecmLink{ border:1px solid rgba(15,23,42,.12); background:rgba(255,255,255,.92); padding:9px 12px; border-radius:14px; font-weight:800; font-size:13px; cursor:pointer; transition: transform .08s ease, background .12s ease; }
+  .ecmLink:hover{ background:rgba(15,23,42,.04); }
+  .ecmLink:active{ transform: translateY(1px); }
+  .ecmFoot{ display:flex; gap:10px; justify-content:flex-end; padding:16px 20px 20px; border-top:1px solid rgba(15,23,42,.08); }
+  .ecmBtn{ border-radius:16px; padding:11px 16px; font-weight:900; border:1px solid rgba(15,23,42,.12); background:#fff; cursor:pointer; transition: transform .08s ease, background .12s ease; }
+  .ecmBtn:hover{ background:rgba(15,23,42,.04); }
+  .ecmBtn:active{ transform: translateY(1px); }
+  .ecmBtnPrimary{ background:#111; color:#fff; border-color:#111; }
+  .ecmBtnPrimary:hover{ background:#0b0b0b; }
+  @media (max-width: 420px){
+    .ecmFoot{ flex-direction:column-reverse; }
+    .ecmBtn{ width:100%; }
+  }
+  `;
+  document.head.appendChild(style);
+
+  const back = document.createElement('div');
+  back.className = 'ecmBack';
+  back.innerHTML = `
+    <div class="ecmCard" role="dialog" aria-modal="true" aria-label="Email notifications consent">
+      <div class="ecmHead">Email notifications — consent</div>
+      <div class="ecmBody">
+        By turning this on, you agree that CHECKNE will send you emails when tracked events change.
+        You can turn this off anytime in settings.
+        <div class="ecmHint">We’ll only email you about changes to events you’re tracking.</div>
+        <div class="ecmLinks">
+          <button type="button" class="ecmLink" data-ecm-link="privacy">Privacy Policy</button>
+          <button type="button" class="ecmLink" data-ecm-link="terms">Terms of Service</button>
+        </div>
+      </div>
+      <div class="ecmFoot">
+        <button type="button" class="ecmBtn" data-ecm-action="cancel">Cancel</button>
+        <button type="button" class="ecmBtn ecmBtnPrimary" data-ecm-action="agree">I agree</button>
+      </div>
+    </div>
+  `;
+  // Backdrop click handled in showEmailConsentModal (per-open promise)
+  document.body.appendChild(back);
+
+  // Links
+  back.querySelectorAll('[data-ecm-link]').forEach((btn)=>{
+    btn.addEventListener('click', ()=>{
+      const slug = btn.getAttribute('data-ecm-link');
+      if (slug === 'privacy') window.open(buildLegalUrl('/privacy'), '_blank', 'noopener,noreferrer');
+      if (slug === 'terms') window.open(buildLegalUrl('/terms'), '_blank', 'noopener,noreferrer');
+    });
+  });
+
+  _emailConsentModal = back;
+  return back;
+}
+
+function showEmailConsentModal(){
+  return new Promise((resolve)=>{
+    const back = ensureEmailConsentModal();
+    back.classList.add('open');
+
+    const cleanup = (v)=>{
+      try { back.removeEventListener('click', onClick); } catch {}
+      back.classList.remove('open');
+      resolve(v === 'agree');
+    };
+
+    const onClick = (e)=>{
+      // Backdrop click => cancel
+      if (e.target === back) {
+        e.preventDefault();
+        cleanup('cancel');
+        return;
+      }
+      const act = e.target && e.target.getAttribute && e.target.getAttribute('data-ecm-action');
+      if (!act) return;
+      e.preventDefault();
+      cleanup(act);
+    };
+    back.addEventListener('click', onClick);
+  });
+}
+
 async function updateEmailAlertsUI(){
   const wrap = qs('trackingSettings');
   const toggle = qs('emailAlertsToggle');
@@ -272,6 +396,23 @@ async function updateEmailAlertsUI(){
     _emailAlertsInit = true;
     toggle.addEventListener('change', async () => {
       const enabled = !!toggle.checked;
+
+      // If enabling: require explicit consent once per account.
+      if (enabled){
+        try{
+          const k = _emailConsentKey();
+          const already = (localStorage.getItem(k) === '1');
+          if (!already){
+            const ok = await showEmailConsentModal();
+            if (!ok){
+              toggle.checked = false;
+              return;
+            }
+            try { localStorage.setItem(k, '1'); } catch {}
+          }
+        }catch{}
+      }
+
       try{
         const r = await fetch('/api/alerts/email', {
           method:'POST',

@@ -251,6 +251,59 @@ function loadPrefs() {
   } catch {}
 }
 
+// --- Account-scoped preferences (backend) ---
+// Interests/country/language should follow the account (not leak across logins).
+let _prefsSuppressRemoteSave = false;
+let _prefsRemoteSaveTimer = null;
+
+async function fetchPrefsFromServer(){
+  try{
+    const r = await fetch(`${API_BASE}/api/preferences`, { credentials:'include' });
+    const j = await r.json().catch(()=>null);
+    if (!r.ok) return null;
+    // Accept both {preferences:{...}} and flat payloads.
+    const p = (j && (j.preferences || j.saved || j)) || null;
+    if (!p || typeof p !== 'object') return null;
+    return {
+      interests: Array.isArray(p.interests) ? p.interests : undefined,
+      country: (typeof p.country === 'string') ? p.country : undefined,
+      language: (typeof p.language === 'string') ? p.language : undefined,
+    };
+  }catch{ return null; }
+}
+
+function applyPrefsObject(p, { persistLocal = true } = {}){
+  try{
+    if (p && Array.isArray(p.interests)){
+      const ints = p.interests;
+      state.interests = [...new Set(ints.map(String))].filter(Boolean);
+      if (state.interests.length === 0) state.interests = ['general'];
+    }
+    if (p && typeof p.country === 'string' && p.country) state.country = p.country;
+    if (p && typeof p.language === 'string' && p.language) state.language = p.language;
+  }catch{}
+
+  if (persistLocal){
+    _prefsSuppressRemoteSave = true;
+    try { savePrefs(); } catch {}
+    _prefsSuppressRemoteSave = false;
+  }
+}
+
+async function syncPrefsFromServer(){
+  if (!authState || !authState.authenticated) return false;
+  const p = await fetchPrefsFromServer();
+  if (!p) return false;
+  applyPrefsObject(p, { persistLocal: true });
+  // Sync UI if it is already initialized.
+  try { if (typeof renderTags === 'function') renderTags(); } catch {}
+  try { if (typeof syncDropdownsFromState === 'function') syncDropdownsFromState(); } catch {}
+  return true;
+}
+
+// Expose for auth.js (called right after login state refresh)
+window.checkneSyncPrefsFromServer = syncPrefsFromServer;
+
 function savePrefs() {
   const interests = [...new Set((state.interests || []).map(String))].filter(Boolean);
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
@@ -258,6 +311,24 @@ function savePrefs() {
     country: state.country,
     language: state.language,
   }));
+
+  // When authenticated, also persist preferences to the backend (account-scoped).
+  if (_prefsSuppressRemoteSave) return;
+  if (!authState || !authState.authenticated) return;
+
+  try{
+    if (_prefsRemoteSaveTimer) clearTimeout(_prefsRemoteSaveTimer);
+    _prefsRemoteSaveTimer = setTimeout(async ()=>{
+      try{
+        await fetch(`${API_BASE}/api/preferences`, {
+          method:'POST',
+          headers:{ 'Content-Type':'application/json' },
+          credentials:'include',
+          body: JSON.stringify({ interests, country: state.country, language: state.language })
+        });
+      }catch{}
+    }, 300);
+  }catch{}
 }
 
 function loadFilters() {
@@ -362,8 +433,11 @@ function syncThumbToggleUI() {
 }
 
 function getFavIds() {
+  // Tracking is an account feature. When logged out, we must not show stale
+  // counts from another account on the same device.
+  if (!authState.authenticated) return [];
   try {
-    const raw = localStorage.getItem(FAV_KEY);
+    const raw = localStorage.getItem(getScopedFavKey());
     const arr = raw ? JSON.parse(raw) : [];
     const ids = Array.isArray(arr) ? arr.map((x) => Number(x)).filter((x) => Number.isFinite(x)) : [];
     return [...new Set(ids)];
@@ -371,8 +445,14 @@ function getFavIds() {
 }
 
 function setFavIds(ids) {
+  if (!authState.authenticated) {
+    // Do not persist favorites for guests.
+    const trackingCountEl = document.getElementById("trackingCount");
+    if (trackingCountEl) trackingCountEl.textContent = "0";
+    return;
+  }
   const uniq = [...new Set((ids || []).map((x) => Number(x)).filter((x) => Number.isFinite(x)))];
-  localStorage.setItem(FAV_KEY, JSON.stringify(uniq));
+  localStorage.setItem(getScopedFavKey(), JSON.stringify(uniq));
   // legacy counter (hidden)
   const favCountEl = document.getElementById("favCount");
   if (favCountEl) favCountEl.textContent = String(uniq.length);
@@ -424,7 +504,11 @@ function removeFav(id) {
 }
 
 function loadSeenState() {
-  try { return JSON.parse(localStorage.getItem(SEEN_KEY) || "{}") || {}; }
+  if (!authState.authenticated) return {};
+  try { return JSON.parse(localStorage.getItem(getScopedSeenKey()) || "{}") || {}; }
   catch { return {}; }
 }
-function saveSeenState(obj) { localStorage.setItem(SEEN_KEY, JSON.stringify(obj || {})); }
+function saveSeenState(obj) {
+  if (!authState.authenticated) return;
+  localStorage.setItem(getScopedSeenKey(), JSON.stringify(obj || {}));
+}

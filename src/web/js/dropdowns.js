@@ -193,6 +193,25 @@ function initLanguageDropdown(){
   });
 }
 
+// Allow other modules (auth/prefs sync) to force dropdown UI to reflect current state.
+function syncDropdownsFromState(){
+  try{
+    const c = document.getElementById('country');
+    if (c && state && state.country && c.value !== state.country) {
+      c.value = state.country;
+      try { syncCountryBtnLabel(); } catch {}
+    }
+  }catch{}
+  try{
+    const l = document.getElementById('language');
+    if (l && state && state.language && l.value !== state.language) {
+      l.value = state.language;
+      try { syncLanguageBtnLabel(); } catch {}
+    }
+  }catch{}
+}
+window.syncDropdownsFromState = syncDropdownsFromState;
+
 
 
 
@@ -314,10 +333,10 @@ async function main() {
   syncThumbToggleUI();
   applyTabs();
 
-  // Apply hash routing after the UI is fully initialized.
-  // This makes direct URLs like /#/privacy work on first load.
-  if (typeof window.__routeFromHash === 'function') {
-    try { window.__routeFromHash(); } catch (_) {}
+  // Apply routing after the UI is fully initialized.
+  // Supports clean URLs (/privacy) and also auto-converts old hash URLs (/#/privacy).
+  if (typeof window.__routeFromLocation === 'function') {
+    try { window.__routeFromLocation(); } catch (_) {}
   }
 
   // initial load

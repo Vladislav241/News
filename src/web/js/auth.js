@@ -245,6 +245,7 @@ function updateAuthUI() {
 
 
 async function refreshAuthState() {
+  const wasAuthed = !!authState?.authenticated;
   try {
     const res = await fetch(`${API_BASE}/api/auth/me`);
     const data = await res.json();
@@ -257,9 +258,20 @@ async function refreshAuthState() {
   }
   updateAuthUI();
 
-  if (authState.authenticated) {
-    await pullFavoritesFromServerAndMerge();
-    await syncFavoritesToServer();
+  // Auth transition handling
+  if (!authState.authenticated) {
+    // Logged out -> clear any UI count/state (do NOT delete user-scoped storage).
+    try {
+      const trackingCountEl = document.getElementById('trackingCount');
+      if (trackingCountEl) trackingCountEl.textContent = '0';
+    } catch {}
+    try { state.trackingItems = []; } catch {}
+  } else {
+    // Logged in -> reconcile favorites safely (server is truth; guest can migrate once).
+    try { await pullFavoritesFromServerAndMerge(); } catch {}
+
+    // Load account-scoped preferences (interests/country/language) so they persist per user.
+    try { if (typeof window.checkneSyncPrefsFromServer === 'function') await window.checkneSyncPrefsFromServer(); } catch {}
   }
 
   // Billing state depends on auth

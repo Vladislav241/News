@@ -76,7 +76,8 @@ let state = {
   cooldownUntil: 0,
 
   // UI preferences
-  showThumbs: false,
+  // Default: show thumbnails ON for everyone (users can still turn it off).
+  showThumbs: true,
 
   filters: {
     sortOrder: 'newest',
@@ -100,4 +101,3 @@ function updateFooterShadeGap(){
 window.addEventListener('resize', updateFooterShadeGap, { passive: true });
 window.addEventListener('orientationchange', updateFooterShadeGap, { passive: true });
 window.addEventListener('load', ()=>{ requestAnimationFrame(updateFooterShadeGap); }, { passive: true });
-

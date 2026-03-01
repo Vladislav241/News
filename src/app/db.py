@@ -438,6 +438,21 @@ class Database:
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_user_subs_plan ON user_subscriptions(plan);")
 
+            # Account-scoped UI/preferences (e.g., interests) so settings persist across devices.
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_preferences (
+                    user_id BIGINT PRIMARY KEY,
+                    interests_json TEXT,
+                    country TEXT,
+                    language TEXT,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+                );
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_user_prefs_updated ON user_preferences(updated_at);")
+
             # Lightweight migration for older installs: add cancel_at_period_end if missing.
             try:
                 conn.execute(
@@ -1131,6 +1146,47 @@ class Database:
             uid = int(user_id)
         except Exception:
             return
+
+    # ----------------------------
+    # User preferences (account-scoped)
+    # ----------------------------
+    def get_user_preferences(self, user_id: int) -> Optional[dict[str, Any]]:
+        try:
+            uid = int(user_id)
+        except Exception:
+            return None
+        return self._fetchone("SELECT * FROM user_preferences WHERE user_id=?", (uid,))
+
+    def upsert_user_preferences(self, user_id: int, interests_json: str | None, country: str | None, language: str | None) -> None:
+        try:
+            uid = int(user_id)
+        except Exception:
+            return
+        now = _utc_now_iso()
+        # sqlite/postgres compatible upsert via UPDATE then INSERT fallback
+        try:
+            cur = self._exec(
+                "UPDATE user_preferences SET interests_json=?, country=?, language=?, updated_at=? WHERE user_id=?",
+                (interests_json, country, language, now, uid),
+            )
+            if getattr(cur, "rowcount", 0) and int(cur.rowcount) > 0:
+                return
+        except Exception:
+            pass
+        try:
+            self._exec(
+                "INSERT INTO user_preferences(user_id, interests_json, country, language, updated_at) VALUES(?, ?, ?, ?, ?)",
+                (uid, interests_json, country, language, now),
+            )
+        except Exception:
+            # As a last resort: try an update again
+            try:
+                self._exec(
+                    "UPDATE user_preferences SET interests_json=?, country=?, language=?, updated_at=? WHERE user_id=?",
+                    (interests_json, country, language, now, uid),
+                )
+            except Exception:
+                return
         try:
             self._exec("UPDATE users SET last_seen_at=? WHERE id=?", (_utc_now_iso(), uid))
         except Exception:

@@ -172,7 +172,7 @@ const INFO_PAGES = {
       <p>Depending on your location, you may have rights such as access, correction, deletion, portability, restriction, objection, and withdrawing consent. To exercise these rights, email <a href="mailto:support@checkne.com">support@checkne.com</a>.</p>
 
       <h2>10. Cookies</h2>
-      <p>We use cookies and similar technologies to keep the Service working and remember preferences. See our <a href="#/cookies">Cookie Policy</a> for details.</p>
+      <p>We use cookies and similar technologies to keep the Service working and remember preferences. See our <a href="/cookies">Cookie Policy</a> for details.</p>
 
       <h2>11. Children</h2>
       <p>The Service is not intended for children. If you believe a child provided personal data, contact us and we will take appropriate steps.</p>
@@ -431,58 +431,77 @@ window.__openInfoPage = (slug)=> setPage(`info:${slug}`);
 if(infoBackBtn){
   infoBackBtn.addEventListener('click', ()=>{
     // Go back to feed by default
-    location.hash = '#/';
+    try { window.__navigate('/'); } catch(_) { try { history.pushState({},'', '/'); } catch{}; setPage('feed'); }
   });
 }
 
-// Hash routing for footer links and shareable URLs
-function routeFromHash(){
-  // Normalize hash so links work reliably:
-  // - direct opens: http://.../#/privacy
-  // - with trailing slash: #/privacy/
-  // - with query params: #/privacy?x=1
-  let h = String(location.hash || '');
-  if (h.startsWith('#')) h = h.slice(1);
-  if (!h.startsWith('/')) h = '/' + h;
-  h = h.split('?')[0];
-  if (h.length > 1) h = h.replace(/\/+$/,'');
-  h = '#' + h;
-  if(h === '#/pricing' || h.startsWith('#/pricing')){
+function _normPath(p){
+  let path = String(p || '/');
+  if (!path.startsWith('/')) path = '/' + path;
+  // drop query/hash
+  path = path.split('?')[0].split('#')[0];
+  // trim trailing slash (except root)
+  if (path.length > 1) path = path.replace(/\/+$/,'');
+  return path;
+}
+
+// History routing (clean URLs like /privacy)
+function routeFromLocation(){
+  // Compatibility: if someone opens an old hash URL (/#/privacy)
+  // transparently convert it to /privacy.
+  try{
+    const h = String(location.hash || '');
+    if (h.startsWith('#/')){
+      const target = _normPath(h.slice(1));
+      history.replaceState({}, '', target + (location.search || ''));
+      // clear hash
+      try { location.hash = ''; } catch {}
+    }
+  }catch{}
+
+  const path = _normPath(location.pathname);
+
+  if (path === '/pricing'){
     setPage('pricing');
     return;
   }
-
-  if(h === '#/account' || h === '#/profile' || h.startsWith('#/account') || h.startsWith('#/profile')){
+  if (path === '/account' || path === '/profile'){
     setPage('profile');
     return;
   }
-  if(h === '#/tracking' || h.startsWith('#/tracking')){
-    // Ensure we are on the main feed view and then switch to Tracking tab
+  if (path === '/tracking'){
     setPage('feed');
     switchMode('fav');
     return;
   }
-  if(h === '#/contact') return setPage('info:contact');
-  if(h === '#/email') return setPage('info:email');
-  if(h === '#/status') return setPage('info:status');
-  if(h === '#/privacy') return setPage('info:privacy');
-  if(h === '#/terms') return setPage('info:terms');
-  if(h === '#/cookies') return setPage('info:cookies');
-  if(h === '#/impressum') return setPage('info:impressum');
+  if (path === '/contact') return setPage('info:contact');
+  if (path === '/email') return setPage('info:email');
+  if (path === '/status') return setPage('info:status');
+  if (path === '/privacy') return setPage('info:privacy');
+  if (path === '/terms') return setPage('info:terms');
+  if (path === '/cookies') return setPage('info:cookies');
+  if (path === '/impressum') return setPage('info:impressum');
 
-  // Default
+  // Default: main feed (/) and anything unknown
   setPage('feed');
 }
 
-// Expose router so startup can call it after UI init
-window.__routeFromHash = routeFromHash;
+function navigateTo(path){
+  const p = _normPath(path);
+  try { history.pushState({}, '', p); } catch(_){ try { location.assign(p); } catch{} }
+  try { routeFromLocation(); } catch(_) {}
+}
 
-// React to navigation changes
-window.addEventListener('hashchange', routeFromHash);
+// Expose router so other modules can navigate / route
+window.__routeFromLocation = routeFromLocation;
+window.__navigate = navigateTo;
 
-// Handle direct loads (no hashchange event on first load)
+// React to browser back/forward
+window.addEventListener('popstate', routeFromLocation);
+
+// Handle direct loads
 setTimeout(()=>{
-  try { routeFromHash(); } catch(_) {}
+  try { routeFromLocation(); } catch(_) {}
 }, 0);
 
 
@@ -789,7 +808,9 @@ function updateProfileUI(){
   // Actions
   if(btnManage){
     btnManage.disabled = !isAuthed;
-    btnManage.onclick = () => { location.hash = '#/pricing'; };
+    btnManage.onclick = () => {
+      try { if (typeof window.__navigate === 'function') window.__navigate('/pricing'); else location.href = '/pricing'; } catch(_) {}
+    };
   }
 
   if(btnCancel) btnCancel.style.display = 'none';
@@ -924,6 +945,8 @@ function renderTags() {
         // Make sure we never introduce duplicates
         state.interests = [...new Set([...(state.interests || []), tag])];
       }
+      // Persist interests (account-scoped when logged in; localStorage for guests).
+      try { savePrefs(); } catch {}
       renderTags();
       if (state.mode === "feed") await fetchFeed();
     };

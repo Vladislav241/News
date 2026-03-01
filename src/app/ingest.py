@@ -602,7 +602,15 @@ def _upgrade_resize_params(u: str, target_w: int = 1200) -> str:
     """Best-effort bump of common resize params (WordPress, etc.)."""
     try:
         parsed = urlparse(u)
+        host = (parsed.netloc or "").lower()
         qs = parse_qs(parsed.query or "", keep_blank_values=True)
+
+        # The Guardian image CDN (i.guim.co.uk) frequently uses *signed* URLs with a
+        # query parameter "s". Touching any query parameter on signed URLs can make
+        # the signature invalid -> 4xx -> broken images on the site.
+        # So: never rewrite signed Guardian image URLs.
+        if "i.guim.co.uk" in host and "s" in qs and qs.get("s"):
+            return u
 
         # WordPress: ?resize=770%2C513
         if "resize" in qs and qs["resize"]:
@@ -920,6 +928,33 @@ def _extract_image_url(entry: Any) -> str | None:
             looks_like_img = href.lower().split("?", 1)[0].endswith((".jpg", ".jpeg", ".png", ".webp"))
             if looks_like_img and (typ.startswith("image") or typ == ""):
                 return _normalize_image_candidate(href) or href
+
+        # Many feeds (including The Guardian) embed a lead image directly inside
+        # the entry HTML (content:encoded / content.value / summary). Feedparser
+        # doesn't always map that to media:content.
+        # This is still "RSS-only" because we don't make external requests here.
+        try:
+            base_url = (getattr(entry, "link", None) or "").strip() or ""
+            html_bits: list[str] = []
+
+            # feedparser: entry.content is usually a list of dicts with "value"
+            cont = getattr(entry, "content", None)
+            if isinstance(cont, list):
+                for it in cont[:3]:
+                    if isinstance(it, dict) and isinstance(it.get("value"), str):
+                        html_bits.append(it.get("value") or "")
+
+            # summary/detail often contains HTML
+            summ = (getattr(entry, "summary", None) or getattr(entry, "description", None) or "")
+            if isinstance(summ, str) and summ:
+                html_bits.append(summ)
+
+            for raw_html in html_bits:
+                cand = _extract_best_image_from_html(raw_html or "", base_url or "")
+                if cand:
+                    return cand
+        except Exception:
+            pass
     except Exception:
         return None
 

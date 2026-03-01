@@ -14,7 +14,7 @@ try:
 except Exception:
     pass
 from fastapi import HTTPException
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse
 
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -130,27 +130,27 @@ app.include_router(unsubscribe_router)
 app.include_router(debug_router)
 app.include_router(report_router)
 
-# ---------- Friendly SPA routes ----------
-# These paths provide shareable URLs (e.g. /privacy) and redirect into the hash-based SPA.
-SPA_REDIRECTS = {
-    "/pricing": "/#/pricing",
-    "/tracking": "/#/tracking",
-    "/contact": "/#/contact",
-    "/status": "/#/status",
-    "/privacy": "/#/privacy",
-    "/terms": "/#/terms",
-    "/cookies": "/#/cookies",
-    "/impressum": "/#/impressum",
-    "/email": "/#/email",
-}
+# ---------- SPA (history routing) ----------
+# Serve clean URLs like /privacy, /terms, /tracking without using # fragments.
+# We return index.html for any non-API/non-static path and let the frontend router
+# decide what to render.
 
-for _path, _target in SPA_REDIRECTS.items():
-    @app.get(_path, include_in_schema=False)
-    def _spa_redirect(_t: str = _target):
-        return RedirectResponse(url=_t)
+SPA_INDEX = os.path.join("src", "web", "index.html")
 
-# Mount the frontend last so it doesn't swallow API routes (and /favicon.ico).
-app.mount("/", StaticFiles(directory="src/web", html=True), name="web")
+
+@app.get("/", include_in_schema=False)
+def spa_root():
+    return FileResponse(SPA_INDEX)
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+def spa_fallback(full_path: str):
+    # Never swallow API/static asset routes.
+    if full_path.startswith("api/") or full_path.startswith("static/"):
+        return Response(status_code=404)
+    if full_path in ("favicon.ico",):
+        return Response(status_code=404)
+    return FileResponse(SPA_INDEX)
 
 # ---------- Auto refresh loop ----------
 _auto_task: Optional[asyncio.Task] = None

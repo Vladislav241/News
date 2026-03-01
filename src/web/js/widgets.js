@@ -6,7 +6,7 @@
 (function(){
   const STORAGE_KEY = "checkne_widgets_v1";
   const MAX_PER_SIDE = 3;
-  const MAX_TOTAL = 4; // total widgets across both sides (and on mobile dock)
+  const MAX_TOTAL = 5; // total widgets across both sides (and on mobile dock)
 
   function isAuthed(){
     try {
@@ -78,8 +78,8 @@
 
   function goPricing(){
     try {
-      location.hash = '#/pricing';
-      if (typeof window.__routeFromHash === 'function') window.__routeFromHash();
+      if (typeof window.__navigate === 'function') window.__navigate('/pricing');
+      else location.href = '/pricing';
     } catch {}
   }
 
@@ -1076,7 +1076,9 @@ function saveLayout(){
     // Avoid iOS/Android long-press callout
     plus.addEventListener('contextmenu', (ev) => { try { ev.preventDefault(); } catch {} });
     plus.addEventListener('dragstart', (ev) => { try { ev.preventDefault(); } catch {} });
-    if (items.length >= MAX_TOTAL) plus.classList.add('isDisabled');
+    // If already at max, don't show the add button at all.
+    const atMax = (items.length >= MAX_TOTAL);
+    if (atMax) plus.style.display = 'none';
     plus.addEventListener('click', () => {
       if (!requireAuth('widgets')) return;
       if (totalWidgets() >= MAX_TOTAL){
@@ -1096,7 +1098,7 @@ function saveLayout(){
     }
 
     mobileDock.classList.add('hasItems');
-    mobileDock.appendChild(plus);
+    if (!atMax) mobileDock.appendChild(plus);
 
     // Keep it compact on phones (max 6 widget buttons shown)
     items.slice(0, MAX_TOTAL).forEach(it => mobileDock.appendChild(makeBtn(it)));
@@ -1223,7 +1225,8 @@ function saveLayout(){
     // Update Tracking Stats widget when tracking list changes
     document.addEventListener("checkne:favsChanged", () => refreshWidgetType("tracking_stats"));
     window.addEventListener("storage", (e) => {
-      if (e && e.key === "news_favs_v1") refreshWidgetType("tracking_stats");
+      const k = String(e && e.key ? e.key : "");
+      if (k === "news_favs_v1" || k.startsWith("news_favs_v1__")) refreshWidgetType("tracking_stats");
     });
 
     // If billing plan loads/changes after widgets init, re-render so PRO widgets unlock correctly.
@@ -1375,7 +1378,10 @@ function saveLayout(){
       try { def.render(body, w.settings, w); } catch { body.textContent = "Could not render."; }
     });
 
-    if (list.length < MAX_PER_SIDE){
+    // Show "Add widget" only if:
+    // - this side has room AND
+    // - we are not at the global max
+    if (list.length < MAX_PER_SIDE && totalWidgets() < MAX_TOTAL){
       const add = document.createElement("div");
       add.className = "addWidgetTile";
       add.innerHTML = '<div class="addWidgetPlus">+</div><div>Add widget</div>';
@@ -2226,7 +2232,7 @@ function renderPicker(){
 
     const trBtn = root.querySelector('[data-pro-go-tracking]');
     if (trBtn) trBtn.addEventListener('click', () => {
-      try { location.hash = '#/tracking'; if (typeof window.__routeFromHash === 'function') window.__routeFromHash(); } catch {}
+      try { if (typeof window.__navigate === 'function') window.__navigate('/tracking'); else location.href = '/tracking'; } catch {}
     });
   }
 

@@ -10,11 +10,13 @@
 // We keep the latest non-zero delta received from the server and keep showing it
 // until the user opens the card (so the indicator doesn't disappear on refresh).
 function loadTrackingDeltaState() {
-  try { return JSON.parse(localStorage.getItem(TRACKING_DELTA_KEY) || "{}") || {}; }
+  if (!authState.authenticated) return {};
+  try { return JSON.parse(localStorage.getItem(getScopedDeltaKey()) || "{}") || {}; }
   catch { return {}; }
 }
 function saveTrackingDeltaState(obj) {
-  try { localStorage.setItem(TRACKING_DELTA_KEY, JSON.stringify(obj || {})); }
+  if (!authState.authenticated) return;
+  try { localStorage.setItem(getScopedDeltaKey(), JSON.stringify(obj || {})); }
   catch {}
 }
 
@@ -427,15 +429,46 @@ async function syncFavoritesToServer() {
 }
 
 async function pullFavoritesFromServerAndMerge() {
-  try {
-    if (!authState.authenticated) return;
-    const res = await fetch(`${API_BASE}/api/favorites`);
-    if (!res.ok) return;
-    const data = await res.json();
-    const serverIds = Array.isArray(data.ids) ? data.ids.map(Number).filter(Number.isFinite) : [];
-    const localIds = getFavIds();
-    const merged = [...new Set([...serverIds, ...localIds])];
-    setFavIds(merged);
-  } catch {}
+  // Legacy name kept for compatibility.
+  return reconcileFavoritesOnLogin();
 }
 
+async function reconcileFavoritesOnLogin() {
+  // Safe reconcile strategy:
+  // 1) Load server favorites (source of truth across devices).
+  // 2) If server empty and guest has favorites -> migrate guest -> server.
+  // 3) Never merge random local favorites from another user into this user.
+  try {
+    if (!authState.authenticated) return;
+
+    // 1) Pull server ids
+    const res = await fetch(`${API_BASE}/api/favorites`, { credentials: 'include' });
+    const data = await res.json().catch(() => ({}));
+    const serverIds = Array.isArray(data.ids) ? data.ids.map(Number).filter(Number.isFinite) : [];
+
+    // 2) Check guest ids (stored under guest scope)
+    let guestIds = [];
+    try {
+      const raw = localStorage.getItem(scopedKey(FAV_KEY, getGuestScope()));
+      const arr = raw ? JSON.parse(raw) : [];
+      guestIds = Array.isArray(arr) ? arr.map(Number).filter(Number.isFinite) : [];
+      guestIds = [...new Set(guestIds)];
+    } catch {}
+
+    if (serverIds.length > 0) {
+      setFavIds(serverIds);
+      return;
+    }
+
+    if (guestIds.length > 0) {
+      // Migrate guest -> user and push to server once.
+      setFavIds(guestIds);
+      await syncFavoritesToServer();
+      try { localStorage.removeItem(scopedKey(FAV_KEY, getGuestScope())); } catch {}
+      return;
+    }
+
+    // Nothing anywhere
+    setFavIds([]);
+  } catch {}
+}

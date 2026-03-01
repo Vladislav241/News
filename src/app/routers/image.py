@@ -100,17 +100,20 @@ def _upgrade_common_cdn(url: str, width: Optional[int]) -> str:
 
         # Guardian (i.guim.co.uk) often uses width= / quality= params
         if "i.guim.co.uk" in host:
-            # Many Guardian image URLs already include a high-res "master" asset in the path
-            # (e.g. .../master/3000.jpg?...). These are the best quality. Also, some variants
-            # include signed params; changing width can lead to unexpected downgrades.
-            # Prefer the master asset when present.
-            if "/master/" in (p.path or ""):
-                return urllib.parse.urlunparse((p.scheme, p.netloc, p.path, p.params, "", p.fragment))
+            # IMPORTANT:
+            # Guardian URLs are frequently *signed* (query key "s"). If we touch parameters,
+            # the CDN can start returning 4xx.
+            # So:
+            # - if the URL is signed -> return as-is
+            # - otherwise we can set width/quality/fit/dpr conservatively
+            if "s" in q and q.get("s"):
+                return url
 
-            q["width"] = [str(width)]
+            # Never drop existing query params (some variants require them).
+            # If width is already present we don't override it to avoid unexpected behavior.
+            q.setdefault("width", [str(width)])
             q.setdefault("quality", ["85"])
             q.setdefault("fit", ["max"])
-            # Higher DPR improves sharpness on Retina displays.
             q.setdefault("dpr", ["2"])
             new_q = urllib.parse.urlencode(q, doseq=True)
             return urllib.parse.urlunparse((p.scheme, p.netloc, p.path, p.params, new_q, p.fragment))
@@ -181,7 +184,12 @@ def proxy_image(
     # Use a realistic UA and a referer matching the image host (not our own site).
     try:
         p0 = urllib.parse.urlparse(url)
-        referer = f"{p0.scheme}://{p0.netloc}/" if p0.scheme and p0.netloc else "https://checkne.com/"
+        host0 = (p0.netloc or "").lower()
+        # Guardian image CDN is picky about Referer; using the site origin works more reliably.
+        if host0.endswith("guim.co.uk") or host0.endswith("theguardian.com"):
+            referer = "https://www.theguardian.com/"
+        else:
+            referer = f"{p0.scheme}://{p0.netloc}/" if p0.scheme and p0.netloc else "https://checkne.com/"
     except Exception:
         referer = "https://checkne.com/"
 
@@ -193,8 +201,9 @@ def proxy_image(
         "Accept": "image/avif,image/webp,image/*,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
         "Referer": referer,
-        "Origin": referer.rstrip("/"),
     }
+
+    # Do NOT send Origin for image fetches. Some CDNs treat it as a CORS fetch and block.
 
     def _placeholder_svg(reason: str = "No image") -> Response:
         svg = (
@@ -211,11 +220,32 @@ def proxy_image(
             headers={"Cache-Control": "public, max-age=300"},
         )
 
+    def _fetch_once(fetch_url: str):
+        return requests.get(fetch_url, headers=headers, timeout=_TIMEOUT, stream=True, allow_redirects=True)
+
     try:
-        r = requests.get(url, headers=headers, timeout=_TIMEOUT, stream=True, allow_redirects=True)
+        r = _fetch_once(url)
     except Exception:
         # Never return a broken-image icon to the UI.
         return _placeholder_svg("Image unavailable")
+
+    # Guardian: if first attempt fails, try once more with the exact URL (no CDN upgrades)
+    # to avoid signature/param edge-cases.
+    if r.status_code >= 400:
+        try:
+            # If we upgraded, try the original input URL as a fallback.
+            raw_url = (u or "").strip()
+            if raw_url.startswith("//"):
+                raw_url = "https:" + raw_url
+            if raw_url and raw_url != url and _is_http_url(raw_url):
+                try:
+                    r.close()
+                except Exception:
+                    pass
+                r = _fetch_once(raw_url)
+                url = raw_url
+        except Exception:
+            pass
 
     if r.status_code >= 400:
         return _placeholder_svg("Image unavailable")

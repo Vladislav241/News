@@ -67,17 +67,39 @@ def csrf_origin_check(request: Request) -> None:
     origin = request.headers.get("origin")
     referer = request.headers.get("referer")
 
+    # 1) Always allow same-host requests (robust behind proxies and across http/https).
+    try:
+        from urllib.parse import urlparse
+
+        req_host = request.headers.get("host")
+
+        def _same_host(v: Optional[str]) -> bool:
+            if not v:
+                return False
+            try:
+                p = urlparse(v)
+                if not p.netloc:
+                    return False
+                return (p.netloc == (req_host or ""))
+            except Exception:
+                return False
+
+        if _same_host(origin) or _same_host(referer):
+            return
+    except Exception:
+        pass
+
+    # 2) If PUBLIC_BASE_URL is configured, allow any Origin/Referer that matches it.
+    #    This is useful when Host headers differ due to CDNs/custom domains.
     base = (os.getenv("PUBLIC_BASE_URL") or "").strip().rstrip("/")
     if not base:
         # dev: allow
         return
 
-    allowed = base
-
     def _ok(v: Optional[str]) -> bool:
         if not v:
             return False
-        return v.startswith(allowed)
+        return v.startswith(base)
 
     if origin and _ok(origin):
         return
