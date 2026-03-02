@@ -54,7 +54,15 @@ function openCardInDOM(clusterId) {
   const card = cards.querySelector(`.newsCard[data-id="${String(clusterId)}"]`);
   if (!card) return false;
   const details = card.querySelector('details.newsDetails');
-  if (details) details.open = true;
+  if (details && !details.open) {
+    const body = details.querySelector('.newsOpenBody');
+    // Use the premium smooth details animation when available (prevents instant snaps on deep links).
+    if (body && typeof window.__checkneAnimateDetails === 'function') {
+      try { window.__checkneAnimateDetails(details, body, true); } catch { details.open = true; }
+    } else {
+      details.open = true;
+    }
+  }
   // Scroll the opened card into view (nicely)
   try {
     card.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -430,5 +438,4 @@ async function setLanguage(lang, { persist = true, refetch = true } = {}) {
     await fetchFeed({ reset: true });
   }
 }
-
 

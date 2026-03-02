@@ -126,46 +126,152 @@ let _smoothDetailsInit = false;
 
 function _animateDetails(detailsEl, contentEl, shouldOpen){
   if (!detailsEl || !contentEl) return;
-  if (detailsEl.dataset.animating === '1') return;
+
+  // Mobile browsers sometimes adjust scroll position while a <details> element
+  // changes height (especially during animations), causing a small "jump".
+  // We lock scrollY during the animation on coarse pointers / small screens.
+  const isMobileViewport = (() => {
+    try {
+      return !!(window.matchMedia && (
+        window.matchMedia('(pointer: coarse)').matches ||
+        window.matchMedia('(max-width: 820px)').matches
+      ));
+    } catch { return false; }
+  })();
+
+  let _lockedScrollY = null;
+  let _scrollLockRaf = 0;
+  const startScrollLock = () => {
+    if (!isMobileViewport) return;
+    try { _lockedScrollY = window.scrollY || 0; } catch { _lockedScrollY = 0; }
+    const tick = () => {
+      if (detailsEl.dataset.animating !== '1') return;
+      try {
+        const nowY = window.scrollY || 0;
+        // Keep the page stable during the height transition.
+        if (_lockedScrollY !== null && Math.abs(nowY - _lockedScrollY) > 1) {
+          window.scrollTo(0, _lockedScrollY);
+        }
+      } catch {}
+      _scrollLockRaf = requestAnimationFrame(tick);
+    };
+    _scrollLockRaf = requestAnimationFrame(tick);
+  };
+
+  const stopScrollLock = () => {
+    try { if (_scrollLockRaf) cancelAnimationFrame(_scrollLockRaf); } catch {}
+    _scrollLockRaf = 0;
+    _lockedScrollY = null;
+  };
 
   const prefersReduced = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   if (prefersReduced){
     detailsEl.open = !!shouldOpen;
-    // clear inline styles
     contentEl.style.height = '';
     contentEl.style.opacity = '';
     contentEl.style.transform = '';
     contentEl.style.transition = '';
+    contentEl.style.overflow = detailsEl.open ? 'visible' : '';
+    detailsEl.dataset.animating = '';
+    try { if (detailsEl._flipAnim) detailsEl._flipAnim.cancel(); } catch {}
+    detailsEl._flipAnim = null;
+    detailsEl.style.height = '';
+    detailsEl.style.overflow = '';
+    try { detailsEl.classList.remove('is-opening','is-closing','is-animating'); } catch {}
+    try { if (contentEl._smoothRO) contentEl._smoothRO.disconnect(); } catch {}
+    contentEl._smoothRO = null;
     return;
   }
 
-  const duration = 340;
+  // Premium feel: slightly longer + softer easing.
+  const duration = 420;
   const ease = 'cubic-bezier(.16,1,.3,1)';
+
+  // We also animate the overall <details> height (summary + body).
+  // This eliminates the classic "teleport" at the end when summary layout
+  // changes due to [open] styles.
+  const summaryEl = detailsEl.querySelector('summary');
+
+  // If an animation is in-flight, cancel it and continue from the current visual state.
+  // This prevents "snaps" when the user taps fast (open->close->open).
+  const cancelInFlight = () => {
+    try {
+      if (contentEl._smoothOnEnd) contentEl.removeEventListener('transitionend', contentEl._smoothOnEnd);
+    } catch {}
+    contentEl._smoothOnEnd = null;
+
+    try { if (contentEl._smoothRO) contentEl._smoothRO.disconnect(); } catch {}
+    contentEl._smoothRO = null;
+
+    // Freeze current height so the next animation starts smoothly.
+    try {
+      const h = contentEl.getBoundingClientRect ? contentEl.getBoundingClientRect().height : contentEl.scrollHeight;
+      contentEl.style.transition = 'none';
+      contentEl.style.height = `${Math.max(0, Math.round(h))}px`;
+      contentEl.style.opacity = getComputedStyle(contentEl).opacity || '1';
+      // Use a deterministic transform baseline
+      contentEl.style.transform = 'translateY(0)';
+      void contentEl.offsetHeight;
+      contentEl.style.transition = '';
+    } catch {}
+
+    try { if (detailsEl._flipAnim) detailsEl._flipAnim.cancel(); } catch {}
+    detailsEl._flipAnim = null;
+    // Keep current overall height as the new baseline.
+    try {
+      const dh = detailsEl.getBoundingClientRect().height;
+      detailsEl.style.height = `${Math.max(0, Math.round(dh))}px`;
+      detailsEl.style.overflow = 'hidden';
+      void detailsEl.offsetHeight;
+    } catch {}
+  };
+
+  if (detailsEl.dataset.animating === '1') {
+    cancelInFlight();
+  }
 
   detailsEl.dataset.animating = '1';
   contentEl.style.overflow = 'hidden';
 
-// Apple-like smoothness: images loading can change scrollHeight mid-animation and cause "jank".
-// Watch size changes while animating and smoothly retarget the height.
-const stopResizeWatch = () => {
-  try { if (contentEl._smoothRO) contentEl._smoothRO.disconnect(); } catch {}
-  contentEl._smoothRO = null;
-};
+  // Freeze the overall height so layout changes can't snap.
+  const freezeDetailsHeight = () => {
+    try {
+      const h = detailsEl.getBoundingClientRect().height;
+      detailsEl.style.height = `${Math.max(0, Math.round(h))}px`;
+      detailsEl.style.overflow = 'hidden';
+      void detailsEl.offsetHeight; // reflow
+    } catch {}
+  };
 
-const startResizeWatch = () => {
-  stopResizeWatch();
-  if (!('ResizeObserver' in window)) return;
-  try {
-    const ro = new ResizeObserver(() => {
-      if (detailsEl.dataset.animating !== '1') return;
-      if (!detailsEl.open) return;
-      contentEl.style.height = `${contentEl.scrollHeight}px`;
-    });
-    ro.observe(contentEl);
-    contentEl._smoothRO = ro;
-  } catch {}
-};
+  const animateDetailsHeight = (toPx) => {
+    try {
+      const fromH = detailsEl.getBoundingClientRect().height;
+      const toH = Math.max(0, Math.round(toPx));
+      if (!Number.isFinite(fromH) || !Number.isFinite(toH)) return;
+      try { if (detailsEl._flipAnim) detailsEl._flipAnim.cancel(); } catch {}
+      detailsEl._flipAnim = detailsEl.animate(
+        [{ height: `${fromH}px` }, { height: `${toH}px` }],
+        { duration, easing: ease }
+      );
+      detailsEl._flipAnim.onfinish = () => { detailsEl._flipAnim = null; };
+      detailsEl._flipAnim.oncancel = () => { detailsEl._flipAnim = null; };
+    } catch {}
+  };
 
+  // Apple-like smoothness: content (especially images) can change height mid-animation.
+  // Keep the target height in sync while opening.
+  const startResizeWatch = () => {
+    if (!('ResizeObserver' in window)) return;
+    try {
+      const ro = new ResizeObserver(() => {
+        if (detailsEl.dataset.animating !== '1') return;
+        if (!detailsEl.open) return;
+        contentEl.style.height = `${contentEl.scrollHeight}px`;
+      });
+      ro.observe(contentEl);
+      contentEl._smoothRO = ro;
+    } catch {}
+  };
 
   const cleanup = () => {
     detailsEl.dataset.animating = '';
@@ -173,23 +279,56 @@ const startResizeWatch = () => {
     contentEl.style.opacity = '';
     contentEl.style.transform = '';
     contentEl.style.transition = '';
-    stopResizeWatch();
-    // allow normal layout after animation
+    try { if (contentEl._smoothRO) contentEl._smoothRO.disconnect(); } catch {}
+    contentEl._smoothRO = null;
     if (detailsEl.open) contentEl.style.overflow = 'visible';
+
+    try { if (detailsEl._flipAnim) detailsEl._flipAnim.cancel(); } catch {}
+    detailsEl._flipAnim = null;
+    detailsEl.style.height = '';
+    detailsEl.style.overflow = '';
+    try { detailsEl.classList.remove('is-opening','is-closing','is-animating'); } catch {}
+
+    // Release mobile scroll lock if any.
+    stopScrollLock();
   };
 
+  const setTransition = () => {
+    contentEl.style.transition = `height ${duration}ms ${ease}, opacity ${duration}ms ${ease}, transform ${duration}ms ${ease}`;
+  };
+
+  const raf2 = (fn) => requestAnimationFrame(() => requestAnimationFrame(fn));
+
   if (shouldOpen){
+    try {
+      detailsEl.classList.remove('is-closing');
+      detailsEl.classList.add('is-opening','is-animating');
+    } catch {}
+
+    // Freeze BEFORE toggling open, so we can animate the overall height.
+    freezeDetailsHeight();
     detailsEl.open = true;
-    // start from 0
+
+    // Prevent small scroll jumps on mobile during the height animation.
+    startScrollLock();
+
+    // Start state
     contentEl.style.height = '0px';
     contentEl.style.opacity = '0';
     contentEl.style.transform = 'translateY(-6px)';
 
-    // measure after open
+    // End state
     const endH = contentEl.scrollHeight;
     startResizeWatch();
-    requestAnimationFrame(() => {
-      contentEl.style.transition = `height ${duration}ms ${ease}, opacity ${duration}ms ${ease}, transform ${duration}ms ${ease}`;
+
+    // Animate <details> height too (summary + body)
+    raf2(() => {
+      const sumH = summaryEl ? summaryEl.getBoundingClientRect().height : 0;
+      animateDetailsHeight(sumH + endH);
+    });
+
+    raf2(() => {
+      setTransition();
       contentEl.style.height = `${endH}px`;
       contentEl.style.opacity = '1';
       contentEl.style.transform = 'translateY(0)';
@@ -198,19 +337,40 @@ const startResizeWatch = () => {
     const onEnd = (e) => {
       if (e && e.target !== contentEl) return;
       contentEl.removeEventListener('transitionend', onEnd);
+      contentEl._smoothOnEnd = null;
       cleanup();
     };
+    contentEl._smoothOnEnd = onEnd;
     contentEl.addEventListener('transitionend', onEnd);
   } else {
-    // closing
-    stopResizeWatch();
+    // Closing
+    try {
+      detailsEl.classList.remove('is-opening');
+      detailsEl.classList.add('is-closing','is-animating');
+    } catch {}
+
+    // Freeze BEFORE summary layout switches back.
+    freezeDetailsHeight();
+
+    // Prevent small scroll jumps on mobile during the height animation.
+    startScrollLock();
+
+    try { if (contentEl._smoothRO) contentEl._smoothRO.disconnect(); } catch {}
+    contentEl._smoothRO = null;
+
     const startH = contentEl.scrollHeight;
     contentEl.style.height = `${startH}px`;
     contentEl.style.opacity = '1';
     contentEl.style.transform = 'translateY(0)';
 
-    requestAnimationFrame(() => {
-      contentEl.style.transition = `height ${duration}ms ${ease}, opacity ${duration}ms ${ease}, transform ${duration}ms ${ease}`;
+    // Animate towards the summary height (with closing layout applied)
+    raf2(() => {
+      const sumH = summaryEl ? summaryEl.getBoundingClientRect().height : 0;
+      animateDetailsHeight(sumH);
+    });
+
+    raf2(() => {
+      setTransition();
       contentEl.style.height = '0px';
       contentEl.style.opacity = '0';
       contentEl.style.transform = 'translateY(-6px)';
@@ -219,12 +379,17 @@ const startResizeWatch = () => {
     const onEnd = (e) => {
       if (e && e.target !== contentEl) return;
       contentEl.removeEventListener('transitionend', onEnd);
+      contentEl._smoothOnEnd = null;
       detailsEl.open = false;
       cleanup();
     };
+    contentEl._smoothOnEnd = onEnd;
     contentEl.addEventListener('transitionend', onEnd);
   }
 }
+
+// Expose for programmatic opens (deep links etc.)
+try { window.__checkneAnimateDetails = _animateDetails; } catch {}
 
 function initSmoothDetails(){
   if (_smoothDetailsInit) return;

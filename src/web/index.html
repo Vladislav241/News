@@ -1408,7 +1408,7 @@
   letter-spacing: -0.4px;
   text-align: center;
   font-weight: 250;
-  white-space: nowrap; /* ✅ больше не переносится */
+  white-space: nowrap; /* desktop: keep single line */
 }
 
 
@@ -1494,6 +1494,46 @@
   color:#9a9a9a;
   text-align:center;
   padding: 8px 30px 26px;
+}
+
+/* Auth footer links */
+.authFoot a.authFootLink{
+  color:#111;
+  text-decoration: none;
+  font-weight: 600;
+}
+.authFoot a.authFootLink:hover{ text-decoration: underline; }
+
+/* ===== Auth modal mobile fixes ===== */
+@media (max-width: 640px){
+  .authBackdrop{ padding: 14px; }
+  .authModal{
+    width: min(720px, 100%);
+    max-height: 92vh;              /* prevent going off-screen */
+    border-radius: 30px;
+    display: flex;
+    flex-direction: column;
+  }
+  .authModalInner{
+    padding: 46px 20px 18px;
+    overflow-y: auto;              /* scroll content if needed */
+    -webkit-overflow-scrolling: touch;
+    flex: 1 1 auto;
+  }
+  .authTitle{
+    font-size: 30px;
+    white-space: normal;           /* ✅ allow wrapping on mobile */
+  }
+  .authSub{ font-size: 14px; }
+  .authFoot{
+    padding: 10px 18px 16px;
+    font-size: 13px;
+    line-height: 1.35;
+  }
+}
+
+@media (max-width: 420px){
+  .authTitle{ font-size: 26px; }
 }
 .authError{ color:#b00020; margin: 12px auto 0; max-width: 510px; display:none; }
 .authError.isShow{ display:block; }
@@ -2730,6 +2770,12 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
   .accountName{ display: none; }
 }
 
+/* ✅ Fix: on mobile, guest button became empty (avatar is hidden + name was hidden).
+   Show the label when NOT authenticated. */
+@media (max-width: 520px){
+  .loginBtn:not(.isAuth) .accountName{ display: inline; }
+}
+
 /* =========================
    Account menu (dropdown)
    ========================= */
@@ -3452,6 +3498,14 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
   opacity: 0;
   transform: translateY(-4px) scale(.99);
   max-height: 0;
+}
+
+/* During close animation we keep <details open> for layout/height animation.
+   Force the summary thumb back to its closed look immediately so nothing 'teleports' at the end. */
+.newsDetails.is-closing .newsThumbWrap{
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  max-height: 999px;
 }
 /* Резервируем место под hero image, чтобы не было layout shift */
 .newsImageWrap{
@@ -4903,7 +4957,7 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
     <div class="footerGrid">
       <!-- Brand -->
       <div class="footerBrand">
-        <a class="footerLogo" href="#/" id="footerHomeLink" aria-label="CHECKNE home">
+        <a class="footerLogo" href="/" id="footerHomeLink" aria-label="CHECKNE home">
           <img class="footerLogoImg" src="/static/icons/Logo.svg" alt="CHECKNE logo" />
           <div class="footerBrandText">
             <div class="top">CHECKNE.</div>
@@ -5061,7 +5115,7 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
         </div>
 
       </div>
-      <div class="authFoot" data-i18n-html="auth.foot">By continuing, you agree to CHECKNE.’ <span style="color:#111;">Terms of Service</span> and <span style="color:#111;">Privacy Policy</span>.</div>
+      <div class="authFoot" data-i18n-html="auth.foot">By continuing, you agree to CHECKNE.’ <a class="authFootLink" href="/terms" data-footer-nav="terms">Terms of Service</a> and <a class="authFootLink" href="/privacy" data-footer-nav="privacy">Privacy Policy</a>.</div>
     </div>
   </div>
 

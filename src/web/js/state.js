@@ -76,6 +76,9 @@ let state = {
   // "Trending" (🔥) chips should filter the feed like interests,
   // but must NOT write into the Search input.
   // We keep this separate from `q` so the Search UI stays untouched.
+  // Multi-select 🔥 topics (max N enforced in interests.js)
+  // Back-compat: some older builds used `topicQ` as a string.
+  topicQs: [],
   topicQ: "",
   trendClusterId: null, // when set, feed is focused on a single trending cluster
   cooldownUntil: 0,

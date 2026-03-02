@@ -37,74 +37,102 @@ CANON_MAP = {
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
-def _short_topic_from_title(title: str) -> str:
+def _extract_topics_from_title(title: str) -> list[str]:
     """
-    Convert a headline-ish title into a short topic label.
-    Goal: "Trump", "Iran", "Russia-Ukraine war", "AI", "Germany".
+    Extract "global" trending topics from a cluster title.
+
+    IMPORTANT:
+    - We intentionally avoid free-form "first capitalized word" heuristics,
+      because they produce junk like "Big", "Now", "Cruise", library names, or surnames.
+    - Instead we use a lightweight, deterministic taxonomy based on keyword patterns.
     """
     t = (title or "").strip()
     if not t:
-        return ""
+        return []
+    low = t.lower()
 
-    # Remove common prefix patterns
-    t = re.sub(r'^\s*(what we know so far|live updates|analysis|explainer)\s*[:\-–—]?\s*', '', t, flags=re.I).strip()
-    t = re.sub(r'\s+', ' ', t)
+    # Normalize punctuation & common variants
+    low = low.replace("’", "'")
+    low = re.sub(r"\s+", " ", low)
 
-    # Prefer explicit "X–Y" conflicts
-    m = re.search(r'\b([A-Z][a-z]+)\s*[-–—]\s*([A-Z][a-z]+)\b', t)
-    if m:
-        left, right = m.group(1), m.group(2)
-        if re.search(r'\bwar\b', t, flags=re.I):
-            return f"{left}-{right} war"
-        return f"{left}-{right}"
+    topics: list[str] = []
 
-    # Collect candidate tokens: capitalized words, acronyms, known entities
-    tokens: list[str] = []
-    for tok in re.findall(r"[A-Za-z][A-Za-z\.\-']+", t):
-        raw = tok.strip(".'")
-        if not raw:
-            continue
-        low = raw.lower()
-        if low in STOPWORDS:
-            continue
+    # --- Conflicts / geopolitics (highest priority) ---
+    if re.search(r"\b(iran|tehran)\b", low) and re.search(r"\b(israel|israeli|gaza|hamas|hezbollah|lebanon)\b", low):
+        topics.append("Iran-Israel tensions")
+    if re.search(r"\b(israel|israeli)\b", low) and re.search(r"\b(gaza|hamas|rafah|palestin)\b", low):
+        topics.append("Israel-Gaza war")
+    if re.search(r"\b(russia|russian|moscow|kremlin)\b", low) and re.search(r"\b(ukraine|ukrainian|kyiv|kiev)\b", low):
+        topics.append("Russia-Ukraine war")
+    if re.search(r"\b(taiwan)\b", low) and re.search(r"\b(china|chinese|beijing)\b", low):
+        topics.append("China-Taiwan tensions")
+    if re.search(r"\b(nato)\b", low):
+        topics.append("NATO")
+    if re.search(r"\b(eu|european union|brussels)\b", low):
+        topics.append("European Union")
+    if re.search(r"\b(un|united nations)\b", low):
+        topics.append("United Nations")
 
-        if low in CANON_MAP:
-            raw = CANON_MAP[low]
-            low = raw.lower()
+    # --- US / elections ---
+    if re.search(r"\b(election|primary|campaign|ballot|vote|voting)\b", low) and re.search(r"\b(us|u\.s\.|america|american|white house|biden|trump|democrat|republican)\b", low):
+        topics.append("US election")
 
-        is_acronym = raw.isupper() and 2 <= len(raw) <= 6
-        is_cap = (raw[0].isupper() and raw[1:].islower()) if len(raw) > 1 else raw[0].isupper()
-        if is_acronym or is_cap:
-            tokens.append(raw)
+    # --- Economy / markets ---
+    if re.search(r"\b(inflation|cpi|prices|cost of living)\b", low):
+        topics.append("Inflation")
+    if re.search(r"\b(interest rate|rates|fed|ecb|central bank|bond yields?)\b", low):
+        topics.append("Interest rates")
+    if re.search(r"\b(recession|gdp|jobs report|unemployment|economy)\b", low):
+        topics.append("Global economy")
+    if re.search(r"\b(oil|gas|brent|wti|opec)\b", low):
+        topics.append("Energy")
+
+    # --- Tech ---
+    if re.search(r"\b(ai|artificial intelligence|chatgpt|openai|gpt|llm|deepmind)\b", low):
+        topics.append("AI")
+    if re.search(r"\b(bitcoin|crypto|cryptocurrency|ethereum|solana|blockchain)\b", low):
+        topics.append("Crypto")
+    if re.search(r"\b(cyber|ransomware|hack|hacker|breach|data leak)\b", low):
+        topics.append("Cybersecurity")
+
+    # --- Climate / health ---
+    if re.search(r"\b(climate|global warming|emissions|cop\d+|carbon)\b", low):
+        topics.append("Climate")
+    if re.search(r"\b(pandemic|who|virus|outbreak|covid|avian flu|h5n1)\b", low):
+        topics.append("Public health")
+
+    # If nothing matched, do a conservative fallback to a small set of truly-global countries/regions.
+    if not topics:
+        major = [
+            ("United States", r"\b(us|u\.s\.|united states|america|american)\b"),
+            ("United Kingdom", r"\b(uk|u\.k\.|britain|british|england|london)\b"),
+            ("China", r"\b(china|chinese|beijing)\b"),
+            ("India", r"\b(india|indian)\b"),
+            ("Germany", r"\b(germany|german|berlin)\b"),
+            ("France", r"\b(france|french|paris)\b"),
+            ("Japan", r"\b(japan|japanese|tokyo)\b"),
+        ]
+        for label, pat in major:
+            if re.search(pat, low):
+                topics.append(label)
+                break
 
     # De-dupe while preserving order
     seen: set[str] = set()
-    uniq: list[str] = []
-    for x in tokens:
+    out: list[str] = []
+    for x in topics:
         k = x.lower()
         if k in seen:
             continue
         seen.add(k)
-        uniq.append(x)
+        out.append(x)
+    return out
 
-    if not uniq:
-        words = [w for w in re.findall(r"[a-zA-Z]+", t) if w.lower() not in STOPWORDS]
-        if not words:
-            return ""
-        return words[0].title()
 
-    # Make 1–2 word label
-    label = uniq[0]
-    if label == "US" and len(uniq) >= 2:
-        label = uniq[1]
-
-    if len(uniq) >= 2 and len(label) < 10:
-        cand = uniq[1]
-        if cand not in {"US"} and cand.lower() != label.lower():
-            if len(f"{label} {cand}") <= 18:
-                label = f"{label} {cand}"
-
-    return label.strip()
+def _best_topic_for_cluster(title: str) -> str:
+    # Prefer the first (highest-priority) topic from the taxonomy.
+    topics = _extract_topics_from_title(title)
+    return topics[0] if topics else ""
 
 def _topic_key(label: str) -> str:
     s = (label or "").strip().lower()
@@ -177,7 +205,7 @@ def trending_interests(
         if not title:
             continue
 
-        label = _short_topic_from_title(title)
+        label = _best_topic_for_cluster(title)
         if not label:
             continue
 

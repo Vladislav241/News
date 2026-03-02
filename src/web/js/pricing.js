@@ -517,9 +517,20 @@ setTimeout(()=>{
   const brand = document.getElementById('brand');
   if(brand){
     brand.addEventListener('click', async (e)=>{
-      e.preventDefault();
-      setPage('feed');
-      await switchMode('feed');
+      // Always return to the main feed AND normalize the URL.
+      // Otherwise you can end up on /pricing or /account while seeing the feed.
+      try { e.preventDefault(); e.stopPropagation(); } catch {}
+      try {
+        if (typeof window.__navigate === 'function') {
+          window.__navigate('/');
+        } else {
+          try { history.pushState({},'', '/'); } catch {}
+          setPage('feed');
+        }
+      } catch {
+        try { setPage('feed'); } catch {}
+      }
+      try { await switchMode('feed'); } catch {}
     });
   }
 
@@ -840,7 +851,7 @@ function updateProfileUI(){
           if(!r.ok) throw new Error(j?.detail || `HTTP ${r.status}`);
           await refreshBillingState();
         }catch(e){
-          alert(String(e?.message || e || 'Failed to resume subscription'));
+          try{ toast(String(e?.message || e || 'Failed to resume subscription'), 'error'); }catch{}
         }finally{
           btnResume.disabled = false;
         }
@@ -856,7 +867,7 @@ function updateProfileUI(){
       btnCancel.style.display = '';
       btnCancel.disabled = false;
       btnCancel.onclick = async ()=>{
-        const ok = confirm('Cancel at period end? You will keep access until the end of the current billing period.');
+        const ok = (typeof uiConfirm==='function') ? await uiConfirm('Cancel at period end? You will keep access until the end of the current billing period.', {title:'Cancel subscription', okText:'Yes, cancel', cancelText:'Keep'}) : (toast && toast('Confirm dialog unavailable', 'error'), false);
         if(!ok) return;
         try{
           btnCancel.disabled = true;
@@ -865,7 +876,7 @@ function updateProfileUI(){
           if(!r.ok) throw new Error(j?.detail || `HTTP ${r.status}`);
           await refreshBillingState();
         }catch(e){
-          alert(String(e?.message || e || 'Failed to cancel subscription'));
+          try{ toast(String(e?.message || e || 'Failed to cancel subscription'), 'error'); }catch{}
         }finally{
           btnCancel.disabled = false;
         }
@@ -893,12 +904,12 @@ async function startCheckout(plan, interval) {
     });
     const j = await r.json();
     if (!r.ok) {
-      alert(j?.detail || 'Failed to start checkout');
+      try{ toast(j?.detail || 'Failed to start checkout', 'error'); }catch{}
       return;
     }
     if (j?.url) window.location.href = j.url;
   } catch {
-    alert('Network error. Try again.');
+    try{ toast('Network error. Try again.', 'error'); }catch{}
   }
 }
 

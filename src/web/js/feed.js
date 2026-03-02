@@ -897,7 +897,11 @@ async function fetchFeed(opts) {
 
   const interests = encodeURIComponent((state.interests || []).join(","));
   const rawSearchQ = (state.q || "").trim();
-  const rawTopicQ = (state.topicQ || "").trim();
+  // 🔥 topics can be multi-selected. We build a query string from them without touching the Search input.
+  const topicArr = Array.isArray(state.topicQs) ? state.topicQs : [];
+  const rawTopicQ = (topicArr.length ? topicArr.join(" ") : (state.topicQ || "")).trim();
+  // Keep `topicQ` in sync for older code paths.
+  state.topicQ = rawTopicQ;
   // Effective query: Search box has priority. TopicQ is used by 🔥 chips and must not touch the Search input.
   const rawQ = rawSearchQ || rawTopicQ;
   const q = encodeURIComponent(rawQ);

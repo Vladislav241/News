@@ -119,7 +119,7 @@
     "new_password_sub": "Choose a strong password (letters + digits).",
     "new_password_label": "New password",
     "update_password": "Update password",
-    "foot": "By continuing, you agree to CHECK news’ <span style=\"color:#111;\">Terms of Service</span> and <span style=\"color:#111;\">Privacy Policy</span>."
+    "foot": "By continuing, you agree to CHECKNE.’ <a class=\"authFootLink\" href=\"/terms\" data-footer-nav=\"terms\">Terms of Service</a> and <a class=\"authFootLink\" href=\"/privacy\" data-footer-nav=\"privacy\">Privacy Policy</a>."
   },
   "share": {
     "title": "Share this event",

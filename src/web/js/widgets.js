@@ -275,7 +275,8 @@
     market_clock: {
       name: "GLOBAL CLOCK",
       desc: "Choose cities and see local timezones.",
-      defaults: { cities: "Europe/Berlin,Europe/London,America/New_York,Asia/Tokyo", count: 4 },
+      // Show up to 8 cities (similar UX to FX Rates).
+      defaults: { cities: "Europe/Berlin,Europe/London,America/New_York,Asia/Tokyo,Europe/Kyiv" },
       render: renderMarketClock,
       settingsUI: marketClockSettingsUI,
     },
@@ -1171,7 +1172,7 @@ function saveLayout(){
     plus.addEventListener('click', () => {
       if (!requireAuth('widgets')) return;
       if (totalWidgets() >= MAX_TOTAL){
-        try { if (typeof toast === 'function') toast(`Max ${MAX_TOTAL} widgets.`); else alert(`Max ${MAX_TOTAL} widgets.`); } catch {}
+        try { if (typeof toast === 'function') toast(`Max ${MAX_TOTAL} widgets.`); else { /* no popup */ } } catch {}
         try { navigator.vibrate && navigator.vibrate([20, 30, 20]); } catch {}
         return;
       }
@@ -2021,7 +2022,7 @@ function renderPicker(){
     if (clearBtn) clearBtn.addEventListener("click", async () => {
       if (!isAuthed()) return requireAuth('tracking');
       if (!count) return;
-      const ok = window.confirm('Clear all tracked items?');
+      const ok = (typeof uiConfirm==='function') ? await uiConfirm('Clear all tracked items?', {title:'Clear tracking', okText:'Clear', cancelText:'Cancel'}) : (toast && toast('Confirm dialog unavailable', 'error'), false);
       if (!ok) return;
       try {
         if (typeof setFavIds === 'function') setFavIds([]);
@@ -2160,8 +2161,8 @@ function renderPicker(){
 
     const s = settings || {};
     const list = parseList(s.cities || "Europe/Berlin,Europe/London,America/New_York,Asia/Tokyo");
-    const count = clampInt(Number(s.count ?? 4) || 4, 2, 5);
-    const selected = (list.length ? list : ["Europe/Berlin","Europe/London"]).slice(0, count);
+    // Backward compatible: older settings had `count`. We now simply show the selection (max 8).
+    const selected = (list.length ? list : ["Europe/Berlin","Europe/London"]).slice(0, 8);
 
     const rows = selected.map((tz) => {
       const meta = (CLOCK_CITIES.find(c => c.tz === tz) || null);
@@ -2601,11 +2602,10 @@ function renderPicker(){
   function marketClockSettingsUI(container, settings){
     const s = settings || {};
     const selectedCities = parseList(s.cities || "Europe/Berlin,Europe/London,America/New_York,Asia/Tokyo");
-    const count = clampInt(Number(s.count ?? 4) || 4, 2, 5);
 
     container.innerHTML = `
       <div class="muted" style="font-size:13px; line-height:1.35;">
-        Choose which <b>cities</b> to show and how many to display.
+        Choose which <b>cities</b> you want to display.
       </div>
 
       <div class="widgetFormRow" style="margin-top:14px;">
@@ -2614,15 +2614,8 @@ function renderPicker(){
         <input type="hidden" name="cities" value="${escapeAttr(selectedCities.join(','))}" />
       </div>
 
-      <div class="widgetFormRow">
-        <label>Count</label>
-        <select name="count">
-          ${[2,3,4,5].map(n => `<option value="${n}" ${n===count?'selected':''}>${n}</option>`).join('')}
-        </select>
-      </div>
-
       <div class="muted" style="font-size:12px; margin-top:10px;">
-        Tip: pick up to 5 cities. The widget will display the first N (Count) from your selection.
+        Tip: You can search and click to add/remove. Max 8.
       </div>
     `;
 
@@ -2634,7 +2627,7 @@ function renderPicker(){
         placeholder: "Search cities…",
         options: CLOCK_CITIES.map(c => ({ value: c.tz, label: c.label })),
         selected: selectedCities,
-        max: 5,
+        max: 8,
         onChange: (vals) => { hidden.value = vals.join(','); }
       });
     }

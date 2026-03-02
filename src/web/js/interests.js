@@ -23,6 +23,8 @@ let __trendingCache = { key: "", ts: 0, items: [] };
 // Helpers
 function __normTopicKey(s){
   s = String(s || "").trim().toLowerCase();
+  // strip possessives before removing apostrophes (israel's -> israel)
+  s = s.replace(/([a-z])['’]s\b/g, "$1");
   s = s.replace(/[’'"]/g, "");
   s = s.replace(/[^a-z0-9\s\-]/g, " ");
   s = s.replace(/\s+/g, " ").trim();
@@ -40,9 +42,31 @@ function __normTopicKey(s){
   return s;
 }
 
-function __makeTrendChip(label){
+function __getTopicList(){
+  if (Array.isArray(state.topicQs)) return state.topicQs.slice();
+  const legacy = String(state.topicQ || "").trim();
+  return legacy ? [legacy] : [];
+}
+
+function __setTopicList(list){
+  const uniq = [];
+  const seen = new Set();
+  for (const x of (list || [])){
+    const v = String(x || "").trim();
+    if (!v) continue;
+    const k = v.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    uniq.push(v);
+  }
+  state.topicQs = uniq;
+  state.topicQ = uniq.join(" "); // back-compat
+}
+
+function __makeTrendChip(label, q){
   const el = document.createElement("div");
   el.className = "tag trend";
+  try { el.dataset.q = String(q || label || "").trim(); } catch {}
   // label
   const span = document.createElement("span");
   span.className = "tagLabel";
@@ -72,7 +96,16 @@ function __applyTopicQuery(q){
   if (searchEl && String(searchEl.value || '').trim()) searchEl.value = '';
   state.q = "";
 
-  state.topicQ = String(q || "").trim();
+  // Multi-select topics. q can be a string or an array.
+  if (Array.isArray(q)) {
+    __setTopicList(q);
+  } else {
+    const v = String(q || "").trim();
+    __setTopicList(v ? [v] : []);
+  }
+
+  // Trend cluster focus is single-item and conflicts with topic filters.
+  state.trendClusterId = null;
   try { setFeedExpanded(false); } catch {}
 
   if (state.mode === "feed") {
@@ -147,10 +180,10 @@ function renderTrendingChips(items){
     let label = labelRaw;
     label = label.replace(/^what we know so far\s*/i, "").trim();
     label = label.replace(/\b(analysis|explainer|live updates)\b/i, "").trim();
-    if (label.length > 18 && label.includes(" ")) {
-      // keep up to 2 words
-      label = label.split(" ").slice(0, 2).join(" ");
-    }
+    // strip possessive endings in display label
+    label = label.replace(/'s\b/g, "").replace(/\b’s\b/g, "");
+    // Keep labels short, but avoid random 2-country pairs — backend now prefers stable labels.
+    if (label.length > 22) label = label.slice(0, 22).trim();
     if (label.length > 22) label = label.slice(0, 22).trim();
 
     cleaned.push({ label, q });
@@ -161,30 +194,39 @@ function renderTrendingChips(items){
 
   // Append trend chips AFTER static interests
   for (const t of cleaned){
-    const el = __makeTrendChip(t.label);
-    el.onclick = async () => {
-      // toggle: if same topic already applied -> clear it
-      const current = String(state.topicQ || "").trim();
+    const el = __makeTrendChip(t.label, t.q);
+    el.onclick = async (ev) => {
+      try { ev.preventDefault(); ev.stopPropagation(); } catch {}
+
       const next = String(t.q || "").trim();
-      if (current && current.toLowerCase() === next.toLowerCase()) {
-        __applyTopicQuery("");
+      const list = __getTopicList();
+      const idx = list.findIndex((x) => String(x).toLowerCase() === next.toLowerCase());
+
+      if (idx >= 0) {
+        list.splice(idx, 1);
       } else {
-        __applyTopicQuery(next);
+        list.push(next);
+        // Max topics (like FX Rates max symbols)
+        while (list.length > TRENDING_LIMIT) list.shift();
       }
+
+      __applyTopicQuery(list);
 
       // visual active state
       try {
-        Array.from(tagsEl.querySelectorAll(".tag.trend")).forEach((n) => n.classList.remove("on"));
-        if (String(state.topicQ || "").trim()) el.classList.add("on");
+        const cur = new Set(__getTopicList().map((x)=>String(x).toLowerCase()));
+        Array.from(tagsEl.querySelectorAll(".tag.trend")).forEach((n) => {
+          const qq = String(n.dataset.q || '').trim().toLowerCase();
+          if (qq && cur.has(qq)) n.classList.add('on');
+          else n.classList.remove('on');
+        });
       } catch {}
     };
 
     // mark as active on render
     try {
-      const current = String(state.topicQ || "").trim();
-      if (current && current.toLowerCase() === String(t.q || "").trim().toLowerCase()) {
-        el.classList.add('on');
-      }
+      const cur = new Set(__getTopicList().map((x)=>String(x).toLowerCase()));
+      if (cur.has(String(t.q || "").trim().toLowerCase())) el.classList.add('on');
     } catch {}
 
     tagsEl.appendChild(el);
