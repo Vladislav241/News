@@ -263,6 +263,7 @@ function getCurrentStory(){
       name: "FX Rates",
       desc: "EUR rates for major currencies (customizable).",
       defaults: { base: "EUR", symbols: "USD,GBP,PLN,UAH" },
+      pro: true,
       render: renderFxRates,
       settingsUI: fxRatesSettingsUI,
     },
@@ -270,6 +271,7 @@ function getCurrentStory(){
       name: "Crypto",
       desc: "BTC/ETH prices (customizable) via CoinGecko.",
       defaults: { vs: "eur", coins: "bitcoin,ethereum" },
+      pro: true,
       render: renderCrypto,
       settingsUI: cryptoSettingsUI,
     },
@@ -345,10 +347,62 @@ pro_video_report: {
       desc: "Shows notable outlets/regions that are not covering this story.",
       defaults: { threshold: 4 },
       pro: true,
+      disabled: true,
       render: renderProSilenceIndicator,
       settingsUI: silenceSettingsUI,
     },
   };
+
+
+  // ----------------------------
+  // Temporary / feature-flagged widgets
+  // ----------------------------
+  function isWidgetEnabled(type){
+    const t = String(type || "");
+    const def = WIDGETS[t];
+    return !!def && !def.disabled;
+  }
+
+  function countEnabled(arr){
+    let n = 0;
+    (arr || []).forEach(w => { if (w && isWidgetEnabled(w.type)) n++; });
+    return n;
+  }
+
+  function clampPerSide(arr){
+    // Keep all disabled widgets in storage (so we can re-enable later),
+    // but limit the number of ENABLED widgets shown per side.
+    let enabled = 0;
+    const out = [];
+    (arr || []).forEach(w => {
+      if (!w) return;
+      if (!isWidgetEnabled(w.type)) { out.push(w); return; }
+      enabled += 1;
+      if (enabled <= MAX_PER_SIDE) out.push(w);
+    });
+    return out;
+  }
+
+  function clampGlobal(layout){
+    // Enforce MAX_TOTAL only across ENABLED widgets (disabled ones don't count).
+    const l = layout?.left || [];
+    const r = layout?.right || [];
+    const enabledTotal = () => countEnabled(l) + countEnabled(r);
+
+    const popLastEnabled = (arr) => {
+      for (let i = arr.length - 1; i >= 0; i--){
+        if (isWidgetEnabled(arr[i]?.type)) { arr.splice(i, 1); return true; }
+      }
+      return false;
+    };
+
+    while (enabledTotal() > MAX_TOTAL){
+      if (!popLastEnabled(r)){
+        if (!popLastEnabled(l)) break;
+      }
+    }
+    return layout;
+  }
 
   function actionFeedSettingsUI(mount, settings){
     const s = settings || {};
@@ -915,8 +969,8 @@ function uid(){
         { id: uid(), type: "headlines", settings: { ...WIDGETS.headlines.defaults } },
       ],
       right: [
-        { id: uid(), type: "fx_rates", settings: { ...WIDGETS.fx_rates.defaults } },
-        { id: uid(), type: "crypto_prices", settings: { ...WIDGETS.crypto_prices.defaults } },
+        { id: uid(), type: "market_clock", settings: { ...WIDGETS.market_clock.defaults } },
+        { id: uid(), type: "tracking_stats", settings: { ...WIDGETS.tracking_stats.defaults } },
       ],
     });
 
@@ -943,29 +997,26 @@ function uid(){
         .filter(Boolean);
     };
 
-    layout.left = normalizeList(layout.left).slice(0, MAX_PER_SIDE);
-    layout.right = normalizeList(layout.right).slice(0, MAX_PER_SIDE);
+    layout.left = clampPerSide(normalizeList(layout.left));
+    layout.right = clampPerSide(normalizeList(layout.right));
 
     // If we have a stored layout but it ended up empty and the user never
     // successfully initialized widgets (common after hard refreshes or migrations),
     // restore the default 3-widget layout.
-    if (!inited && (layout.left.length + layout.right.length) === 0){
+    if (!inited && (countEnabled(layout.left) + countEnabled(layout.right)) === 0){
       layout = makeDefault();
       try { localStorage.setItem(INIT_KEY, '1'); } catch {}
     }
 
-    // Enforce global max across both sides
-    while ((layout.left.length + layout.right.length) > MAX_TOTAL){
-      if (layout.right.length) layout.right.pop();
-      else layout.left.pop();
-    }
+    // Enforce global max across both sides (enabled widgets only)
+    clampGlobal(layout);
 
     return layout;
   }
 
   
   function totalWidgets(){
-    try { return (state.layout?.left?.length || 0) + (state.layout?.right?.length || 0); } catch { return 0; }
+    try { return countEnabled(state.layout?.left) + countEnabled(state.layout?.right); } catch { return 0; }
   }
 function saveLayout(){
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state.layout));
@@ -997,8 +1048,8 @@ function saveLayout(){
     const out = [];
     const left = state.layout?.left || [];
     const right = state.layout?.right || [];
-    left.forEach(w => out.push({ side:'left', w }));
-    right.forEach(w => out.push({ side:'right', w }));
+    left.forEach(w => { if (w && isWidgetEnabled(w.type)) out.push({ side:'left', w }); });
+    right.forEach(w => { if (w && isWidgetEnabled(w.type)) out.push({ side:'right', w }); });
     return out;
   }
 
@@ -1387,7 +1438,6 @@ document.addEventListener('checkne:currentStoryChanged', () => {
   try { refreshWidgetType('pro_video_report'); } catch {}
   try { refreshWidgetType('pro_related_coverage'); } catch {}
   try { refreshWidgetType('pro_recent_history'); } catch {}
-  try { refreshWidgetType('pro_silence'); } catch {}
 });
 
 
@@ -1468,6 +1518,7 @@ document.addEventListener('checkne:currentStoryChanged', () => {
     list.forEach((w, idx) => {
       const def = WIDGETS[w.type];
       if (!def) return;
+      if (def.disabled) return;
 
       const card = document.createElement("div");
       card.className = "widgetCard";
@@ -1566,7 +1617,7 @@ document.addEventListener('checkne:currentStoryChanged', () => {
     // Show "Add widget" only if:
     // - this side has room AND
     // - we are not at the global max
-    if (list.length < MAX_PER_SIDE && totalWidgets() < MAX_TOTAL){
+    if (countEnabled(list) < MAX_PER_SIDE && totalWidgets() < MAX_TOTAL){
       const add = document.createElement("div");
       add.className = "addWidgetTile";
       add.innerHTML = '<div class="addWidgetPlus">+</div><div>Add widget</div>';
@@ -1610,7 +1661,7 @@ document.addEventListener('checkne:currentStoryChanged', () => {
       gatePro();
       return;
     }
-    if ((state.layout[side] || []).length >= MAX_PER_SIDE) return;
+    if (countEnabled(state.layout[side] || []) >= MAX_PER_SIDE) return;
     if (totalWidgets() >= MAX_TOTAL) {
       try { if (typeof toast === "function") toast(`Max ${MAX_TOTAL} widgets on screen.`); } catch {}
       return;
@@ -1666,8 +1717,10 @@ document.addEventListener('checkne:currentStoryChanged', () => {
 
     toList.splice(insertAt, 0, moving);
 
-    state.layout[fromSide] = fromList.slice(0, MAX_PER_SIDE);
-    state.layout[toSide] = toList.slice(0, MAX_PER_SIDE);
+    state.layout[fromSide] = clampPerSide(fromList);
+      clampGlobal(state.layout);
+    state.layout[toSide] = clampPerSide(toList);
+      clampGlobal(state.layout);
 
     saveLayout();
     renderAll();
@@ -1688,8 +1741,10 @@ document.addEventListener('checkne:currentStoryChanged', () => {
     fromList.splice(fromIndex, 1);
     toList.push(moving);
 
-    state.layout[fromSide] = fromList.slice(0, MAX_PER_SIDE);
-    state.layout[toSide] = toList.slice(0, MAX_PER_SIDE);
+    state.layout[fromSide] = clampPerSide(fromList);
+      clampGlobal(state.layout);
+    state.layout[toSide] = clampPerSide(toList);
+      clampGlobal(state.layout);
 
     saveLayout();
     renderAll();
@@ -1775,7 +1830,8 @@ function renderPicker(){
   const proKeys = [];
   Object.keys(WIDGETS).forEach((k) => {
     const def = WIDGETS[k];
-    if (def && def.pro) proKeys.push(k);
+    if (!def || def.disabled) return;
+    if (def.pro) proKeys.push(k);
     else freeKeys.push(k);
   });
 
