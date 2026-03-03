@@ -1,5 +1,6 @@
 from __future__ import annotations
 import re
+import os
 
 import urllib.parse
 import json
@@ -24,6 +25,31 @@ import requests
 from bs4 import BeautifulSoup
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+
+import logging
+import hashlib
+
+log_video = logging.getLogger("news.video")
+log_market = logging.getLogger("news.market")
+
+# Small in-process cache for free market proxies (avoid rate limits)
+_market_cache: dict[str, tuple[float, Any]] = {}
+
+def _market_get_cached(key: str, ttl: int = 60) -> Any:
+    try:
+        now = time.time()
+        hit = _market_cache.get(key)
+        if hit and (now - float(hit[0])) < float(ttl):
+            return hit[1]
+    except Exception:
+        return None
+    return None
+
+def _market_set_cached(key: str, value: Any) -> None:
+    try:
+        _market_cache[key] = (time.time(), value)
+    except Exception:
+        pass
 
 router = APIRouter()
 
@@ -1326,3 +1352,291 @@ async def set_email_alerts(request: Request, user=Depends(require_user)):
     enabled = bool(payload.get("enabled"))
     db.set_user_email_alerts_enabled(int(user["id"]), enabled)
     return {"enabled": enabled}
+
+
+# ----------------------------
+# Video Report (PRO widget)
+# ----------------------------
+
+
+# ----------------------------
+# Market proxies (FX / Crypto) — used by side widgets
+# ----------------------------
+@router.get("/api/market/fx")
+def market_fx(base: str = "EUR", symbols: str = "USD,GBP,PLN,UAH"):
+    """Simple FX proxy with short server cache (no keys)."""
+    base_u = (base or "EUR").strip().upper()[:6]
+    syms = [s.strip().upper() for s in (symbols or "").split(",") if s.strip()]
+    syms = syms[:20]
+    cache_key = f"fx:{base_u}:{','.join(syms)}"
+    cached = _market_get_cached(cache_key, ttl=90)
+    if cached is not None:
+        return cached
+
+    # exchangerate.host is free and doesn't require an API key
+    url = "https://api.exchangerate.host/latest"
+    params = {"base": base_u, "symbols": ",".join(syms)}
+    try:
+        r = requests.get(url, params=params, timeout=8)
+        if not r.ok:
+            raise RuntimeError(f"fx_http_{r.status_code}")
+        j = r.json() or {}
+        out = {"base": base_u, "rates": j.get("rates") or {}, "date": j.get("date")}
+        _market_set_cached(cache_key, out)
+        return out
+    except Exception as e:
+        log_market.warning("fx proxy failed: %s", e)
+        return {"base": base_u, "rates": {}, "detail": "fx_unavailable"}
+
+
+@router.get("/api/market/crypto")
+def market_crypto(vs: str = "eur", coins: str = "bitcoin,ethereum"):
+    """Simple crypto proxy via CoinGecko with short server cache."""
+    vs_u = (vs or "eur").strip().lower()[:10]
+    ids = [c.strip().lower() for c in (coins or "").split(",") if c.strip()]
+    ids = ids[:20]
+    cache_key = f"crypto:{vs_u}:{','.join(ids)}"
+    cached = _market_get_cached(cache_key, ttl=45)
+    if cached is not None:
+        return cached
+
+    url = "https://api.coingecko.com/api/v3/simple/price"
+    params = {"ids": ",".join(ids), "vs_currencies": vs_u}
+    try:
+        r = requests.get(url, params=params, timeout=8)
+        if not r.ok:
+            raise RuntimeError(f"crypto_http_{r.status_code}")
+        j = r.json() or {}
+        out = {"vs": vs_u, "prices": j}
+        _market_set_cached(cache_key, out)
+        return out
+    except Exception as e:
+        log_market.warning("crypto proxy failed: %s", e)
+        return {"vs": vs_u, "prices": {}, "detail": "crypto_unavailable"}
+
+@router.get("/api/news/video")
+@router.get("/video")  # backward-compatible
+def news_video(
+    request: Request,
+    q: str = "",
+    max_results: int = 5,
+    cluster_id: Optional[int] = None,
+    min_rating: Optional[int] = None,
+    lang: str = "en",
+):
+    """
+    Find a *likely* relevant news report video for a story headline.
+
+    Strategy (server-side, so frontend stays simple):
+    - Build several query variants that bias toward "official-ish" outlets (Reuters/BBC/AP/…)
+    - Search YouTube multiple times (until we collect enough unique results)
+    - Score results so major news channels appear first
+    """
+    q_raw = (q or "").strip()
+    if not q_raw:
+        return {"items": [], "provider": "youtube", "detail": "missing_query"}
+
+    # Enforce minimum story rating when cluster_id is provided (extra safety)
+    try:
+        if cluster_id and (min_rating is not None):
+            meta = db.get_cluster_meta(int(cluster_id)) or {}
+            score = meta.get("score")
+            if score is None:
+                score = meta.get("importance") or meta.get("credibility") or 0
+            if float(score or 0) < float(min_rating):
+                return {"items": [], "provider": "youtube", "detail": "below_min_rating"}
+    except Exception:
+        pass
+
+    key = os.getenv("YOUTUBE_API_KEY", "").strip()
+    if not key:
+        return {"items": [], "provider": "youtube", "detail": "missing_YOUTUBE_API_KEY"}
+
+    # Shared cache (DB) — same query gets the same response for all users.
+    try:
+        lang_norm = (lang or "en").strip().lower()[:10]
+    except Exception:
+        lang_norm = "en"
+        # Shared cache (DB) — result is shared across users.
+    # Use cluster_id when available to dramatically increase cache hit-rate:
+    # multiple headlines in the same cluster will reuse one cached YouTube lookup.
+    try:
+        cid_norm = int(cluster_id) if cluster_id else 0
+    except Exception:
+        cid_norm = 0
+    if cid_norm > 0:
+        cache_basis = f"yt:v2:{lang_norm}:cid:{cid_norm}"
+    else:
+        cache_basis = f"yt:v2:{lang_norm}:q:{q_raw.lower().strip()}"
+    cache_key = hashlib.sha256(cache_basis.encode("utf-8")).hexdigest()
+    try:
+        hit = db.get_video_report_cache(cache_key)
+        if hit and hit.get("payload_json"):
+            try:
+                payload = json.loads(hit["payload_json"]) if isinstance(hit["payload_json"], str) else hit["payload_json"]
+            except Exception:
+                payload = None
+            if isinstance(payload, dict) and "items" in payload:
+                log_video.info("video cache HIT key=%s q=%r", cache_key[:10], q_raw[:80])
+                return payload
+    except Exception as e:
+        log_video.warning("video cache read failed: %s", e)
+
+    limit = max(1, min(int(max_results or 5), 10))
+
+    # --- Helpers ---
+    STOP = {
+        "the","a","an","and","or","but","if","then","else","when","while","for","to","of","in","on","at","by","from","with",
+        "is","are","was","were","be","been","being","as","it","this","that","these","those","now","today","live","latest",
+        "makes","make","sense","right","why","what","how",
+    }
+
+    def _clean_words(s: str):
+        s = re.sub(r"[“”‘’\"']", " ", s)
+        s = re.sub(r"[^A-Za-z0-9\s\-]", " ", s)
+        s = re.sub(r"\s+", " ", s).strip()
+        toks = [t for t in s.split(" ") if t]
+        out = []
+        for t in toks:
+            tl = t.lower()
+            if tl in STOP:
+                continue
+            if len(tl) <= 2:
+                continue
+            out.append(t)
+        return out
+
+    words = _clean_words(q_raw)
+    short = " ".join(words[:8]) if words else q_raw
+
+        # Prefer a *small* number of high-signal queries.
+    # YouTube `search.list` is expensive in quota units, so we cap attempts.
+    OUTLET_HINTS = [
+        "Reuters", "BBC", "Associated Press", "AP", "DW News", "France 24", "Al Jazeera", "Sky News",
+        "CNN", "Bloomberg", "CBS News", "NBC News", "ABC News", "CNBC",
+    ]
+
+    # Primary query: keep it broad but news-biased.
+    queries: list[str] = [
+        f"{short} news",
+        f"{short} news report",
+    ]
+
+    # Fallbacks: only a couple of outlet hints (not the whole list).
+    for nm in OUTLET_HINTS[:2]:
+        queries.append(f"{short} {nm}")
+
+    # Extra fallback for longer headlines.
+    if len(words) >= 4:
+        queries.append(" ".join(words[:4]) + " news")
+
+    seen_q: set[str] = set()
+    qlist: list[str] = []
+    for qq in queries:
+        qq2 = re.sub(r"\s+", " ", (qq or "").strip())
+        if not qq2 or qq2 in seen_q:
+            continue
+        seen_q.add(qq2)
+        qlist.append(qq2)
+
+    published_after = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat().replace("+00:00", "Z")
+
+    def _yt_search(query: str, page_token: Optional[str] = None):
+        params = {
+            "part": "snippet",
+            "type": "video",
+            "q": query,
+            "maxResults": 10,
+            "key": key,
+            "order": "relevance",
+            "safeSearch": "moderate",
+            "videoCategoryId": "25",          # News & Politics
+            "videoEmbeddable": "true",
+            "publishedAfter": published_after,
+            # Reduce payload size (does not change quota cost, but speeds up responses)
+            "fields": "items(id/videoId,snippet(title,channelTitle,publishedAt,thumbnails(default/url,medium/url)))",
+        }
+        if page_token:
+            params["pageToken"] = page_token
+        r = requests.get("https://www.googleapis.com/youtube/v3/search", params=params, timeout=8)
+        if r.status_code != 200:
+            return None
+        return r.json()
+
+    def _score_item(title: str, channel: str):
+        t = (title or "").lower()
+        c = (channel or "").lower()
+
+        score = 0
+        for nm in OUTLET_HINTS:
+            if nm.lower() in c:
+                score += 20
+                break
+
+        if any(k in t for k in ["report", "explained", "breaking", "latest", "analysis", "update"]):
+            score += 6
+        if "interview" in t:
+            score += 2
+
+        if any(k in c for k in ["gaming", "clips", "highlights", "reaction", "meme", "podcast"]):
+            score -= 10
+        if any(k in t for k in ["reaction", "meme", "prank", "compilation"]):
+            score -= 12
+
+        return score
+
+
+    # Hard cap on quota-expensive search calls per cache-miss.
+    MAX_SEARCH_CALLS = max(1, min(int(os.getenv("VIDEO_REPORT_MAX_SEARCH_CALLS", "3")), 10))
+    found = {}
+    for i_q, qq in enumerate(qlist):
+        if i_q >= MAX_SEARCH_CALLS:
+            break
+        j = _yt_search(qq)
+        if not j:
+            continue
+        for it in (j.get("items") or []):
+            vid = (((it.get("id") or {}).get("videoId")) or "").strip()
+            sn = it.get("snippet") or {}
+            if not vid or vid in found:
+                continue
+            title = sn.get("title") or ""
+            channel = sn.get("channelTitle") or ""
+            thumbs = sn.get("thumbnails") or {}
+            thumb = ((thumbs.get("medium") or {}).get("url")) or ((thumbs.get("default") or {}).get("url")) or ""
+            found[vid] = {
+                "video_id": vid,
+                "title": title,
+                "channel": channel,
+                "published_at": sn.get("publishedAt") or "",
+                "thumbnail": thumb,
+                "url": f"https://www.youtube.com/watch?v={vid}",
+                "_score": _score_item(title, channel),
+            }
+        if len(found) >= limit:
+            break
+
+    items = list(found.values())
+    items.sort(key=lambda x: (x.get("_score", 0), x.get("published_at", "")), reverse=True)
+    for it in items:
+        it.pop("_score", None)
+
+    payload = {"items": items[:limit], "provider": "youtube", "detail": "ok" if items else "no_results"}
+
+    # Store to shared cache (even if empty) to avoid hammering YouTube.
+    try:
+        ttl_ok = int(os.getenv("VIDEO_REPORT_CACHE_TTL_SECONDS", "21600"))
+    except Exception:
+        ttl_ok = 6 * 3600
+    try:
+        ttl_empty = int(os.getenv("VIDEO_REPORT_CACHE_EMPTY_TTL_SECONDS", "86400"))
+    except Exception:
+        ttl_empty = 24 * 3600
+    ttl = ttl_ok if (payload.get("items") or []) else ttl_empty
+    try:
+        db.set_video_report_cache(cache_key, q_raw, lang_norm, json.dumps(payload, ensure_ascii=False), ttl_seconds=ttl)
+        log_video.info("video cache SET key=%s items=%d ttl=%ds", cache_key[:10], len(payload.get("items") or []), ttl)
+    except Exception as e:
+        log_video.warning("video cache write failed: %s", e)
+
+    return payload

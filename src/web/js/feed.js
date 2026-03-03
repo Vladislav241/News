@@ -511,6 +511,26 @@ if (detailsOpenEl) {
     try { window.__currentClusterId = Number(id) || null; } catch {}
     try { localStorage.setItem('checkne_current_cluster', String(id)); } catch {}
     try { document.dispatchEvent(new CustomEvent('checkne:currentClusterChanged', { detail: { cluster_id: Number(id) } })); } catch {}
+
+// Store richer "current story" info for widgets that need the specific headline (e.g., Video Report).
+try {
+  const story = {
+    cluster_id: Number(id) || null,
+    item_id: Number(item.id) || null,
+    importance: Number(item.importance) || 0,
+    credibility: Number(item.credibility) || 0,
+    score: Number(item.score ?? item.credibility_score ?? item.credibility ?? 0) || 0,
+    title: String(item.title || ''),
+    url: String(item.url || ''),
+    source: String(item.source || item.outlet || ''),
+    published_at: item.latest_published_at || item.published_at || item.created_at || item.updated_at || null,
+  };
+  window.__currentStory = story;
+  localStorage.setItem('checkne_current_story', JSON.stringify(story));
+  // Back-compat for widgets that read __currentStory
+  try { localStorage.setItem('__currentStory', JSON.stringify(story)); } catch {}
+  document.dispatchEvent(new CustomEvent('checkne:currentStoryChanged', { detail: story }));
+} catch {}
   }
 
   // если мы сейчас анимируем открытие/закрытие — не трогаем DOM

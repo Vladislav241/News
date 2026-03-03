@@ -130,6 +130,21 @@
     return null;
   }
 
+
+function getCurrentStory(){
+  try {
+    if (window.__currentStory && typeof window.__currentStory === 'object') return window.__currentStory;
+  } catch {}
+  try {
+    const raw = localStorage.getItem('checkne_current_story');
+    if (raw) {
+      const j = JSON.parse(raw);
+      if (j && typeof j === 'object') return j;
+    }
+  } catch {}
+  return null;
+}
+
   // Light caching helper to avoid hammering free APIs (and avoid rate-limits).
   const __wgCache = new Map(); // key -> { t:number, v:any }
   async function fetchJsonCached(url, ttlMs){
@@ -284,22 +299,6 @@
     // =========================
     // PRO Widgets (Premium)
     // =========================
-    pro_action_feed: {
-      name: "Action Feed",
-      desc: "What matters right now — with clear ‘why’ + actions.",
-      defaults: { limit: 5 },
-      pro: true,
-      render: renderProActionFeed,
-      settingsUI: actionFeedSettingsUI,
-    },
-    pro_risk_why: {
-      name: "Risk & Why",
-      desc: "High-risk stories with human explanations.",
-      defaults: { limit: 5 },
-      pro: true,
-      render: renderProRiskWhy,
-      settingsUI: actionFeedSettingsUI,
-    },
     pro_momentum: {
       name: "Momentum Timeline",
       desc: "Shows whether a topic is rising or cooling down.",
@@ -307,14 +306,6 @@
       pro: true,
       render: renderProMomentum,
       settingsUI: null,
-    },
-    pro_alerts: {
-      name: "Smart Alerts",
-      desc: "Alerts with presets (Breaking / High risk / Daily digest).",
-      defaults: { preset: 'breaking' },
-      pro: true,
-      render: renderProAlerts,
-      settingsUI: alertsSettingsUI,
     },
     pro_entities: {
       name: "Entities",
@@ -324,13 +315,38 @@
       render: renderProEntities,
       settingsUI: null,
     },
-    pro_top_charts: {
-      name: "Top Charts",
-      desc: "Auto-sliding mini graphs for top stories.",
-      defaults: { limit: 6, seconds: 6 },
+    pro_related_coverage: {
+      name: "Related Coverage",
+      desc: "More articles about the same event — from other outlets.",
+      defaults: { limit: 6 },
       pro: true,
-      render: renderProTopCharts,
-      settingsUI: topChartsSettingsUI,
+      render: renderProRelatedCoverage,
+      settingsUI: relatedCoverageSettingsUI,
+    },
+    pro_recent_history: {
+      name: "Recent History",
+      desc: "Latest publications within this event cluster (24h / 3d / week).",
+      defaults: { limit: 10, window: '3d' },
+      pro: true,
+      render: renderProRecentHistory,
+      settingsUI: recentHistorySettingsUI,
+    },
+// Video Report is FREE (server-side cached to save YouTube quota)
+pro_video_report: {
+  name: "Video Report",
+  desc: "Watch a relevant report for the currently opened story (embedded, no re-hosting).",
+  defaults: { max_results: 5 },
+  pro: false,
+  render: renderProVideoReport,
+  settingsUI: videoReportSettingsUI,
+},
+    pro_silence: {
+      name: "Silence Indicator",
+      desc: "Shows notable outlets/regions that are not covering this story.",
+      defaults: { threshold: 4 },
+      pro: true,
+      render: renderProSilenceIndicator,
+      settingsUI: silenceSettingsUI,
     },
   };
 
@@ -373,6 +389,48 @@
         <input class="setInput" type="number" name="seconds" min="3" max="20" value="${escapeAttr(String(s.seconds ?? 6))}" />
       </label>
       <div class="setHint">Mini graphs reuse your existing trust-history charts. Auto-slides like a premium dashboard.</div>
+    `;
+  }
+
+  function relatedCoverageSettingsUI(mount, settings){
+    const s = settings || {};
+    mount.innerHTML = `
+      <label class="setRow">
+        <div class="setLabel">Items</div>
+        <input class="setInput" type="number" name="limit" min="3" max="10" value="${escapeAttr(String(s.limit ?? 6))}" />
+      </label>
+      <div class="setHint">Shows 3–10 articles from the <b>same event cluster</b>, prioritizing different outlets.</div>
+    `;
+  }
+
+  function recentHistorySettingsUI(mount, settings){
+    const s = settings || {};
+    const win = String(s.window || '3d');
+    mount.innerHTML = `
+      <label class="setRow">
+        <div class="setLabel">Window</div>
+        <select class="setSelect" name="window">
+          <option value="24h" ${win==='24h'?'selected':''}>Last 24 hours</option>
+          <option value="3d" ${win==='3d'?'selected':''}>Last 3 days</option>
+          <option value="7d" ${win==='7d'?'selected':''}>Last week</option>
+        </select>
+      </label>
+      <label class="setRow">
+        <div class="setLabel">Items</div>
+        <input class="setInput" type="number" name="limit" min="5" max="20" value="${escapeAttr(String(s.limit ?? 10))}" />
+      </label>
+      <div class="setHint">Sorted by publication time. Helps see how the story evolved.</div>
+    `;
+  }
+
+  function silenceSettingsUI(mount, settings){
+    const s = settings || {};
+    mount.innerHTML = `
+      <label class="setRow">
+        <div class="setLabel">Coverage threshold</div>
+        <input class="setInput" type="number" name="threshold" min="2" max="10" value="${escapeAttr(String(s.threshold ?? 4))}" />
+      </label>
+      <div class="setHint">If a story has at least this many outlets but is missing major expected sources, we flag it.</div>
     `;
   }
 
@@ -848,11 +906,17 @@ function uid(){
     const hasSides = layout && Object.prototype.hasOwnProperty.call(layout, "left") && Object.prototype.hasOwnProperty.call(layout, "right");
     if (!hasSides) layout = null;
 
+    // Default dashboard for brand-new users (matches the main promo layout):
+    // Left: Video Report + Top Headlines
+    // Right: FX Rates + Crypto
     const makeDefault = () => ({
-      left: [{ id: uid(), type: "fx_rates", settings: { ...WIDGETS.fx_rates.defaults } }],
-      right: [
-        { id: uid(), type: "crypto_prices", settings: { ...WIDGETS.crypto_prices.defaults } },
+      left: [
+        { id: uid(), type: "pro_video_report", settings: { ...WIDGETS.pro_video_report.defaults } },
         { id: uid(), type: "headlines", settings: { ...WIDGETS.headlines.defaults } },
+      ],
+      right: [
+        { id: uid(), type: "fx_rates", settings: { ...WIDGETS.fx_rates.defaults } },
+        { id: uid(), type: "crypto_prices", settings: { ...WIDGETS.crypto_prices.defaults } },
       ],
     });
 
@@ -1318,6 +1382,14 @@ function saveLayout(){
       try { refreshWidgetType('pro_momentum'); } catch {}
       try { refreshWidgetType('pro_top_charts'); } catch {}
     });
+
+document.addEventListener('checkne:currentStoryChanged', () => {
+  try { refreshWidgetType('pro_video_report'); } catch {}
+  try { refreshWidgetType('pro_related_coverage'); } catch {}
+  try { refreshWidgetType('pro_recent_history'); } catch {}
+  try { refreshWidgetType('pro_silence'); } catch {}
+});
+
 
     // Update Tracking Stats widget when tracking list changes
     document.addEventListener("checkne:favsChanged", () => refreshWidgetType("tracking_stats"));
@@ -2344,6 +2416,126 @@ function renderPicker(){
     }
   }
 
+  // ===== Pro helpers for cluster-aware widgets =====
+  function _normName(s){
+    return String(s || '').trim().toLowerCase();
+  }
+function _truncateList(arr, max){
+    const a = Array.isArray(arr) ? arr.filter(Boolean) : [];
+    const m = clamp(Number(max) || 6, 3, 12);
+    if (a.length <= m) return a.join(' · ');
+    return a.slice(0, m).join(' · ') + ` · +${a.length - m} more`;
+  }
+
+  function _findSideByWidgetId(id){
+    try {
+      for (const side of ['left','right']){
+        const list = state?.layout?.[side] || [];
+        if (list.some(w => w && w.id === id)) return side;
+      }
+    } catch {}
+    return 'left';
+  }
+
+
+  function _dtMs(iso){
+    try {
+      const v = String(iso || '').trim();
+      if (!v) return null;
+      const ms = Date.parse(v);
+      return Number.isFinite(ms) ? ms : null;
+    } catch { return null; }
+  }
+
+  const _DATE_LOCALE = 'en-GB'; // English by default (avoid device locale like ru/uk)
+
+  function _fmtWhen(iso){
+    const ms = _dtMs(iso);
+    if (!ms) return '';
+    try {
+      return new Intl.DateTimeFormat(_DATE_LOCALE, {
+        year:'numeric', month:'short', day:'2-digit',
+        hour:'2-digit', minute:'2-digit',
+        hour12: false
+      }).format(new Date(ms));
+    } catch {
+      try { return new Date(ms).toISOString().slice(0,16).replace('T',' '); } catch { return ''; }
+    }
+  }
+
+  function _fmtDateOnly(iso){
+    const ms = _dtMs(iso);
+    if (!ms) return '';
+    try {
+      return new Intl.DateTimeFormat(_DATE_LOCALE, { year:'numeric', month:'short', day:'2-digit' }).format(new Date(ms));
+    } catch {
+      try { return new Date(ms).toISOString().slice(0,10); } catch { return ''; }
+    }
+  }
+
+  function _fmtTimeOnly(iso){
+    const ms = _dtMs(iso);
+    if (!ms) return '';
+    try {
+      return new Intl.DateTimeFormat(_DATE_LOCALE, { hour:'2-digit', minute:'2-digit', hour12:false }).format(new Date(ms));
+    } catch { return ''; }
+  }
+
+  function _fmtAgeShort(iso){
+    const ms = _dtMs(iso);
+    if (!ms) return '';
+    const d = Date.now() - ms;
+    if (!Number.isFinite(d) || d < 0) return '';
+    const m = Math.floor(d / 60000);
+    if (m < 60) return m + 'm';
+    const h = Math.floor(m / 60);
+    if (h < 48) return h + 'h';
+    const days = Math.floor(h / 24);
+    return days + 'd';
+  }
+
+  async function _fetchClusterById(cid){
+    try {
+      const interests = encodeURIComponent((state && Array.isArray(state.interests)) ? state.interests.join(',') : 'general');
+      const country = encodeURIComponent((state && state.country) ? state.country : 'world');
+      const uiLang = encodeURIComponent((state && state.language) ? state.language : 'en');
+      const url = `${API_BASE}/api/news/by_ids?ids=${encodeURIComponent(String(cid))}` +
+        `&interests=${interests}&country=${country}&language=all&ui_lang=${uiLang}`;
+      const r = await fetch(url, { credentials: 'include' });
+      const j = await r.json().catch(() => ({}));
+      const items = Array.isArray(j.items) ? j.items : [];
+      return items && items.length ? items[0] : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function _getCurrentClusterItem(){
+    const currentCid = getCurrentClusterId();
+    const feedItems = getFeedItemsSafe();
+    let it = null;
+    let cid = null;
+
+    if (Number.isFinite(Number(currentCid))) {
+      cid = Number(currentCid);
+      it = (Array.isArray(feedItems) ? feedItems : []).find(x => Number(x?.cluster_id ?? x?.id) === cid) || null;
+    }
+    if (!cid || !Number.isFinite(cid)){
+      const top = _pickTop(feedItems, 1);
+      it = top[0] || null;
+      cid = it ? Number(it?.cluster_id ?? it?.id) : null;
+    }
+    if (!cid || !Number.isFinite(cid)) return { cid: null, it: null };
+
+    // Ensure we have sources (guests / older snapshots may not include them)
+    const hasSources = Array.isArray(it?.sources) && it.sources.length;
+    if (!hasSources) {
+      const fetched = await _fetchClusterById(cid);
+      if (fetched) it = fetched;
+    }
+    return { cid, it };
+  }
+
   function renderProAlerts(root, settings){
     if (!_requireProOrRenderUpsell(root)) return;
 
@@ -2439,6 +2631,452 @@ function renderPicker(){
       btn.addEventListener('click', () => setSearchTerm(name));
       grid.appendChild(btn);
     }
+  }
+
+function videoReportSettingsUI(container, settings){
+  const v = clamp(Number(settings?.max_results ?? 5), 1, 10);
+  container.innerHTML = `
+    <label class="setRow">
+      <div class="setLabel">Max results</div>
+      <input class="setInput" type="number" name="max_results" min="1" max="10" value="${escapeAttr(String(v))}" />
+    </label>
+    <div class="setHint">How many video results to fetch (1–10).</div>
+  `;
+}
+
+async function renderProVideoReport(root, settings, widget){
+  root.innerHTML = '';
+  const story = getCurrentStory();
+  const head = document.createElement('div');
+  head.className = 'proHero';
+  const h = document.createElement('div');
+  h.className = 'proHeroTitle';
+  h.textContent = 'Video Report';
+  const sub = document.createElement('div');
+  sub.className = 'proHeroDesc';
+  sub.textContent = story && story.title ? `For: ${String(story.title).slice(0, 90)}${String(story.title).length>90?'…':''}` : 'Open a story to see a relevant video report.';
+  head.appendChild(h);
+  head.appendChild(sub);
+  root.appendChild(head);
+
+  if (!story || !story.title) {
+    const empty = document.createElement('div');
+    empty.className = 'proEmpty';
+    empty.textContent = 'Tip: open a card in the feed, then this widget will load a related report.';
+    root.appendChild(empty);
+    return;
+  }
+
+  // Only for high-rated stories (avoid noise + extra API calls)
+  const minRating = 70;
+  const storyScore = Number(story?.score ?? 0) || 0;
+  if (storyScore < minRating) {
+    const empty = document.createElement('div');
+    empty.className = 'proEmpty';
+    empty.innerHTML = `This widget is available only for stories rated <b>${minRating}+</b>.`;
+    root.appendChild(empty);
+    return;
+  }
+
+const maxResults = clamp(Number(settings?.max_results ?? 5), 1, 10);
+
+  const box = document.createElement('div');
+  box.className = 'proBox';
+  const status = document.createElement('div');
+  status.className = 'proMuted';
+  status.textContent = 'Searching for a relevant video…';
+  box.appendChild(status);
+root.appendChild(box);
+
+  const cid = Number(story.cluster_id || getCurrentClusterId() || 0) || 0;
+  const url = `${API_BASE}/api/news/video?q=${encodeURIComponent(story.title)}&max_results=${encodeURIComponent(String(maxResults))}&cluster_id=${encodeURIComponent(String(cid||''))}&min_rating=${encodeURIComponent(String(minRating))}`;
+
+  let j = null;
+  try {
+   j = await fetchJsonCached(url, 1000 * 60 * 15);
+  } catch {
+    j = null;
+  }
+
+  const items = Array.isArray(j?.items) ? j.items : [];
+  const detail = String(j?.detail || '');
+
+  box.innerHTML = '';
+
+  if (!items.length) {
+    const msg = document.createElement('div');
+    msg.className = 'proEmpty';
+    if (detail.includes('YOUTUBE_API_KEY')) {
+      msg.innerHTML = `Video search is not enabled on the server.<br><span class="proMuted">Set <b>YOUTUBE_API_KEY</b> to enable this widget.</span>`;
+    } else {
+      msg.textContent = 'No video found for this story yet.';
+    }
+    box.appendChild(msg);
+
+    const openBtn = document.createElement('a');
+    openBtn.className = 'proBtn';
+    openBtn.href = `https://www.youtube.com/results?search_query=${encodeURIComponent(story.title)}`;
+    openBtn.target = '_blank';
+    openBtn.rel = 'noopener noreferrer';
+    openBtn.textContent = 'Search on YouTube';
+    box.appendChild(openBtn);
+    return;
+  }
+
+  const primary = items[0];
+
+  const player = document.createElement('div');
+  player.className = 'videoPlayer';
+  player.innerHTML = `<iframe class="videoFrame" src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(primary.video_id)}" title="Video report" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+  box.appendChild(player);
+
+  const meta = document.createElement('div');
+  meta.className = 'videoMeta';
+  const t = document.createElement('div');
+  t.className = 'videoTitle';
+  t.textContent = primary.title || 'Video';
+  const m = document.createElement('div');
+  m.className = 'videoSub';
+  const when = primary.published_at ? _fmtWhen(primary.published_at) : '';
+  m.textContent = [primary.channel, when].filter(Boolean).join(' • ');
+  meta.appendChild(t);
+  meta.appendChild(m);
+
+  const open = document.createElement('a');
+  open.className = 'proBtn';
+  open.href = primary.url || `https://www.youtube.com/watch?v=${primary.video_id}`;
+  open.target = '_blank';
+  open.rel = 'noopener noreferrer';
+  open.textContent = 'Open on YouTube';
+
+  meta.appendChild(open);
+  box.appendChild(meta);
+
+  if (items.length > 1) {
+    const list = document.createElement('div');
+    list.className = 'videoList';
+    items.slice(1, 4).forEach((it) => {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'videoRow';
+      row.addEventListener('click', () => {
+        try {
+          const iframe = box.querySelector('iframe.videoFrame');
+          if (iframe) iframe.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(it.video_id)}`;
+        } catch {}
+        try { t.textContent = it.title || 'Video'; } catch {}
+        try {
+          const when2 = it.published_at ? _fmtWhen(it.published_at) : '';
+          m.textContent = [it.channel, when2].filter(Boolean).join(' • ');
+        } catch {}
+        try { open.href = it.url || `https://www.youtube.com/watch?v=${it.video_id}`; } catch {}
+      });
+
+      const thumb = document.createElement('div');
+      thumb.className = 'videoThumb';
+      if (it.thumbnail) thumb.style.backgroundImage = `url("${String(it.thumbnail).replace(/"/g,'&quot;')}")`;
+      const rt = document.createElement('div');
+      rt.className = 'videoRowText';
+      const rt1 = document.createElement('div');
+      rt1.className = 'videoRowTitle';
+      rt1.textContent = it.title || 'Video';
+      const rt2 = document.createElement('div');
+      rt2.className = 'videoRowSub';
+      const when3 = it.published_at ? _fmtWhen(it.published_at) : '';
+      rt2.textContent = [it.channel, when3].filter(Boolean).join(' • ');
+      rt.appendChild(rt1);
+      rt.appendChild(rt2);
+
+      row.appendChild(thumb);
+      row.appendChild(rt);
+      list.appendChild(row);
+    });
+    box.appendChild(list);
+  }
+}
+
+async function renderProRelatedCoverage(root, settings){
+    if (!_requireProOrRenderUpsell(root)) return;
+    const limit = clamp(Number(settings?.limit ?? 6) || 6, 3, 10);
+    const { cid, it } = await _getCurrentClusterItem();
+    if (!cid || !it) return _proEmpty(root);
+
+    const sources = Array.isArray(it?.sources) ? it.sources.slice() : [];
+    if (!sources.length) {
+      root.innerHTML = `<div class="proHint">No sources available for this story yet.</div>`;
+      return;
+    }
+
+    // Prefer diversity: keep first entry per source_key/source_name.
+    const seen = new Set();
+    const uniq = [];
+    for (const s of sources){
+      const k = _normName(s?.source_key || s?.source_name);
+      if (!k || seen.has(k)) continue;
+      seen.add(k);
+      uniq.push(s);
+      if (uniq.length >= limit) break;
+    }
+
+    const score = Number(it?.credibility_score);
+    const scorePill = Number.isFinite(score) ? `<span class="trackPill">Score ${escapeHtml(String(score))}</span>` : '';
+    const outlets = Number(it?.sources_count);
+    const outletPill = Number.isFinite(outlets) ? `<span class="trackPill">${escapeHtml(String(outlets))} outlets</span>` : '';
+
+    root.innerHTML = `
+      <div class="proTitleSm">${escapeHtml(String(it?.title || 'Selected story'))}</div>
+      <div class="proHint" style="margin-top:6px;">Same-event coverage from other outlets (cluster-based, not keyword-only).</div>
+      <div class="trackItemMeta" style="margin:8px 0 10px;">${scorePill}${outletPill}</div>
+      <div class="proList" data-rc-list></div>
+      <div class="proActions" style="margin-top:10px;">
+        <button class="btnSoft" type="button" data-pro-open>Open</button>
+      </div>
+    `;
+    const openBtn = root.querySelector('[data-pro-open]');
+    if (openBtn) openBtn.addEventListener('click', () => openClusterInFeed(cid));
+
+    const list = root.querySelector('[data-rc-list]');
+    if (!list) return;
+    for (const s of uniq){
+      const url = String(s?.url || '').trim();
+      const title = String(s?.title || 'Untitled');
+      const src = String(s?.source_name || '').trim() || 'Source';
+      const iso = (s?.published_at || s?.inserted_at);
+      const dateOnly = _fmtDateOnly(iso);
+      const badge = _fmtAgeShort(iso) || _fmtTimeOnly(iso) || '';
+
+      const row = document.createElement('div');
+      row.className = 'proRow';
+      row.style.cursor = url ? 'pointer' : 'default';
+      row.innerHTML = `
+        <div class="proRowMain">
+          <div class="proRowTitle">${escapeHtml(title)}</div>
+          <div class="proRowWhy">${escapeHtml(src)}${dateOnly ? ' · ' + escapeHtml(dateOnly) : ''}</div>
+        </div>
+        <div class="proRowBadgeSm" title="Published">${escapeHtml(badge)}</div>
+      `;
+      if (url) row.addEventListener('click', () => { try { window.open(url, '_blank', 'noopener'); } catch {} });
+      list.appendChild(row);
+    }
+  }
+
+  async function renderProRecentHistory(root, settings, widget){
+    if (!_requireProOrRenderUpsell(root)) return;
+    const limit = clamp(Number(settings?.limit ?? 10) || 10, 5, 20);
+    const win = String(settings?.window || '3d');
+    const { cid, it } = await _getCurrentClusterItem();
+    if (!cid || !it) return _proEmpty(root);
+
+    const sources = Array.isArray(it?.sources) ? it.sources.slice() : [];
+    if (!sources.length) {
+      root.innerHTML = `<div class="proHint">No timeline yet for this story.</div>`;
+      return;
+    }
+
+    const now = Date.now();
+    const maxAgeMs = (win === '24h') ? 24*3600*1000 : (win === '7d') ? 7*24*3600*1000 : 3*24*3600*1000;
+
+    const rows = sources
+      .map(s => ({ s, ms: _dtMs(s?.published_at || s?.inserted_at) }))
+      .filter(x => x.ms)
+      .filter(x => (now - x.ms) <= maxAgeMs)
+      .sort((a,b) => b.ms - a.ms)
+      .slice(0, limit);
+
+    const active = (win === '24h') ? '24h' : (win === '7d') ? '7d' : '3d';
+
+    root.innerHTML = `
+      <div class="proTitleSm">Recent History</div>
+      <div class="proHint" style="margin-top:6px;">Publications inside the same event cluster. Use the filter to see how coverage evolves.</div>
+      <div class="proFilterRow" data-rh-filters>
+        <button type="button" class="chipBtn ${active==='24h' ? 'isOn' : ''}" data-win="24h">24h</button>
+        <button type="button" class="chipBtn ${active==='3d' ? 'isOn' : ''}" data-win="3d">3d</button>
+        <button type="button" class="chipBtn ${active==='7d' ? 'isOn' : ''}" data-win="7d">Week</button>
+      </div>
+      <div class="proList" data-rh-list></div>
+      <div class="proActions" style="margin-top:10px;">
+        <button class="btnSoft" type="button" data-pro-open>Open</button>
+      </div>
+    `;
+    const openBtn = root.querySelector('[data-pro-open]');
+    if (openBtn) openBtn.addEventListener('click', () => openClusterInFeed(cid));
+const filterRow = root.querySelector('[data-rh-filters]');
+    if (filterRow && widget && widget.id){
+      filterRow.addEventListener('click', (e) => {
+        const btn = e.target && e.target.closest ? e.target.closest('button[data-win]') : null;
+        if (!btn) return;
+        const nextWin = String(btn.getAttribute('data-win') || '').trim();
+        if (!nextWin) return;
+        try {
+          const side = _findSideByWidgetId(widget.id);
+          const w = (state.layout[side] || []).find(x => x.id === widget.id);
+          if (!w) return;
+          w.settings = { ...(w.settings || {}), window: nextWin };
+          saveLayout();
+          renderSidebar(side);
+        } catch {}
+      });
+    }
+
+
+    const list = root.querySelector('[data-rh-list]');
+    if (!list) return;
+
+    if (!rows.length){
+      list.innerHTML = `<div class="muted" style="font-size:12px; padding:6px 2px;">No articles in this window.</div>`;
+      return;
+    }
+
+    for (const r of rows){
+      const s = r.s;
+      const url = String(s?.url || '').trim();
+      const title = String(s?.title || 'Untitled');
+      const src = String(s?.source_name || '').trim() || 'Source';
+      const iso = (s?.published_at || s?.inserted_at);
+      const dateOnly = _fmtDateOnly(iso);
+      const badge = _fmtAgeShort(iso) || _fmtTimeOnly(iso) || '';
+      const row = document.createElement('div');
+      row.className = 'proRow';
+      row.style.cursor = url ? 'pointer' : 'default';
+      row.innerHTML = `
+        <div class="proRowMain">
+          <div class="proRowTitle">${escapeHtml(title)}</div>
+          <div class="proRowWhy">${escapeHtml(src)}${dateOnly ? ' · ' + escapeHtml(dateOnly) : ''}</div>
+        </div>
+        <div class="proRowBadgeSm" title="Published">${escapeHtml(badge)}</div>
+      `;
+      if (url) row.addEventListener('click', () => { try { window.open(url, '_blank', 'noopener'); } catch {} });
+      list.appendChild(row);
+    }
+  }
+
+  async function renderProSilenceIndicator(root, settings, widget){
+    if (!_requireProOrRenderUpsell(root)) return;
+    const threshold = clamp(Number(settings?.threshold ?? 4) || 4, 2, 10);
+    const { cid, it } = await _getCurrentClusterItem();
+    if (!cid || !it) return _proEmpty(root);
+
+    const sources = Array.isArray(it?.sources) ? it.sources.slice() : [];
+    const outletsCount = Number(it?.sources_count);
+    const topic = String(it?.topic || 'general').toLowerCase();
+
+    const present = new Set();
+    for (const s of sources){
+      present.add(_normName(s?.source_name));
+    }
+
+    const EXPECTED = {
+      general: ["Reuters","Associated Press","BBC","The Guardian","Al Jazeera"],
+      politics: ["Reuters","Associated Press","BBC","The New York Times","The Washington Post","The Guardian","Al Jazeera","CNN"],
+      economy: ["Reuters","Bloomberg","Financial Times","The Wall Street Journal","CNBC"],
+      business: ["Reuters","Bloomberg","Financial Times","The Wall Street Journal","CNBC"],
+      tech: ["Reuters","The Verge","Wired","TechCrunch","Bloomberg"],
+      science: ["Reuters","BBC","Nature","Science","Associated Press"],
+      health: ["Reuters","BBC","WHO","Associated Press"],
+      war: ["Reuters","BBC","Al Jazeera","Associated Press","CNN"],
+      world: ["Reuters","Associated Press","BBC","The Guardian","Al Jazeera"],
+    };
+
+    const pick = (EXPECTED[topic] || EXPECTED.general);
+    const missingMajor = pick.filter(nm => !present.has(_normName(nm)));
+
+    
+    const REGION_OF = {
+      "reuters": "Global",
+      "associated press": "North America",
+      "ap": "North America",
+      "the new york times": "North America",
+      "the washington post": "North America",
+      "cnn": "North America",
+      "bloomberg": "North America",
+      "the wall street journal": "North America",
+      "wsj": "North America",
+      "cnbc": "North America",
+      "bbc": "Europe",
+      "the guardian": "Europe",
+      "financial times": "Europe",
+      "dw": "Europe",
+      "france 24": "Europe",
+      "al jazeera": "Middle East",
+      "haaretz": "Middle East",
+      "times of israel": "Middle East",
+      "japan times": "Asia-Pacific",
+      "south china morning post": "Asia-Pacific",
+      "who": "Official",
+    };
+
+    const regionsPresent = new Set();
+    for (const s of sources){
+      const nm = _normName(s?.source_name);
+      const r = REGION_OF[nm];
+      if (r) regionsPresent.add(r);
+    }
+    const regionsExpected = ["North America","Europe","Middle East","Asia-Pacific","Global"];
+    const missingRegions = regionsExpected.filter(r => !regionsPresent.has(r));
+
+    // very light “official statement” heuristic (no deep NLP)
+    const titlesText = sources.map(s => String(s?.title || '')).join(' ').toLowerCase();
+    const hasOfficial = /(official|statement|spokesperson|ministry|government|police|president|prime minister)/i.test(titlesText);
+
+    const shouldFlag = (Number.isFinite(outletsCount) ? outletsCount : (sources.length || 0)) >= threshold;
+
+    root.innerHTML = `
+      <div class="proTitleSm">Silence Indicator</div>
+      <div class="proHint" style="margin-top:6px;">A “gap” signal: the story is spreading, but some <b>expected</b> sources/regions haven’t appeared yet. This is a clue — not proof.</div>
+      <div class="proList" data-silence-list></div>
+      <div class="proActions" style="margin-top:10px;">
+        <button class="btnSoft" type="button" data-pro-open>Open</button>
+      </div>
+    `;
+
+    const openBtn = root.querySelector('[data-pro-open]');
+    if (openBtn) openBtn.addEventListener('click', () => openClusterInFeed(cid));
+
+    const list = root.querySelector('[data-silence-list]');
+    if (!list) return;
+
+    if (!shouldFlag){
+      list.innerHTML = `<div class="muted" style="font-size:12px; padding:6px 2px;">Not enough coverage yet (threshold: ${escapeHtml(String(threshold))}).</div>`;
+      return;
+    }
+
+    
+    const blocks = [];
+    const majorTxt = missingMajor.length ? _truncateList(missingMajor, 6) : 'None detected';
+    const regionsTxt = missingRegions.length ? _truncateList(missingRegions, 5) : 'None detected';
+
+    blocks.push(`
+      <div class="proRow proRowCard" style="cursor:default;">
+        <div class="proRowMain">
+          <div class="proRowTitle">Missing major outlets</div>
+          <div class="proRowWhy">${escapeHtml(majorTxt)}</div>
+          <div class="muted" style="font-size:12px; margin-top:6px;">Expected list is based on the topic (e.g., politics, economy). Tweak threshold in settings.</div>
+        </div>
+        <div class="proRowBadgeSm" title="Count">${escapeHtml(String(missingMajor.length))}</div>
+      </div>
+    `);
+
+    blocks.push(`
+      <div class="proRow proRowCard" style="cursor:default;">
+        <div class="proRowMain">
+          <div class="proRowTitle">Regions without coverage</div>
+          <div class="proRowWhy">${escapeHtml(regionsTxt)}</div>
+        </div>
+        <div class="proRowBadgeSm" title="Count">${escapeHtml(String(missingRegions.length))}</div>
+      </div>
+    `);
+
+    blocks.push(`
+      <div class="proRow proRowCard" style="cursor:default;">
+        <div class="proRowMain">
+          <div class="proRowTitle">Official statement signal</div>
+          <div class="proRowWhy">${hasOfficial ? 'Some headlines look like official-language (statement / ministry / spokesperson).' : 'No obvious official-language detected in headlines yet.'}</div>
+        </div>
+        <div class="proRowBadgeSm">${hasOfficial ? 'Yes' : 'No'}</div>
+      </div>
+    `);
+
+    list.innerHTML = blocks.join('');
   }
 
   async function renderProTopCharts(root, settings){

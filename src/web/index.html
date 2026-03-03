@@ -4008,6 +4008,42 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
       color: rgba(17,24,39,.72);
     }
     .proRowPct{ min-width:54px; }
+
+    .proRowBadgeSm{
+      flex:0 0 auto;
+      min-width:46px;
+      height:28px;
+      padding:0 10px;
+      border-radius:999px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border:1px solid rgba(17,24,39,.10);
+      background: rgba(17,24,39,.03);
+      font-weight:900;
+      font-size:12px;
+      color: rgba(17,24,39,.68);
+      white-space:nowrap;
+    }
+    .proRowCard{ align-items:flex-start; }
+    .proFilterRow{ display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 10px; }
+    .chipBtn{
+      height:30px;
+      padding:0 12px;
+      border-radius:999px;
+      border:1px solid rgba(15,23,42,.12);
+      background:#fff;
+      cursor:pointer;
+      font-weight:800;
+      font-size:12px;
+      color: rgba(15,23,42,.72);
+    }
+    .chipBtn:hover{ background: rgba(17,17,19,.04); }
+    .chipBtn.isOn{
+      background: rgba(17,24,39,.08);
+      border-color: rgba(17,24,39,.18);
+      color: rgba(17,24,39,.86);
+    }
     .proTitleSm{ font-weight:800; font-size:13px; line-height:1.25; }
     .proChart{ margin-top:10px; border:1px solid rgba(17,24,39,.10); border-radius:14px; padding:10px; background: rgba(255,255,255,.75); font-size:12px; }
     .proChart svg{ width:100%; height:auto; display:block; }
@@ -4499,6 +4535,20 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
 .addBtn {
   -webkit-tap-highlight-color: transparent;
 }
+
+/* PRO Video Report widget */
+.videoPlayer{ width:100%; border:1px solid var(--stroke); border-radius: 16px; overflow:hidden; background:#000; }
+.videoFrame{ width:100%; aspect-ratio: 16 / 9; display:block; }
+.videoMeta{ margin-top: 10px; display:flex; flex-direction:column; gap:6px; }
+.videoTitle{ font-weight: 700; font-size: 14px; line-height: 1.25; color: var(--text); }
+.videoSub{ font-size: 12px; color: var(--muted); }
+.videoList{ margin-top: 10px; display:flex; flex-direction:column; gap:8px; }
+.videoRow{ display:flex; gap:10px; align-items:center; text-align:left; padding:10px; border:1px solid var(--stroke); border-radius:16px; background:#fff; cursor:pointer; }
+.videoRow:hover{ background: rgba(17,17,19,.04); }
+.videoThumb{ width:72px; height:42px; border-radius:10px; background: #f3f4f6; background-size: cover; background-position:center; flex:0 0 auto; }
+.videoRowText{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+.videoRowTitle{ font-size: 13px; font-weight: 700; color: var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.videoRowSub{ font-size: 12px; color: var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 </style>
 
 </head>

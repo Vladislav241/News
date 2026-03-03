@@ -480,6 +480,19 @@ class Database:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_text_trans_scope ON text_translations(scope, scope_id);")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_text_trans_lang ON text_translations(target_lang);")
 
+            # Video Report cache (YouTube search results)
+            # cache_key is a deterministic hash of (query, lang, etc.)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS video_report_cache (
+                    cache_key TEXT PRIMARY KEY,
+                    q TEXT NOT NULL,
+                    lang TEXT NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    expires_at TEXT NOT NULL
+                );
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_video_report_cache_expires ON video_report_cache(expires_at);")
             conn.commit()
 
     def get_user_subscription(self, user_id: int) -> Optional[dict[str, Any]]:
@@ -910,6 +923,34 @@ class Database:
 
     def get_score(self, cluster_id: int) -> Optional[dict[str, Any]]:
         return self._fetchone("SELECT * FROM article_scores WHERE cluster_id=?", (cluster_id,))
+    def get_video_report_cache(self, cache_key: str):
+        """Return cached payload_json if present and not expired."""
+        return self._fetchone(
+            """
+            SELECT payload_json
+            FROM video_report_cache
+            WHERE cache_key = ?
+              AND expires_at > CURRENT_TIMESTAMP
+            """,
+            (cache_key,),
+        )
+
+    def set_video_report_cache(self, cache_key: str, q: str, lang: str, payload_json: str, ttl_seconds: int = 6 * 3600):
+        """Upsert cache entry with TTL (default 6 hours)."""
+        return self._exec(
+            """
+            INSERT INTO video_report_cache (cache_key, q, lang, payload_json, created_at, expires_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, datetime(CURRENT_TIMESTAMP, '+' || ? || ' seconds'))
+            ON CONFLICT(cache_key) DO UPDATE SET
+                q=excluded.q,
+                lang=excluded.lang,
+                payload_json=excluded.payload_json,
+                created_at=CURRENT_TIMESTAMP,
+                expires_at=datetime(CURRENT_TIMESTAMP, '+' || ? || ' seconds')
+            """,
+            (cache_key, q, lang, payload_json, int(ttl_seconds), int(ttl_seconds)),
+        )
+
 
     # --------- trust score history ----------
     def get_trust_history(self, cluster_id: int, limit: int = 60) -> list[dict[str, Any]]:
