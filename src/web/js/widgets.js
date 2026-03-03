@@ -1919,25 +1919,46 @@ function renderPicker(){
 
     // Prefer backend proxy (supports more base currencies like UAH).
     const proxyUrl = `/api/market/fx?base=${encodeURIComponent(base)}&symbols=${encodeURIComponent(symbols.join(','))}`;
+    // Public fallback (CORS-friendly). Note: this provider often returns `conversion_rates`.
     const fallbackUrl = `https://open.er-api.com/v6/latest/${encodeURIComponent(base)}`;
 
-    (async () => {
-      let data = null;
-      try {
-        data = await fetchJsonCached(proxyUrl, 30_000);
-      } catch {
-        // Fallback: public endpoint (may not support all bases on all providers)
-        try { data = await fetchJsonCached(fallbackUrl, 30_000); } catch {}
+    function normalizeRates(payload){
+      if (!payload) return null;
+      const r = payload.rates || payload.conversion_rates || (payload.result === 'success' && payload.rates) || null;
+      if (!r || typeof r !== 'object') return null;
+      // Case-insensitive map: providers sometimes return lowercase keys.
+      const map = {};
+      for (const k in r){
+        if (!Object.prototype.hasOwnProperty.call(r, k)) continue;
+        map[String(k).toUpperCase()] = r[k];
       }
-      const rates = data && (data.rates || data?.result === 'success' && data?.rates) ? (data.rates) : null;
-      if (!rates) throw new Error('no_rates');
+      return map;
+    }
+
+    (async () => {
+      let payload = null;
+      let ratesMap = null;
+
+      // 1) Try server proxy
+      try{
+        payload = await fetchJsonCached(proxyUrl, 30_000);
+        ratesMap = normalizeRates(payload);
+        // If the proxy is up but upstream provider failed, it may return empty rates.
+        if (!ratesMap || Object.keys(ratesMap).length === 0) throw new Error('proxy_empty');
+      } catch {
+        // 2) Fallback to public endpoint
+        payload = await fetchJsonCached(fallbackUrl, 30_000);
+        ratesMap = normalizeRates(payload);
+      }
+
+      if (!ratesMap) throw new Error('no_rates');
 
       rows.innerHTML = "";
       symbols.forEach((sym) => {
-        const v = rates[sym];
+        const v = ratesMap[sym];
         const row = document.createElement("div");
         row.className = "kvRow";
-        row.innerHTML = `<div class="kvKey">${escapeHtml(sym)}</div><div class="kvVal">${formatNum(v)}</div>`;
+        row.innerHTML = `<div class="kvKey">${escapeHtml(sym)}</div><div class="kvVal">${(v == null ? "—" : formatNum(v))}</div>`;
         rows.appendChild(row);
       });
     })().catch(() => {
@@ -1974,7 +1995,8 @@ function renderPicker(){
 
       rows.innerHTML = "";
       coins.forEach((id) => {
-        const val = data && data[id] ? data[id][vs] : null;
+        const prices = (data && data.prices) ? data.prices : data;
+        const val = (prices && prices[id] && prices[id][vs] != null) ? prices[id][vs] : null;
         const row = document.createElement("div");
         row.className = "kvRow";
         row.innerHTML = `<div class="kvKey">${escapeHtml(coinLabel(id))}</div><div class="kvVal">${formatMoney(val, vs)}</div>`;
@@ -3345,21 +3367,26 @@ const filterRow = root.querySelector('[data-rh-filters]');
     return Math.max(a, Math.min(b, Math.round(n)));
   }
 
-  function formatNum(v){
-    const n = Number(v);
-    if (!Number.isFinite(n)) return "—";
+  function formatNum(x){
+    if (x === null || x === undefined) return "—";
+    const n = Number(x);
+    if (!Number.isFinite(n) || n <= 0) return "—";
+    // 3 decimals for FX
     return n.toFixed(3);
   }
 
-  function formatMoney(v, vs){
-    const n = Number(v);
-    if (!Number.isFinite(n)) return "—";
-    const sym = (String(vs||"").toLowerCase()==="usd") ? "$" :
-                (String(vs||"").toLowerCase()==="eur") ? "€" :
-                (String(vs||"").toLowerCase()==="gbp") ? "£" : "";
-    const abs = Math.abs(n);
-    const formatted = abs >= 1000 ? n.toFixed(0) : n.toFixed(2);
-    return sym ? `${sym}${formatted}` : formatted;
+  function formatMoney(x, vs){
+    if (x === null || x === undefined) return "—";
+    const n = Number(x);
+    if (!Number.isFinite(n) || n <= 0) return "—";
+    const c = (vs || "eur").toUpperCase();
+    // show no decimals for big numbers, 2 for smaller
+    const dec = n >= 100 ? 0 : 2;
+    try {
+      return new Intl.NumberFormat(undefined, { style: "currency", currency: c, maximumFractionDigits: dec, minimumFractionDigits: dec }).format(n);
+    } catch {
+      return `${c} ${n.toFixed(dec)}`;
+    }
   }
 
   function coinLabel(id){

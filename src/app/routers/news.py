@@ -1364,29 +1364,69 @@ async def set_email_alerts(request: Request, user=Depends(require_user)):
 # ----------------------------
 @router.get("/api/market/fx")
 def market_fx(base: str = "EUR", symbols: str = "USD,GBP,PLN,UAH"):
-    """Simple FX proxy with short server cache (no keys)."""
+    """Simple FX proxy with short server cache (no keys).
+
+    Primary: exchangerate.host (may occasionally be unavailable).
+    Fallback: open.er-api.com (CORS-friendly free endpoint).
+    """
     base_u = (base or "EUR").strip().upper()[:6]
     syms = [s.strip().upper() for s in (symbols or "").split(",") if s.strip()]
     syms = syms[:20]
+
     cache_key = f"fx:{base_u}:{','.join(syms)}"
     cached = _market_get_cached(cache_key, ttl=90)
     if cached is not None:
         return cached
 
-    # exchangerate.host is free and doesn't require an API key
-    url = "https://api.exchangerate.host/latest"
-    params = {"base": base_u, "symbols": ",".join(syms)}
+    def _filter_rates(rates: dict) -> dict:
+        if not rates:
+            return {}
+        if not syms:
+            return dict(rates)
+        out = {}
+        for s in syms:
+            if s in rates:
+                out[s] = rates[s]
+        return out
+
+    # 1) exchangerate.host
     try:
+        url = "https://api.exchangerate.host/latest"
+        params = {"base": base_u, "symbols": ",".join(syms)}
         r = requests.get(url, params=params, timeout=8)
         if not r.ok:
             raise RuntimeError(f"fx_http_{r.status_code}")
         j = r.json() or {}
-        out = {"base": base_u, "rates": j.get("rates") or {}, "date": j.get("date")}
+        rates = j.get("rates") or {}
+        rates = _filter_rates(rates)
+        if not rates:
+            raise RuntimeError("fx_empty_rates")
+        out = {"base": base_u, "rates": rates, "date": j.get("date"), "provider": "exchangerate.host"}
         _market_set_cached(cache_key, out)
         return out
     except Exception as e:
-        log_market.warning("fx proxy failed: %s", e)
-        return {"base": base_u, "rates": {}, "detail": "fx_unavailable"}
+        log_market.warning("fx proxy primary failed: %s", e)
+
+    # 2) Fallback provider: open.er-api.com
+    try:
+        url2 = f"https://open.er-api.com/v6/latest/{base_u}"
+        r2 = requests.get(url2, timeout=8)
+        if not r2.ok:
+            raise RuntimeError(f"fx2_http_{r2.status_code}")
+        j2 = r2.json() or {}
+        # Provider uses `rates` or `conversion_rates`
+        raw = j2.get("rates") or j2.get("conversion_rates") or {}
+        # Normalize keys to upper
+        rates2 = {str(k).upper(): v for k, v in (raw or {}).items()}
+        rates2 = _filter_rates(rates2)
+        if not rates2:
+            raise RuntimeError("fx2_empty_rates")
+        out2 = {"base": base_u, "rates": rates2, "date": j2.get("time_last_update_utc") or j2.get("time_last_update_unix"), "provider": "open.er-api.com"}
+        _market_set_cached(cache_key, out2)
+        return out2
+    except Exception as e:
+        log_market.warning("fx proxy fallback failed: %s", e)
+        raise HTTPException(status_code=503, detail="fx_unavailable")
 
 
 @router.get("/api/market/crypto")
