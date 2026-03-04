@@ -277,32 +277,44 @@ function buildTrustHistorySectionHtml(item) {
   const cid = Number(item.cluster_id ?? item.event_id);
   if (!Number.isFinite(cid)) return '';
 
+  const plan = String((typeof billingState !== 'undefined' && billingState && billingState.plan) ? billingState.plan : 'free').toLowerCase();
+  const locked = (plan === 'free');
+
   // We render a placeholder, then hydrate asynchronously from the server.
+  // In Free, the chart is visible as a blurred teaser with an upgrade CTA.
   return `
-    <div class="trustHistoryWrap" data-trust-cid="${cid}">
+    <div class="trustHistoryWrap ${locked ? 'isLocked' : ''}" data-trust-cid="${cid}">
       <div class="trustHistoryHeader">
         <div class="trustHistoryTitle">${t("ui.trust_score_history","Trust score history")}</div>
         <div class="trustChartControlsSlot" aria-hidden="true"></div>
       </div>
-      <div class="trustHistoryGrid">
-        <div class="trustChartCard">
-          <div class="trustChartLoading"></div>
-          <div class="trustTooltip" aria-hidden="true"></div>
+
+      <div class="trustHistoryLockFrame">
+        <div class="trustHistoryGrid">
+          <div class="trustChartCard">
+            <div class="trustChartLoading"></div>
+            <div class="trustTooltip" aria-hidden="true"></div>
+          </div>
+          <div class="trustStatsCard">
+            <div class="trustStatsRow"><span class="trustStatsLabel">${t("ui.current","Current")}</span><span class="trustStatsVal">—</span></div>
+            <div class="trustStatsRow"><span class="trustStatsLabel">${t("ui.highest","Highest")}</span><span class="trustStatsVal">—</span></div>
+            <div class="trustStatsRow"><span class="trustStatsLabel">${t("ui.lowest","Lowest")}</span><span class="trustStatsVal">—</span></div>
+            <div class="trustStatsDivider"></div>
+            <div class="trustStatsRow"><span class="trustStatsLabel">${t("ui.change","Change")}</span><span class="trustStatsVal">—</span></div>
+            <div class="trustStatsSub">${t("ui.since_publication","Since publication")}</div>
+          </div>
         </div>
-        <div class="trustStatsCard">
-          <div class="trustStatsRow"><span class="trustStatsLabel">${t("ui.current","Current")}</span><span class="trustStatsVal">—</span></div>
-          <div class="trustStatsRow"><span class="trustStatsLabel">${t("ui.highest","Highest")}</span><span class="trustStatsVal">—</span></div>
-          <div class="trustStatsRow"><span class="trustStatsLabel">${t("ui.lowest","Lowest")}</span><span class="trustStatsVal">—</span></div>
-          <div class="trustStatsDivider"></div>
-          <div class="trustStatsRow"><span class="trustStatsLabel">${t("ui.change","Change")}</span><span class="trustStatsVal">—</span></div>
-          <div class="trustStatsSub">${t("ui.since_publication","Since publication")}</div>
-        </div>
+        <div class="trustChartHint">${t("ui.chart_hint","Tip: scroll/pinch or use + / − to zoom, drag to pan, then tap a dot for details")}</div>
+
+        ${locked ? `
+          <div class="trustLockOverlay" role="button" tabindex="0" aria-label="Get Pro">
+            <button class="trustLockBtn" type="button">Get Pro</button>
+          </div>
+        ` : ''}
       </div>
-      <div class="trustChartHint">${t("ui.chart_hint","Tip: scroll/pinch or use + / − to zoom, drag to pan, then tap a dot for details")}</div>
     </div>
   `;
 }
-
 
 
 function applyTrackingStickyDeltas(items) {
@@ -421,11 +433,38 @@ function markSeen(items) {
 async function syncFavoritesToServer() {
   if (!authState.authenticated) return;
   const ids = getFavIds();
-  await fetch(`${API_BASE}/api/favorites/sync`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ids }),
-  });
+  try{
+    const res = await fetch(`${API_BASE}/api/favorites/sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+    if (!res.ok) return;
+
+    const j = await res.json().catch(()=>null);
+    if (j && Array.isArray(j.ids)) {
+      const serverIds = j.ids.map(x=>Number(x)).filter(x=>Number.isFinite(x));
+      // If server trimmed due to plan limit, accept server as source of truth.
+      try{
+        const cur = getFavIds();
+        const same = (cur.length === serverIds.length) && cur.every((v,i)=>v===serverIds[i]);
+        if (!same){
+          setFavIds(serverIds);
+        }
+      }catch{
+        try{ setFavIds(serverIds); }catch{}
+      }
+
+      if (j.trimmed) {
+        const max = (j.max == null) ? null : Number(j.max);
+        try{
+          if (typeof toast === 'function') toast(`🔒 Tracking limit reached${max ? ` (${max})` : ''}. Upgrade to add more.`);
+        }catch{}
+      }
+    }
+  }catch{
+    // ignore
+  }
 }
 
 async function pullFavoritesFromServerAndMerge() {
@@ -472,3 +511,66 @@ async function reconcileFavoritesOnLogin() {
     setFavIds([]);
   } catch {}
 }
+
+// Keep lock state in sync if billing changes without a full reload.
+function applyTrustLockState(){
+  try{
+    const plan = String(billingState?.plan || 'free').toLowerCase();
+    const locked = (plan === 'free');
+    for (const el of Array.from(document.querySelectorAll('.trustHistoryWrap'))){
+      el.classList.toggle('isLocked', locked);
+      const ov = el.querySelector('.trustLockOverlay');
+      if (locked){
+        if (!ov){
+          const frame = el.querySelector('.trustHistoryLockFrame');
+          if (frame){
+            const div = document.createElement('div');
+            div.className = 'trustLockOverlay';
+            div.setAttribute('role','button');
+            div.setAttribute('tabindex','0');
+            div.innerHTML = '<button class="trustLockBtn" type="button">Get Pro</button>';
+            frame.appendChild(div);
+          }
+        }
+      }else{
+        if (ov) ov.remove();
+      }
+    }
+  }catch{}
+}
+
+document.addEventListener('checkne:billingUpdated', ()=>{
+  applyTrustLockState();
+});
+
+// Upgrade CTA for locked charts (Free)
+function __trustGoPro(){
+  try{
+    const params = new URLSearchParams();
+    params.set('plan','pro');
+    const url = `/pricing?${params.toString()}`;
+    if (typeof window.__navigate === 'function') window.__navigate(url);
+    else location.href = url;
+  }catch{
+    try{ location.href = '/pricing?plan=pro'; }catch{}
+  }
+}
+
+document.addEventListener('click', (e)=>{
+  const t = e && e.target;
+  if (!(t instanceof Element)) return;
+  const btn = t.closest('.trustLockOverlay, .trustLockBtn');
+  if (!btn) return;
+  e.preventDefault();
+  e.stopPropagation();
+  __trustGoPro();
+}, { passive: false });
+
+document.addEventListener('keydown', (e)=>{
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const t = e && e.target;
+  if (!(t instanceof Element)) return;
+  if (!t.closest('.trustLockOverlay')) return;
+  e.preventDefault();
+  __trustGoPro();
+});

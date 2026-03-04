@@ -987,3 +987,89 @@ const dateStr = `${datePart}, ${timePart}`;
   }, true);
 }
 initTrustHistoryInteractions();
+
+
+/* =============================
+   Tracking: plan limits UI
+   Free=3, Pro=30, Analyst=∞
+   Shows a compact limit bar ONLY in Tracking view.
+   ============================= */
+
+function _trackingMaxForPlan(plan){
+  const p = String(plan || 'free').toLowerCase();
+  if (p === 'pro') return 30;
+  if (p === 'analyst') return Infinity;
+  return 3;
+}
+
+function _trackingPlanLabel(plan){
+  const p = String(plan || 'free').toLowerCase();
+  if (p === 'pro') return 'Pro';
+  if (p === 'analyst') return 'Analyst';
+  return 'Free';
+}
+
+function updateTrackingLimitBarUI(){
+  const bar = document.getElementById('trackingLimitBar');
+  if (!bar) return;
+
+  const inTracking = (typeof state !== 'undefined' && state && state.mode === 'fav');
+  const loggedIn = !!(typeof authState !== 'undefined' && authState && authState.authenticated);
+
+  // Only show inside Tracking view for logged-in users
+  if (!inTracking || !loggedIn){
+    bar.hidden = true;
+    return;
+  }
+
+  const plan = (typeof billingState !== 'undefined' && billingState) ? billingState.plan : (authState?.user?.plan || 'free');
+  const max = _trackingMaxForPlan(plan);
+  const label = _trackingPlanLabel(plan);
+
+  // Count from the canonical local storage list
+  let count = 0;
+  try{
+    if (typeof getFavIds === 'function') count = (getFavIds() || []).length;
+    else {
+      const raw = localStorage.getItem(getScopedFavKey());
+      const arr = raw ? JSON.parse(raw) : [];
+      count = Array.isArray(arr) ? arr.length : 0;
+    }
+  }catch{ count = 0; }
+
+  const sub = bar.querySelector('.tlSub');
+  const pill = bar.querySelector('.tlPill');
+  const fill = bar.querySelector('.tlFill');
+  const prog = bar.querySelector('.tlProg');
+
+  if (sub) sub.textContent = `${label} plan limit`;
+
+  const maxText = (max === Infinity) ? '∞' : String(max);
+  if (pill) pill.textContent = `${count}/${maxText}`;
+
+  // Progress
+  if (max === Infinity){
+    if (fill) fill.style.width = (count > 0 ? '22%' : '0%');
+    if (prog) prog.style.opacity = '0.45';
+    bar.classList.remove('isFull');
+  }else{
+    const pct = max > 0 ? Math.max(0, Math.min(100, (count / max) * 100)) : 0;
+    if (fill) fill.style.width = `${pct}%`;
+    if (prog) prog.style.opacity = '';
+    if (count >= max) bar.classList.add('isFull');
+    else bar.classList.remove('isFull');
+  }
+
+  bar.hidden = false;
+}
+
+// Keep limit bar synced with changes
+try{
+  document.addEventListener('checkne:favsChanged', updateTrackingLimitBarUI);
+  document.addEventListener('checkne:trackingUpdated', updateTrackingLimitBarUI);
+  document.addEventListener('checkne:billingUpdated', updateTrackingLimitBarUI);
+}catch{}
+
+// Initial sync
+try{ setTimeout(updateTrackingLimitBarUI, 0); }catch{}
+

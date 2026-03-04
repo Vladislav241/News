@@ -935,6 +935,22 @@ class Database:
             (cache_key,),
         )
 
+
+    def get_video_report_cache_stale(self, cache_key: str):
+        """Return cached payload_json even if expired (stale fallback).
+
+        Used when the upstream provider is down / quota-limited: we prefer showing
+        previously-cached results rather than an empty widget.
+        """
+        return self._fetchone(
+            """
+            SELECT payload_json, expires_at, created_at
+            FROM video_report_cache
+            WHERE cache_key = ?
+            """,
+            (cache_key,),
+        )
+
     def set_video_report_cache(self, cache_key: str, q: str, lang: str, payload_json: str, ttl_seconds: int = 6 * 3600):
         """Upsert cache entry with TTL (default 6 hours)."""
         return self._exec(

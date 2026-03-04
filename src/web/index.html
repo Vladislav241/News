@@ -690,7 +690,97 @@
     .trustChartSvg .ptHalo{ fill: rgba(0,0,0,0.06); }
     .trustChartSvg .pt.active .ptHalo{ fill: rgba(0,0,0,0.10); }
 
-    .newsCard.isLow .delta.up{ color: #22c55e; }
+    
+    /* -----------------------------
+       Tracking: Trust history lock (Free)
+       ----------------------------- */
+    .trustHistoryLockFrame{ position: relative; }
+    .trustHistoryWrap.isLocked .trustHistoryGrid,
+    .trustHistoryWrap.isLocked .trustChartHint{
+      filter: blur(9px);
+      opacity: .85;
+    }
+    .trustHistoryWrap.isLocked .trustChartControls{ filter: blur(8px); opacity: .55; pointer-events: none; }
+    .trustLockOverlay{
+      position: absolute;
+      inset: 0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      z-index: 6;
+      pointer-events: auto;
+    }
+    .trustLockOverlay::before{
+      content:"";
+      position:absolute;
+      inset: 0;
+      background: rgba(255,255,255,0.40);
+      border-radius: 18px;
+    }
+    .trustLockBtn{
+      position: relative;
+      z-index: 1;
+      appearance: none;
+      border: none;
+      background: #0b0b0f;
+      color: #fff;
+      font-weight: 800;
+      font-size: 16px;
+      padding: 14px 28px;
+      border-radius: 999px;
+      cursor: pointer;
+      box-shadow: 0 18px 40px rgba(0,0,0,0.14);
+    }
+    .trustLockBtn:hover{ transform: translateY(-1px); }
+    .trustLockBtn:active{ transform: translateY(0); }
+
+    /* -----------------------------
+   Tracking: limit bar (compact)
+   ----------------------------- */
+.trackingLimitBar{
+  border: 1px solid var(--stroke);
+  border-radius: 16px;
+  background: #fff;
+  padding: 10px 12px 10px;
+  margin: 10px 0 10px;
+  box-shadow: 0 10px 30px rgba(2,6,23,.05);
+  max-width: 1040px;
+  width: 100%;
+   margin: 15px auto 0;
+}
+.trackingLimitBarTop{ display:flex; align-items:center; justify-content:space-between; gap: 12px; }
+.trackingLimitBar .tlTitle{ font-weight: 900; font-size: 16px; letter-spacing: -0.02em; line-height: 1.05; }
+.trackingLimitBar .tlSub{ margin-top: 3px; color: rgba(0,0,0,0.52); font-size: 12px; line-height: 1.2; }
+.trackingLimitBar .tlPill{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.06);
+  color: rgba(0,0,0,0.78);
+  font-weight: 900;
+  font-size: 13px;
+  min-width: 64px;
+}
+.trackingLimitBar .tlProg{
+  margin-top: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.08);
+  overflow: hidden;
+}
+.trackingLimitBar .tlFill{
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: #0b0b0f;
+  transition: width .22s ease;
+}
+.trackingLimitBar.isFull .tlPill{
+  background: rgba(0,0,0,0.10);
+}
+.newsCard.isLow .delta.up{ color: #22c55e; }
     .newsCard.isLow .delta.down{ color: #ef4444; }
 
     .trackIconWrap{
@@ -4752,7 +4842,20 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
       </label>
     </div>
 
-    <div id="cards" class="cards"></div>
+    
+
+    <div id="trackingLimitBar" class="trackingLimitBar" hidden>
+      <div class="trackingLimitBarTop">
+        <div>
+          <div class="tlTitle">Tracking</div>
+          <div class="tlSub">Free plan limit</div>
+        </div>
+        <div class="tlPill">0/3</div>
+      </div>
+      <div class="tlProg"><div class="tlFill" style="width:0%"></div></div>
+    </div>
+
+<div id="cards" class="cards"></div>
   
   </div>
   <aside id="rightSidebar" class="sidebar" aria-label="Right widgets"></aside>
@@ -5021,13 +5124,13 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
       <a class="socialBtn" href="mailto:contact@checkne.com" aria-label="Email">
         <img src="/static/icons/gmailfooter.svg" alt="" />
       </a>
-      <a class="socialBtn" href="#" aria-label="TikTok" data-social="tiktok" onclick="return false;">
+      <a class="socialBtn" href="https://www.tiktok.com/@checkneee" aria-label="TikTok" target="_blank">
         <img src="/static/icons/tiktofooter.svg" alt="" />
       </a>
-      <a class="socialBtn" href="#" aria-label="Threads" data-social="threads" onclick="return false;">
+      <a class="socialBtn" href="https://www.threads.net/@checkneee" aria-label="Threads" target="_blank">
         <img src="/static/icons/tredsfooter.svg" alt="" />
       </a>
-      <a class="socialBtn" href="#" aria-label="X" data-social="x" onclick="return false;">
+      <a class="socialBtn" href="https://x.com/checkneee" aria-label="X" target="_blank">
         <img src="/static/icons/xfooter.svg" alt="" />
       </a>
     </div>

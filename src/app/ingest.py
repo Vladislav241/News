@@ -16,6 +16,7 @@ from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 from .ai import summarize_cluster
 from .clustering import canonical_cluster_key, match_cluster, normalize_title_for_key
 from .db import db
+from .video_report import prefetch_video_reports_for_clusters
 from .scoring import compute_credibility
 
 logger = logging.getLogger("news.ingest")
@@ -1528,6 +1529,26 @@ def run_ingest_cycle() -> dict[str, Any]:
             except Exception:
                 stats["errors"] += 1
                 logger.exception("summary failed for cluster_id=%s", cid)
+
+
+        # Prefetch Video Report for top clusters (warms DB cache; reduces YouTube calls on user open)
+        try:
+            max_prefetch = int(os.getenv("YT_PREFETCH_TOP_N", "6"))
+        except Exception:
+            max_prefetch = 6
+
+        if max_prefetch > 0:
+            try:
+                pf = prefetch_video_reports_for_clusters(
+                    cluster_ids=[int(x) for x in touched_sorted],
+                    lang_fallback="en",
+                    max_prefetch=max_prefetch,
+                    max_results=5,
+                )
+                stats["video_prefetch"] = pf
+            except Exception:
+                stats["errors"] += 1
+                logger.exception("video prefetch failed")
 
         try:
             cleanup = db.cleanup_old_data(keep_days=30)

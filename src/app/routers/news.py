@@ -4,6 +4,7 @@ import os
 
 import urllib.parse
 import json
+import html
 import hashlib
 import time
 from datetime import datetime, timedelta, timezone
@@ -1123,9 +1124,65 @@ def tracking_ack(payload: TrackingAck, user=Depends(require_user)) -> dict[str, 
 
 @router.post("/api/favorites/sync")
 def favorites_sync(payload: FavoriteSync, user=Depends(require_user)) -> dict[str, Any]:
+    """Sync the full Tracking list (favorites) for the current user.
+
+    Server-side enforces plan limits:
+      - free: 3
+      - pro: 30
+      - analyst: unlimited
+
+    The client should treat the server response as source of truth (e.g. if trimmed).
+    """
     db.ensure_schema()
-    db.upsert_user_favorites(int(user["id"]), payload.ids)
-    return {"status": "ok", "count": len(payload.ids)}
+    uid = int(user["id"])
+
+    # Determine plan (default: free)
+    plan = "free"
+    try:
+        sub = db.get_user_subscription(uid)
+        if sub and sub.get("plan"):
+            plan = str(sub.get("plan") or "free").lower()
+    except Exception:
+        plan = "free"
+
+    max_items: int | None
+    if plan == "analyst":
+        max_items = None  # unlimited
+    elif plan == "pro":
+        max_items = 30
+    else:
+        max_items = 3
+
+    # Normalize + de-dupe while preserving order
+    raw_ids = payload.ids or []
+    seen: set[int] = set()
+    norm: list[int] = []
+    for x in raw_ids:
+        try:
+            n = int(x)
+        except Exception:
+            continue
+        if n <= 0 or n in seen:
+            continue
+        seen.add(n)
+        norm.append(n)
+
+    trimmed = False
+    applied = norm
+    if max_items is not None and len(applied) > max_items:
+        applied = applied[:max_items]
+        trimmed = True
+
+    db.upsert_user_favorites(uid, applied)
+
+    return {
+        "status": "ok",
+        "count": len(applied),
+        "max": max_items,  # null => unlimited
+        "trimmed": trimmed,
+        "ids": applied,
+        "plan": plan,
+    }
 
 
 
@@ -1462,7 +1519,6 @@ def news_video(
     max_results: int = 5,
     cluster_id: Optional[int] = None,
     min_rating: Optional[int] = None,
-    story_score: Optional[float] = None,
     lang: str = "en",
 ):
     """
@@ -1474,41 +1530,23 @@ def news_video(
     - Score results so major news channels appear first
     """
     q_raw = (q or "").strip()
+    # Normalize query for cache-key stability (avoid cache misses due to spacing/HTML entities/casing).
+    q_norm = html.unescape(q_raw)
+    q_norm = ' '.join(q_norm.split()).strip().lower()
     if not q_raw:
         return {"items": [], "provider": "youtube", "detail": "missing_query"}
 
-    # Enforce minimum story rating when min_rating is provided (extra safety).
-    # IMPORTANT: Don't block video search if the backend has no stored score for the cluster yet.
-    # The frontend already gates this widget (e.g. 70+), so we only enforce when we have a real score.
+    # Enforce minimum story rating when cluster_id is provided (extra safety)    # Optional: block video search for low-rated clusters.
+    # IMPORTANT: Only enforce this if a real numeric rating is stored in DB.
     try:
-        if min_rating is not None:
-            eff_score: Optional[float] = None
-
-            # Prefer client-provided story_score (most reliable in practice).
-            if story_score is not None:
-                try:
-                    eff_score = float(story_score)
-                except Exception:
-                    eff_score = None
-
-            # Fallback: try DB cluster meta if we didn't get a score from the client.
-            if eff_score is None and cluster_id:
-                meta = db.get_cluster_meta(int(cluster_id)) or None
-                if meta:
-                    score = meta.get("score")
-                    if score is None:
-                        score = meta.get("importance") or meta.get("credibility")
-                    try:
-                        if score is not None:
-                            eff_score = float(score)
-                    except Exception:
-                        eff_score = None
-
-            # Enforce only if we actually have a score.
-            if eff_score is not None and float(eff_score) < float(min_rating):
+        if cluster_id and (min_rating is not None):
+            meta = db.get_cluster_meta(int(cluster_id)) or {}
+            score = meta.get("score") or meta.get("importance") or meta.get("credibility")
+            if score is not None and float(score) < float(min_rating):
                 return {"items": [], "provider": "youtube", "detail": "below_min_rating"}
     except Exception:
         pass
+
 
     key = os.getenv("YOUTUBE_API_KEY", "").strip()
     if not key:
@@ -1529,7 +1567,7 @@ def news_video(
     if cid_norm > 0:
         cache_basis = f"yt:v2:{lang_norm}:cid:{cid_norm}"
     else:
-        cache_basis = f"yt:v2:{lang_norm}:q:{q_raw.lower().strip()}"
+        cache_basis = f"yt:v2:{lang_norm}:q:{q_norm}"
     cache_key = hashlib.sha256(cache_basis.encode("utf-8")).hexdigest()
     try:
         hit = db.get_video_report_cache(cache_key)

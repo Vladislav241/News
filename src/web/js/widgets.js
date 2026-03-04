@@ -147,24 +147,71 @@ function getCurrentStory(){
 
   // Light caching helper to avoid hammering free APIs (and avoid rate-limits).
   const __wgCache = new Map(); // key -> { t:number, v:any }
-  async function fetchJsonCached(url, ttlMs){
-    const key = String(url);
-    const now = Date.now();
-    const ttl = Number(ttlMs) || 30_000;
-    const hit = __wgCache.get(key);
-    if (hit && (now - hit.t) < ttl) return hit.v;
-    const ctrl = new AbortController();
-    const to = setTimeout(() => ctrl.abort(), 9000);
-    try{
-      const r = await fetch(url, { signal: ctrl.signal, credentials:'omit' });
-      if (!r.ok) throw new Error('http_'+r.status);
-      const data = await r.json();
-      __wgCache.set(key, { t: now, v: data });
-      return data;
-    } finally {
-      clearTimeout(to);
-    }
+// JSON fetch with caching + request de-duplication.
+// - Memory cache (fast during a session)
+// - localStorage cache (survives reload; avoids re-hitting server)
+// - inflight de-dupe (prevents 2-10 identical requests on re-render)
+const __jsonCache = new Map();
+const __jsonInflight = new Map();
+
+function __lsKey(url) { return `__news_jsoncache__:${url}`; }
+
+function __lsGet(url, ttlMs) {
+  try {
+    const raw = localStorage.getItem(__lsKey(url));
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    if (!obj || typeof obj.t !== 'number') return null;
+    if ((Date.now() - obj.t) > ttlMs) return null;
+    return obj.v;
+  } catch (_) {
+    return null;
   }
+}
+
+function __lsSet(url, value) {
+  try {
+    const obj = { t: Date.now(), v: value };
+    // Guard against huge payloads; localStorage is limited.
+    const raw = JSON.stringify(obj);
+    if (raw.length > 200000) return; // ~200KB safety cap
+    localStorage.setItem(__lsKey(url), raw);
+  } catch (_) {
+    // ignore
+  }
+}
+
+async function fetchJsonCached(url, ttlMs = 5 * 60 * 1000) {
+  // 1) Memory
+  const hit = __jsonCache.get(url);
+  if (hit && (Date.now() - hit.t) < ttlMs) return hit.v;
+
+  // 2) localStorage
+  const lshit = __lsGet(url, ttlMs);
+  if (lshit != null) {
+    __jsonCache.set(url, { t: Date.now(), v: lshit });
+    return lshit;
+  }
+
+  // 3) Inflight de-dupe
+  if (__jsonInflight.has(url)) return await __jsonInflight.get(url);
+
+  const p = (async () => {
+    const res = await fetch(url, { credentials: 'include' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    __jsonCache.set(url, { t: Date.now(), v: data });
+    __lsSet(url, data);
+    return data;
+  })();
+
+  __jsonInflight.set(url, p);
+  try {
+    return await p;
+  } finally {
+    __jsonInflight.delete(url);
+  }
+}
 
   function getFeedItemsSafe(){
     try {
@@ -2767,7 +2814,7 @@ const maxResults = clamp(Number(settings?.max_results ?? 5), 1, 10);
 root.appendChild(box);
 
   const cid = Number(story.cluster_id || getCurrentClusterId() || 0) || 0;
-  const url = `${API_BASE}/api/news/video?q=${encodeURIComponent(story.title)}&max_results=${encodeURIComponent(String(maxResults))}&cluster_id=${encodeURIComponent(String(cid||''))}&min_rating=${encodeURIComponent(String(minRating))}&story_score=${encodeURIComponent(String(storyScore||''))}`;
+  const url = `${API_BASE}/api/news/video?q=${encodeURIComponent(story.title)}&max_results=${encodeURIComponent(String(maxResults))}&cluster_id=${encodeURIComponent(String(cid||''))}&min_rating=${encodeURIComponent(String(minRating))}`;
 
   let j = null;
   try {

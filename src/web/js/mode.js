@@ -94,6 +94,8 @@ async function switchMode(targetMode){
     // 4) обновляем UI + грузим данные
     applyTabs();
 
+
+    try{ if (typeof updateTrackingLimitBarUI === 'function') updateTrackingLimitBarUI(); }catch{}
     if(targetMode === 'fav'){
       await fetchFavorites();
     } else {
