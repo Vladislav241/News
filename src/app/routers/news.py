@@ -1462,6 +1462,7 @@ def news_video(
     max_results: int = 5,
     cluster_id: Optional[int] = None,
     min_rating: Optional[int] = None,
+    story_score: Optional[float] = None,
     lang: str = "en",
 ):
     """
@@ -1476,14 +1477,35 @@ def news_video(
     if not q_raw:
         return {"items": [], "provider": "youtube", "detail": "missing_query"}
 
-    # Enforce minimum story rating when cluster_id is provided (extra safety)
+    # Enforce minimum story rating when min_rating is provided (extra safety).
+    # IMPORTANT: Don't block video search if the backend has no stored score for the cluster yet.
+    # The frontend already gates this widget (e.g. 70+), so we only enforce when we have a real score.
     try:
-        if cluster_id and (min_rating is not None):
-            meta = db.get_cluster_meta(int(cluster_id)) or {}
-            score = meta.get("score")
-            if score is None:
-                score = meta.get("importance") or meta.get("credibility") or 0
-            if float(score or 0) < float(min_rating):
+        if min_rating is not None:
+            eff_score: Optional[float] = None
+
+            # Prefer client-provided story_score (most reliable in practice).
+            if story_score is not None:
+                try:
+                    eff_score = float(story_score)
+                except Exception:
+                    eff_score = None
+
+            # Fallback: try DB cluster meta if we didn't get a score from the client.
+            if eff_score is None and cluster_id:
+                meta = db.get_cluster_meta(int(cluster_id)) or None
+                if meta:
+                    score = meta.get("score")
+                    if score is None:
+                        score = meta.get("importance") or meta.get("credibility")
+                    try:
+                        if score is not None:
+                            eff_score = float(score)
+                    except Exception:
+                        eff_score = None
+
+            # Enforce only if we actually have a score.
+            if eff_score is not None and float(eff_score) < float(min_rating):
                 return {"items": [], "provider": "youtube", "detail": "below_min_rating"}
     except Exception:
         pass

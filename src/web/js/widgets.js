@@ -2767,7 +2767,7 @@ const maxResults = clamp(Number(settings?.max_results ?? 5), 1, 10);
 root.appendChild(box);
 
   const cid = Number(story.cluster_id || getCurrentClusterId() || 0) || 0;
-  const url = `${API_BASE}/api/news/video?q=${encodeURIComponent(story.title)}&max_results=${encodeURIComponent(String(maxResults))}&cluster_id=${encodeURIComponent(String(cid||''))}&min_rating=${encodeURIComponent(String(minRating))}`;
+  const url = `${API_BASE}/api/news/video?q=${encodeURIComponent(story.title)}&max_results=${encodeURIComponent(String(maxResults))}&cluster_id=${encodeURIComponent(String(cid||''))}&min_rating=${encodeURIComponent(String(minRating))}&story_score=${encodeURIComponent(String(storyScore||''))}`;
 
   let j = null;
   try {
