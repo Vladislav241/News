@@ -446,6 +446,7 @@ class Database:
                     interests_json TEXT,
                     country TEXT,
                     language TEXT,
+                    ui_json TEXT,
                     updated_at TEXT NOT NULL,
                     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
                 );
@@ -460,6 +461,14 @@ class Database:
                 )
             except Exception:
                 # Column likely already exists.
+                pass
+
+            # Lightweight migration for older installs: add ui_json to user_preferences if missing.
+            try:
+                conn.execute(
+                    "ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS ui_json TEXT"
+                )
+            except Exception:
                 pass
 
             conn.execute(
@@ -1214,7 +1223,14 @@ class Database:
             return None
         return self._fetchone("SELECT * FROM user_preferences WHERE user_id=?", (uid,))
 
-    def upsert_user_preferences(self, user_id: int, interests_json: str | None, country: str | None, language: str | None) -> None:
+    def upsert_user_preferences(
+        self,
+        user_id: int,
+        interests_json: str | None,
+        country: str | None,
+        language: str | None,
+        ui_json: str | None = None,
+    ) -> None:
         try:
             uid = int(user_id)
         except Exception:
@@ -1223,8 +1239,8 @@ class Database:
         # sqlite/postgres compatible upsert via UPDATE then INSERT fallback
         try:
             cur = self._exec(
-                "UPDATE user_preferences SET interests_json=?, country=?, language=?, updated_at=? WHERE user_id=?",
-                (interests_json, country, language, now, uid),
+                "UPDATE user_preferences SET interests_json=?, country=?, language=?, ui_json=?, updated_at=? WHERE user_id=?",
+                (interests_json, country, language, ui_json, now, uid),
             )
             if getattr(cur, "rowcount", 0) and int(cur.rowcount) > 0:
                 return
@@ -1232,15 +1248,15 @@ class Database:
             pass
         try:
             self._exec(
-                "INSERT INTO user_preferences(user_id, interests_json, country, language, updated_at) VALUES(?, ?, ?, ?, ?)",
-                (uid, interests_json, country, language, now),
+                "INSERT INTO user_preferences(user_id, interests_json, country, language, ui_json, updated_at) VALUES(?, ?, ?, ?, ?, ?)",
+                (uid, interests_json, country, language, ui_json, now),
             )
         except Exception:
             # As a last resort: try an update again
             try:
                 self._exec(
-                    "UPDATE user_preferences SET interests_json=?, country=?, language=?, updated_at=? WHERE user_id=?",
-                    (interests_json, country, language, now, uid),
+                    "UPDATE user_preferences SET interests_json=?, country=?, language=?, ui_json=?, updated_at=? WHERE user_id=?",
+                    (interests_json, country, language, ui_json, now, uid),
                 )
             except Exception:
                 return

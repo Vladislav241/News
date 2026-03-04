@@ -439,3 +439,126 @@ async function setLanguage(lang, { persist = true, refetch = true } = {}) {
   }
 }
 
+
+
+
+// =========================
+// Premium upgrade modal (Tracking limit)
+// =========================
+(function(){
+  function _planLabel(p){
+    const s = String(p||'free').toLowerCase();
+    if(s==='analyst') return 'Analyst';
+    if(s==='pro') return 'Pro';
+    return 'Free';
+  }
+  function _recommend(plan){
+    const p = String(plan||'free').toLowerCase();
+    if(p==='free') return 'pro';
+    if(p==='pro') return 'analyst';
+    return null;
+  }
+
+  function closeUpgradeModal(){
+    const m = document.getElementById('upgradeModal');
+    if(!m) return;
+    m.classList.remove('is-open');
+    m.setAttribute('aria-hidden','true');
+    document.body.classList.remove('ckModalOpen');
+  }
+
+  function openUpgradeModal(opts){
+    const m = document.getElementById('upgradeModal');
+    if(!m) return;
+
+    const plan = (opts && opts.plan) ? String(opts.plan).toLowerCase() : (billingState?.plan || 'free');
+    const max  = (opts && Object.prototype.hasOwnProperty.call(opts,'max')) ? opts.max : null;
+
+    const reco = (opts && opts.recommend) ? String(opts.recommend).toLowerCase() : _recommend(plan);
+    const planLabel = _planLabel(plan);
+    const recoLabel = reco ? _planLabel(reco) : '—';
+
+    const titleEl = document.getElementById('upgradeModalTitle');
+    const descEl  = document.getElementById('upgradeModalDesc');
+    const eyebrow = document.getElementById('upgradeModalEyebrow');
+    const planPill = document.getElementById('upgradeModalPlanPill');
+    const limitEl = document.getElementById('upgradeModalLimit');
+    const recoPill = document.getElementById('upgradeModalRecoPill');
+    const cta = document.getElementById('upgradeModalCta');
+
+    if(eyebrow) eyebrow.textContent = 'Tracking limit reached';
+
+    if(titleEl){
+      if(reco){
+        titleEl.textContent = `Upgrade to ${_planLabel(reco)}`;
+      }else{
+        titleEl.textContent = 'Tracking limit reached';
+      }
+    }
+
+    if(descEl){
+      if(reco){
+        descEl.textContent = `You’ve hit your ${planLabel} limit. Upgrade to ${_planLabel(reco)} to track more stories without removing anything.`;
+      }else{
+        descEl.textContent = `You’ve hit your current plan limit.`;
+      }
+    }
+
+    if(planPill) planPill.textContent = planLabel;
+    if(recoPill) recoPill.textContent = recoLabel;
+
+    if(limitEl){
+      if(max === null || typeof max === 'undefined'){
+        limitEl.textContent = '—';
+      }else if(max === 0){
+        limitEl.textContent = '0';
+      }else if(max === -1){
+        limitEl.textContent = 'Unlimited';
+      }else{
+        limitEl.textContent = (max === null) ? 'Unlimited' : String(max);
+      }
+      if(max === null) limitEl.textContent = 'Unlimited';
+    }
+
+    if(cta){
+      cta.textContent = reco ? `See ${_planLabel(reco)} plans` : 'See plans';
+      cta.onclick = ()=> {
+        closeUpgradeModal();
+        try{
+          // Prefer existing router if present
+          if(typeof window.__setMainPage === 'function'){
+            window.history.pushState({}, '', '/pricing');
+            window.__setMainPage('pricing');
+          }else{
+            window.location.href = '/pricing';
+          }
+        }catch{
+          window.location.href = '/pricing';
+        }
+      };
+    }
+
+    // Open
+    m.classList.add('is-open');
+    m.setAttribute('aria-hidden','false');
+    document.body.classList.add('ckModalOpen');
+
+    // close handlers
+    const closers = m.querySelectorAll('[data-ck-close="1"]');
+    closers.forEach(el => {
+      el.onclick = (e)=>{ e.preventDefault(); closeUpgradeModal(); };
+    });
+
+    // Escape key
+    function onKey(e){
+      if(e.key === 'Escape'){
+        closeUpgradeModal();
+        window.removeEventListener('keydown', onKey, true);
+      }
+    }
+    window.addEventListener('keydown', onKey, true);
+  }
+
+  window.openUpgradeModal = openUpgradeModal;
+  window.closeUpgradeModal = closeUpgradeModal;
+})();

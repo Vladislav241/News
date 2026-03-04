@@ -270,8 +270,46 @@ async function fetchPrefsFromServer(){
       interests: Array.isArray(p.interests) ? p.interests : undefined,
       country: (typeof p.country === 'string') ? p.country : undefined,
       language: (typeof p.language === 'string') ? p.language : undefined,
+      ui: (p.ui && typeof p.ui === 'object') ? p.ui : undefined,
     };
   }catch{ return null; }
+}
+
+function _applyUiPrefs(ui, { persistLocal = true } = {}){
+  if (!ui || typeof ui !== 'object') return;
+  try{
+    if (typeof ui.showThumbs === 'boolean') state.showThumbs = ui.showThumbs;
+    if (ui.filters && typeof ui.filters === 'object'){
+      const f = ui.filters;
+      const so = String(f.sortOrder || state.filters.sortOrder || 'newest');
+      state.filters.sortOrder = (so === 'low' || so === 'high' || so === 'newest') ? so : 'newest';
+      state.filters.minScore = clamp(Number(f.minScore ?? state.filters.minScore ?? 0), 0, 100);
+      state.filters.maxScore = clamp(Number(f.maxScore ?? state.filters.maxScore ?? 100), 0, 100);
+      state.filters.onlyConfirmed = !!f.onlyConfirmed;
+      state.filters.onlyAiSummary = !!f.onlyAiSummary;
+    }
+  }catch{}
+
+  if (persistLocal){
+    try { saveThumbPrefs(); } catch {}
+    try { saveFilters(); } catch {}
+  }
+
+  // Widgets layout is owned by widgets.js. Apply it if available.
+  try{
+    if (ui.widgets && typeof ui.widgets === 'object'){
+      if (typeof window.checkneApplyWidgetsLayout === 'function'){
+        window.checkneApplyWidgetsLayout(ui.widgets, { persistLocal });
+      }else{
+        // widgets.js not loaded yet — stash and apply on init.
+        window.__checknePendingWidgetsLayout = ui.widgets;
+      }
+    }
+  }catch{}
+
+  // If UI is already initialized, sync UI controls.
+  try { if (typeof syncFiltersStateToUI === 'function') syncFiltersStateToUI(); } catch {}
+  try { if (typeof renderTags === 'function') renderTags(); } catch {}
 }
 
 function applyPrefsObject(p, { persistLocal = true } = {}){
@@ -290,6 +328,9 @@ function applyPrefsObject(p, { persistLocal = true } = {}){
     try { savePrefs(); } catch {}
     _prefsSuppressRemoteSave = false;
   }
+
+  // UI preferences (filters/widgets/thumbs) are stored per account too.
+  try { _applyUiPrefs(p.ui, { persistLocal }); } catch {}
 }
 
 async function syncPrefsFromServer(){
@@ -333,6 +374,50 @@ function savePrefs() {
   }catch{}
 }
 
+// --- Account-scoped UI preferences (filters/widgets/thumbs) ---
+let _uiRemoteSaveTimer = null;
+function _collectUiPrefs(){
+  const ui = {
+    showThumbs: !!state.showThumbs,
+    filters: {
+      sortOrder: String(state.filters?.sortOrder || 'newest'),
+      minScore: Number(state.filters?.minScore ?? 0),
+      maxScore: Number(state.filters?.maxScore ?? 100),
+      onlyConfirmed: !!state.filters?.onlyConfirmed,
+      onlyAiSummary: !!state.filters?.onlyAiSummary,
+    },
+  };
+  try{
+    if (typeof window.checkneGetWidgetsLayout === 'function'){
+      const w = window.checkneGetWidgetsLayout();
+      if (w && typeof w === 'object') ui.widgets = w;
+    }
+  }catch{}
+  return ui;
+}
+
+function requestSaveUiPrefs(){
+  if (!authState || !authState.authenticated) return;
+  try{
+    if (_uiRemoteSaveTimer) clearTimeout(_uiRemoteSaveTimer);
+    _uiRemoteSaveTimer = setTimeout(async ()=>{
+      try{
+        const interests = [...new Set((state.interests || []).map(String))].filter(Boolean);
+        const ui = _collectUiPrefs();
+        await fetch(`${API_BASE}/api/preferences`, {
+          method:'POST',
+          headers:{ 'Content-Type':'application/json' },
+          credentials:'include',
+          body: JSON.stringify({ interests, country: state.country, language: state.language, ui })
+        });
+      }catch{}
+    }, 350);
+  }catch{}
+}
+
+// Expose for widgets.js (and others)
+window.checkneRequestSaveUiPrefs = requestSaveUiPrefs;
+
 function loadFilters() {
   try {
     const raw = localStorage.getItem(FILTERS_KEY);
@@ -349,6 +434,7 @@ function loadFilters() {
 
 function saveFilters() {
   localStorage.setItem(FILTERS_KEY, JSON.stringify(state.filters));
+  try { requestSaveUiPrefs(); } catch {}
 }
 
 function loadThumbPrefs() {
@@ -363,6 +449,7 @@ function saveThumbPrefs() {
   try {
     localStorage.setItem(THUMBS_KEY, state.showThumbs ? '1' : '0');
   } catch {}
+  try { requestSaveUiPrefs(); } catch {}
 }
 
 function applyFiltersUIToState() {

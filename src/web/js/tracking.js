@@ -450,6 +450,12 @@ async function syncFavoritesToServer() {
         const same = (cur.length === serverIds.length) && cur.every((v,i)=>v===serverIds[i]);
         if (!same){
           setFavIds(serverIds);
+        // Show upgrade modal if server trimmed due to plan limit.
+        try{
+          if (j && j.trimmed && typeof window.openUpgradeModal === 'function'){
+            window.openUpgradeModal({ plan: j.plan || (billingState?.plan || 'free'), max: (typeof j.max === 'undefined' ? null : j.max) });
+          }
+        }catch{}
         }
       }catch{
         try{ setFavIds(serverIds); }catch{}

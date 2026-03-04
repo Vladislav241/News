@@ -1068,6 +1068,12 @@ function uid(){
 function saveLayout(){
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state.layout));
     try { localStorage.setItem(INIT_KEY, '1'); } catch {}
+
+    // Persist layout to the backend as part of account-scoped UI prefs
+    // so the same account has identical widgets across devices.
+    try {
+      if (typeof window.checkneRequestSaveUiPrefs === 'function') window.checkneRequestSaveUiPrefs();
+    } catch {}
   }
 
   const state = {
@@ -1075,6 +1081,52 @@ function saveLayout(){
     drag: null, // {id, fromSide, fromIndex}
     modal: { open:false, mode:"pick", side:"left", widgetId:null },
     mobile: { activeKey: null, activeId: null } // currently opened widget (mobile sheet)
+  };
+
+  // Export/Import helpers for account-scoped preferences.
+  function deepClone(obj){
+    try { return JSON.parse(JSON.stringify(obj)); } catch { return obj; }
+  }
+
+  function normalizeIncomingLayout(layout){
+    if (!layout || typeof layout !== 'object') return null;
+    const out = { left: Array.isArray(layout.left) ? layout.left : [], right: Array.isArray(layout.right) ? layout.right : [] };
+
+    const normalizeList = (arr) => {
+      return (arr || [])
+        .filter(w => w && typeof w === 'object')
+        .map(w => {
+          const type = String(w.type || "");
+          const def = WIDGETS[type];
+          if (!def) return null;
+          const settings = (w.settings && typeof w.settings === "object") ? w.settings : { ...(def.defaults || {}) };
+          return { id: String(w.id || uid()), type, settings };
+        })
+        .filter(Boolean);
+    };
+
+    out.left = clampPerSide(normalizeList(out.left));
+    out.right = clampPerSide(normalizeList(out.right));
+    clampGlobal(out);
+    return out;
+  }
+
+  window.checkneGetWidgetsLayout = function(){
+    try { return deepClone(state.layout); } catch { return null; }
+  };
+
+  window.checkneApplyWidgetsLayout = function(layout, opts){
+    const persistLocal = !(opts && opts.persistLocal === false);
+    const norm = normalizeIncomingLayout(layout);
+    if (!norm) return false;
+    state.layout = norm;
+    if (persistLocal) {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.layout)); } catch {}
+      try { localStorage.setItem(INIT_KEY, '1'); } catch {}
+    }
+    try { renderAll(); } catch {}
+    try { updateMobileDock(); } catch {}
+    return true;
   };
 
   // ===== Mobile (phone) UI =====
@@ -1446,6 +1498,16 @@ function saveLayout(){
     if (!left || !right) return;
 
     state.layout = loadLayout();
+
+    // If mode.js fetched account-scoped UI prefs before widgets.js initialized,
+    // it may have stashed a pending layout here.
+    try {
+      const pending = window.__checknePendingWidgetsLayout;
+      if (pending && typeof pending === 'object'){
+        const applied = window.checkneApplyWidgetsLayout(pending, { persistLocal: true });
+        if (applied) window.__checknePendingWidgetsLayout = null;
+      }
+    } catch {}
     renderAll();
 
     // Hard reload (Cmd+Shift+R) can cause widgets to render before some app state is ready.

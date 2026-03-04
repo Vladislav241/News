@@ -382,7 +382,7 @@ function setMainFeed(){
     // Widgets: only show on the main feed page (Tracking tab is handled in mode.js).
     try{
       if (typeof window.__setWidgetsEnabled === 'function'){
-        window.__setWidgetsEnabled(page === 'feed');
+        window.__setWidgetsEnabled(page === 'feed' && (typeof state !== 'undefined' ? state.mode === 'feed' : true));
       }
     }catch{}
 

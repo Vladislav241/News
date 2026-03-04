@@ -1443,16 +1443,26 @@ function bindUI() {
   const tabFeed = qs('tabFeed');
   const tabFav  = qs('tabFav');
   if (tabFeed) tabFeed.onclick = () => { void setMode('feed'); };
-  if (tabFav)  tabFav.onclick  = () => { void setMode('fav'); };
+  if (tabFav)  tabFav.onclick  = () => { try { if (typeof window.__navigate === 'function') window.__navigate('/tracking'); else void setMode('fav'); } catch(_) { void setMode('fav'); } };
 
   const btnTracking = document.getElementById('btnTracking');
   if (btnTracking) {
     btnTracking.onclick = (e) => {
       e.preventDefault();
       e.stopPropagation();
-      // Always open Tracking.
-      // Do NOT toggle back to Feed on a second tap — this was causing accidental exits.
+
+      // Always route to /tracking so it works from ANY page (pricing/profile/info).
+      try{
+        if (typeof window.__navigate === 'function') { window.__navigate('/tracking'); return; }
+      }catch{}
+
+      // Fallback: ensure the main feed view is visible, then switch mode.
+      try{ if (typeof setPage === 'function') setPage('feed'); }catch{}
       if (state.mode !== 'fav') void setMode('fav');
+      else {
+        try{ applyTabs(); }catch{}
+        try{ if (typeof fetchFavorites === 'function') fetchFavorites(); }catch{}
+      }
     };
   }
 

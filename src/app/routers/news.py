@@ -8,7 +8,7 @@ import html
 import hashlib
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any, Optional, Dict
 
 from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
@@ -186,7 +186,7 @@ class FavoriteSync(BaseModel):
     ids: list[int] = []
 
 
-def _safe_json_load(s: str | None) -> dict[str, Any] | None:
+def _safe_json_load(s: Optional[str]) -> Optional[Dict[str, Any]]:
     try:
         if not s:
             return None
