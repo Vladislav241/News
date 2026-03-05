@@ -177,9 +177,12 @@ def _hours_ago_iso(hours: int) -> str:
 
 
 class Preferences(BaseModel):
+    # All fields are optional-ish: the frontend sometimes saves only UI prefs.
     interests: list[str] = []
     country: str = "world"
     language: str = "en"
+    # UI prefs (widgets layout, filters, thumbs) — stored per account to sync across devices.
+    ui: Optional[Dict[str, Any]] = None
 
 
 class FavoriteSync(BaseModel):
@@ -519,11 +522,14 @@ def get_preferences(user=Depends(get_current_user_optional)) -> dict:
     if not interests:
         interests = defaults["interests"]
 
+    ui = _safe_json_load(row.get("ui_json"))
     prefs = {
         "interests": interests,
         "country": (row.get("country") or defaults["country"]),
         "language": (row.get("language") or defaults["language"]),
     }
+    if ui:
+        prefs["ui"] = ui
     return {"status": "ok", "preferences": prefs, "scope": "user"}
 
 
@@ -538,8 +544,26 @@ def save_preferences(p: Preferences, user=Depends(require_user)) -> dict:
     country = (p.country or "world").strip().lower() or "world"
     language = (p.language or "en").strip().lower() or "en"
 
-    db.upsert_user_preferences(int(user["id"]), json.dumps(interests), country, language)
-    return {"status": "ok", "saved": {"interests": interests, "country": country, "language": language}}
+    uid = int(user["id"])
+    # Preserve existing UI prefs unless the client explicitly sends `ui`.
+    existing = db.get_user_preferences(uid)
+    ui_json_existing = (existing or {}).get("ui_json")
+    ui_json_new: Optional[str] = ui_json_existing
+    if p.ui is not None:
+        # Guardrail: keep UI prefs reasonably small (prevents abuse and DB bloat).
+        try:
+            ui_json_new = json.dumps(p.ui, ensure_ascii=False)
+            if len(ui_json_new) > 50_000:
+                raise ValueError("ui too large")
+        except Exception:
+            ui_json_new = ui_json_existing
+
+    db.upsert_user_preferences(uid, json.dumps(interests), country, language, ui_json_new)
+    saved = {"interests": interests, "country": country, "language": language}
+    ui_obj = _safe_json_load(ui_json_new)
+    if ui_obj:
+        saved["ui"] = ui_obj
+    return {"status": "ok", "saved": saved}
 
 
 
