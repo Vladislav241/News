@@ -1,0 +1,72 @@
+{
+  "reuters.com": {
+    "bias": "center",
+    "confidence": 0.9,
+    "source": "dataset"
+  },
+  "apnews.com": {
+    "bias": "center",
+    "confidence": 0.9,
+    "source": "dataset"
+  },
+  "associatedpress.com": {
+    "bias": "center",
+    "confidence": 0.9,
+    "source": "dataset"
+  },
+  "bbc.co.uk": {
+    "bias": "center",
+    "confidence": 0.7,
+    "source": "dataset"
+  },
+  "bbc.com": {
+    "bias": "center",
+    "confidence": 0.7,
+    "source": "dataset"
+  },
+  "cnn.com": {
+    "bias": "left",
+    "confidence": 0.75,
+    "source": "dataset"
+  },
+  "msnbc.com": {
+    "bias": "left",
+    "confidence": 0.8,
+    "source": "dataset"
+  },
+  "theguardian.com": {
+    "bias": "left",
+    "confidence": 0.8,
+    "source": "dataset"
+  },
+  "foxnews.com": {
+    "bias": "right",
+    "confidence": 0.85,
+    "source": "dataset"
+  },
+  "dailycaller.com": {
+    "bias": "right",
+    "confidence": 0.75,
+    "source": "dataset"
+  },
+  "wsj.com": {
+    "bias": "center",
+    "confidence": 0.65,
+    "source": "dataset"
+  },
+  "nytimes.com": {
+    "bias": "left",
+    "confidence": 0.75,
+    "source": "dataset"
+  },
+  "washingtonpost.com": {
+    "bias": "left",
+    "confidence": 0.7,
+    "source": "dataset"
+  },
+  "theepochtimes.com": {
+    "bias": "right",
+    "confidence": 0.75,
+    "source": "dataset"
+  }
+}

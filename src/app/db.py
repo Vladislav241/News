@@ -502,7 +502,35 @@ class Database:
                 );
             """)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_video_report_cache_expires ON video_report_cache(expires_at);")
-            conn.commit()
+            
+            # --- Media Bias widget tables ---
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS source_bias (
+                    domain TEXT PRIMARY KEY,
+                    bias TEXT NOT NULL,
+                    confidence REAL NOT NULL DEFAULT 0,
+                    source TEXT NOT NULL DEFAULT 'unknown',
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_source_bias_bias ON source_bias(bias);")
+
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS media_bias_cache (
+                    cache_key TEXT PRIMARY KEY,
+                    cluster_id BIGINT NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    expires_at TEXT NOT NULL
+                );
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_media_bias_cache_expires ON media_bias_cache(expires_at);")
+        conn.commit()
 
     def get_user_subscription(self, user_id: int) -> Optional[dict[str, Any]]:
         conn = self.connect()
@@ -992,6 +1020,62 @@ class Database:
             (int(cluster_id), limit),
         )
         return [dict(r) for r in rows]
+
+    # -----------------
+    # Media Bias widget: source_bias + media_bias_cache
+    # -----------------
+
+    def get_source_bias(self, domain: str) -> Optional[dict[str, Any]]:
+        row = self.connect().fetchone(
+            """
+            SELECT domain, bias, confidence, source, created_at, updated_at
+            FROM source_bias
+            WHERE domain = ?
+            """,
+            (domain,),
+        )
+        return dict(row) if row else None
+
+    def upsert_source_bias(self, domain: str, bias: str, confidence: float = 0.0, source: str = "unknown") -> None:
+        self._exec(
+            """
+            INSERT INTO source_bias (domain, bias, confidence, source, created_at, updated_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ON CONFLICT(domain) DO UPDATE SET
+                bias=excluded.bias,
+                confidence=excluded.confidence,
+                source=excluded.source,
+                updated_at=CURRENT_TIMESTAMP
+            """,
+            (domain, bias, float(confidence), source),
+        )
+
+    def get_media_bias_cache(self, cache_key: str) -> Optional[str]:
+        row = self.connect().fetchone(
+            """
+            SELECT payload_json
+            FROM media_bias_cache
+            WHERE cache_key = ?
+              AND expires_at > CURRENT_TIMESTAMP
+            """,
+            (cache_key,),
+        )
+        return row["payload_json"] if row else None
+
+    def set_media_bias_cache(self, cache_key: str, cluster_id: int, payload_json: str, ttl_seconds: int = 3 * 3600) -> None:
+        self._exec(
+            """
+            INSERT INTO media_bias_cache (cache_key, cluster_id, payload_json, created_at, expires_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP, datetime(CURRENT_TIMESTAMP, '+' || ? || ' seconds'))
+            ON CONFLICT(cache_key) DO UPDATE SET
+                cluster_id=excluded.cluster_id,
+                payload_json=excluded.payload_json,
+                created_at=CURRENT_TIMESTAMP,
+                expires_at=datetime(CURRENT_TIMESTAMP, '+' || ? || ' seconds')
+            """,
+            (cache_key, int(cluster_id), payload_json, int(ttl_seconds), int(ttl_seconds)),
+        )
+
 
     def get_latest_trust_history_point(self, cluster_id: int) -> Optional[dict[str, Any]]:
         return self._fetchone(

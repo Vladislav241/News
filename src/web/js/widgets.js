@@ -33,7 +33,8 @@
     headlines: "/static/icons/TopHeadlines.svg",
     tracking_stats: "/static/icons/TrackingStats.svg",
     market_clock: "/static/icons/MarketClock.svg",
-  };
+      media_bias: "/static/icons/Perspective.svg",
+};
 
   const PRO_ICON_POOL = [
     "/static/icons/FxRates.svg",
@@ -305,7 +306,146 @@ async function fetchJsonCached(url, ttlMs = 5 * 60 * 1000) {
     return parts.length ? parts.join(' · ') : 'velocity + importance + key terms';
   }
 
-  const WIDGETS = {
+  
+
+function renderMediaBias(root, settings){
+  // Widget reads the "current cluster" from the feed (set in feed.js on card open).
+  const getClusterId = () => {
+    try { if (typeof window.__currentClusterId !== 'undefined' && window.__currentClusterId) return Number(window.__currentClusterId) || null; } catch {}
+    try {
+      const s = localStorage.getItem('checkne_current_cluster');
+      const n = s && /^\d+$/.test(s) ? Number(s) : null;
+      return n && n > 0 ? n : null;
+    } catch {}
+    return null;
+  };
+
+  const clusterId = getClusterId();
+  root.innerHTML = `<div class="muted" style="font-size:13px;">${clusterId ? 'Loading…' : 'Open a story to see bias.'}</div>`;
+
+  if (!clusterId) return;
+
+  const url = `/api/widgets/media-bias?cluster_id=${encodeURIComponent(String(clusterId))}`;
+
+  fetch(url, { credentials: 'include' })
+    .then(r => r.json().catch(()=>null))
+    .then(payload => {
+      const data = payload && payload.data;
+      if (!data){
+        const reason = (payload && payload.reason) ? String(payload.reason) : 'not_available';
+        const msg = (reason === 'not_enough_sources' || reason === 'not_enough_bias_data')
+          ? 'Not enough data to estimate media bias for this story.'
+          : 'Bias data is not available yet.';
+        root.innerHTML = `<div class="muted" style="font-size:13px; line-height:1.35;">${escapeHtml(msg)}</div>`;
+        return;
+      }
+
+      const leftP = clamp(Number(data.left?.percent || 0), 0, 100);
+      const centerP = clamp(Number(data.center?.percent || 0), 0, 100);
+      const rightP = clamp(Number(data.right?.percent || 0), 0, 100);
+
+      const leftC = Number(data.left?.count || 0) || 0;
+      const centerC = Number(data.center?.count || 0) || 0;
+      const rightC = Number(data.right?.count || 0) || 0;
+
+      const conf = String(data.confidence || '').toLowerCase();
+      const confLabel = conf ? conf.charAt(0).toUpperCase() + conf.slice(1) : '';
+
+      const bar = `
+        <div class="mbBar" role="img" aria-label="Media bias distribution">
+          <div class="mbSeg mbLeft" style="width:${leftP}%;"></div>
+          <div class="mbSeg mbCenter" style="width:${centerP}%;"></div>
+          <div class="mbSeg mbRight" style="width:${rightP}%;"></div>
+        </div>
+      `;
+
+      const stats = `
+        
+        <div class="mbStats">
+          <div class="mbStat">
+            <span class="mbDot mbLeft"></span>
+            <span class="mbLabel"><b>Left</b> ${leftC} sources</span>
+            <span class="mbPct">${leftP}%</span>
+          </div>
+          <div class="mbStat">
+            <span class="mbDot mbCenter"></span>
+            <span class="mbLabel"><b>Center</b> ${centerC} sources</span>
+            <span class="mbPct">${centerP}%</span>
+          </div>
+          <div class="mbStat">
+            <span class="mbDot mbRight"></span>
+            <span class="mbLabel"><b>Right</b> ${rightC} sources</span>
+            <span class="mbPct">${rightP}%</span>
+          </div>
+        </div>
+      `;
+
+      const toggleBtn = `<button type="button" class="mbToggleBtn">Show sources</button>`;
+      const detailsWrap = `<div class="mbDetails" style="display:none;"></div>`;
+
+      root.innerHTML = `
+        <div class="mbTop">
+          ${bar}
+          ${stats}
+          <div class="mbMeta">
+            ${confLabel ? `<span class="chip">Confidence: <b>${escapeHtml(confLabel)}</b></span>` : ''}
+          </div>
+          <div class="mbActions">${toggleBtn}</div>
+          ${detailsWrap}
+        </div>
+      `;
+
+      const btn = root.querySelector('.mbToggleBtn');
+      const details = root.querySelector('.mbDetails');
+
+      function renderSourceList(list){
+        const items = (list || []).map((x) => {
+          const dom = escapeHtml(String(x.domain || ''));
+          const nm = (x.names && x.names.length) ? escapeHtml(String(x.names[0] || dom)) : dom;
+          return `<li><span class="mbSrcName">${nm}</span><span class="mbSrcDomain">${dom}</span></li>`;
+        }).join('');
+        return `<ul class="mbSrcList">${items || '<li class="muted">—</li>'}</ul>`;
+      }
+
+      function buildDetails(){
+        const leftList = renderSourceList(data.left?.sources || []);
+        const centerList = renderSourceList(data.center?.sources || []);
+        const rightList = renderSourceList(data.right?.sources || []);
+
+        return `
+          <div class="mbGroup">
+            <div class="mbGroupTitle"><span class="mbDot mbLeft"></span>Left</div>
+            ${leftList}
+          </div>
+          <div class="mbGroup">
+            <div class="mbGroupTitle"><span class="mbDot mbCenter"></span>Center</div>
+            ${centerList}
+          </div>
+          <div class="mbGroup">
+            <div class="mbGroupTitle"><span class="mbDot mbRight"></span>Right</div>
+            ${rightList}
+          </div>
+        `;
+      }
+
+      if (btn && details){
+        btn.addEventListener('click', () => {
+          const isOpen = details.style.display !== 'none';
+          details.style.display = isOpen ? 'none' : 'block';
+          btn.textContent = isOpen ? 'Show sources' : 'Hide sources';
+          if (!isOpen && !details.dataset.ready){
+            details.innerHTML = buildDetails();
+            details.dataset.ready = '1';
+          }
+        });
+      }
+    })
+    .catch(() => {
+      root.innerHTML = `<div class="muted" style="font-size:13px;">Bias data is not available yet.</div>`;
+    });
+}
+
+const WIDGETS = {
     fx_rates: {
       name: "FX Rates",
       desc: "EUR rates for major currencies (customizable).",
@@ -336,6 +476,15 @@ async function fetchJsonCached(url, ttlMs = 5 * 60 * 1000) {
       render: renderTrackingStats,
       settingsUI: null,
     },
+    media_bias: {
+      name: "Media Bias",
+      desc: "Left • Center • Right distribution across sources in the current story.",
+      defaults: {},
+      pro: true,
+      render: renderMediaBias,
+      settingsUI: null,
+    },
+
     market_clock: {
       name: "GLOBAL CLOCK",
       desc: "Choose cities and see local timezones.",
@@ -1541,6 +1690,7 @@ function saveLayout(){
     document.addEventListener('checkne:currentClusterChanged', () => {
       try { refreshWidgetType('pro_momentum'); } catch {}
       try { refreshWidgetType('pro_top_charts'); } catch {}
+      try { refreshWidgetType('media_bias'); } catch {}
     });
 
 document.addEventListener('checkne:currentStoryChanged', () => {

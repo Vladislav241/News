@@ -4774,7 +4774,64 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
   gap: 10px;
   margin-top: 18px;
 }
-  </style>
+  
+/* Media Bias widget */
+.widgetCard[data-type="media_bias"] .widgetIcon{ background: rgba(59,130,246,.10); border-color: rgba(59,130,246,.18); }
+.mbBar{
+  height: 12px;
+  border-radius: 999px;
+  overflow: hidden;
+  display:flex;
+  border: 1px solid rgba(15,23,42,.10);
+  background: rgba(17,17,19,.04);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.65);
+  margin-bottom: 10px;
+}
+.mbSeg{ height: 100%; }
+.mbLeft{ background: rgba(59,130,246,.78); }
+.mbCenter{ background: rgba(148,163,184,.78); }
+.mbRight{ background: rgba(239,68,68,.78); }
+
+.mbStats{ display:flex; flex-direction:column; gap: 6px; font-size: 12.5px; color: rgba(15,23,42,.80); }
+.mbStat{
+  display:grid;
+  grid-template-columns: 10px 1fr auto;
+  align-items:center;
+  column-gap: 8px;
+  min-width: 0;
+}
+.mbLabel{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mbPct{ color: rgba(15,23,42,.62); font-weight: 700; }
+.mbDot{ width: 8px; height: 8px; border-radius: 999px; display:inline-block; }
+.mbActions{ margin-top: 10px; display:flex; }
+.mbToggleBtn{
+  width: 100%;
+  border: 1px solid rgba(15,23,42,.12);
+  background: rgba(17,17,19,.03);
+  padding: 8px 10px;
+  border-radius: 12px;
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  color: rgba(15,23,42,.78);
+  cursor: pointer;
+  transition: transform .12s ease, background .18s ease, border-color .18s ease;
+}
+.mbToggleBtn:hover{ background: rgba(17,17,19,.05); border-color: rgba(15,23,42,.18); transform: translateY(-1px); }
+.mbToggleBtn:active{ transform: translateY(0); }
+
+.mbDetails{ margin-top: 10px; border-top: 1px solid rgba(15,23,42,.10); padding-top: 10px; }
+.mbGroup{ margin-bottom: 10px; }
+.mbGroupTitle{ display:flex; align-items:center; gap: 8px; font-weight: 900; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: rgba(15,23,42,.72); margin-bottom: 6px; }
+.mbSrcList{ list-style:none; padding: 0; margin: 0; display:flex; flex-direction:column; gap: 6px; }
+.mbSrcList li{ display:flex; align-items:baseline; gap: 8px; }
+.mbSrcName{ font-weight: 800; font-size: 12.5px; color: rgba(15,23,42,.86); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mbSrcDomain{ margin-left:auto; font-size: 11px; color: rgba(15,23,42,.55); max-width: 55%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mbMeta{
+  margin-top:12px;
+}
+</style>
 
 </head>
 

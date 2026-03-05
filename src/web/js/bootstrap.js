@@ -6,6 +6,24 @@
  * Keep files loaded in order (see index.html).
  */
 
+// --- Safety: unregister any previously installed Service Worker ---
+// This project does not rely on a Service Worker, but an old SW (from a previous build)
+// can accidentally duplicate fetches (e.g. /api/news/video) and waste server/API quota.
+// Unregistering ensures a clean, deterministic network behavior across devices.
+try {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations()
+      .then((regs) => {
+        regs.forEach((r) => { try { r.unregister(); } catch (_) {} });
+      })
+      .catch(() => {});
+  }
+  // Also clear Cache Storage best-effort (old SW often leaves caches behind).
+  if (typeof caches !== 'undefined' && caches?.keys) {
+    caches.keys().then((keys) => keys.forEach((k) => { try { caches.delete(k); } catch (_) {} })).catch(() => {});
+  }
+} catch (_) {}
+
 // ===== Account dropdown =====
 const btnAccount = document.getElementById("btnAccount");
 const accountMenu = document.getElementById("accountMenu");
@@ -1072,4 +1090,3 @@ try{
 
 // Initial sync
 try{ setTimeout(updateTrackingLimitBarUI, 0); }catch{}
-

@@ -508,29 +508,47 @@ def match_cluster(
     if cid is not None and sim >= thr:
         # Extra safety check: TF-IDF can over-match on a single shared entity (e.g. "Trump").
         # We require at least some *strong* token overlap or a higher similarity.
+
+
         cand_text = next((t for (i, t) in candidates if int(i) == int(cid)), "")
         c_norm = normalize_text(cand_text)
         ov = strong_token_overlap(txt_norm, c_norm)
         j = jaccard_similarity(txt_norm, c_norm)
 
-        # If overlap is weak, only accept very high similarity.
+        # Entities are a strong discriminant (people/places/orgs). We extract them early so we can
+        # apply stricter "no-signal" gates without relying on an LLM arbiter being available.
+        entity_q = set(extract_entities(txt))
+        entity_c = set(extract_entities(cand_text))
+        ent_ov = len(entity_q & entity_c)
+
+        # If overlap is weak, only accept a meaningfully higher similarity.
+        # (We previously used a lower floor here and observed occasional cross-topic merges on short UK/US headlines.)
         if ov < 2 and j < 0.16:
-            strict = max(0.58, thr + 0.18)
+            strict = max(0.72, thr + 0.22)
             if sim < strict:
                 return ClusterMatch(
                     cluster_id=None,
                     similarity=sim,
                     method="tfidf_rejected_low_overlap",
-                    debug={**dbg, "threshold": thr, "strict": strict, "ov": ov, "j": j},
+                    debug={**dbg, "threshold": thr, "strict": strict, "ov": ov, "j": j, "ent_ov": ent_ov},
+                )
+
+        # Extra safety: when there is *no* lexical/entity signal (no strong-token overlap,
+        # very low Jaccard, no entity overlap), do not merge unless the texts are near-identical.
+        if ov == 0 and j < 0.12 and ent_ov == 0:
+            strict2 = max(0.88, thr + 0.35)
+            if sim < strict2:
+                return ClusterMatch(
+                    cluster_id=None,
+                    similarity=sim,
+                    method="tfidf_rejected_no_signal",
+                    debug={**dbg, "threshold": thr, "strict2": strict2, "ov": ov, "j": j, "ent_ov": ent_ov},
                 )
 
         # Borderline arbiter: when TF-IDF says "match" but evidence is weak,
         # ask an LLM (optional) to confirm same-event vs same-topic.
         # This avoids cases like "Trump/Grammys" being merged with "Oil prices" just because of sidebar/related terms.
         need_llm = False
-        entity_q = set(extract_entities(txt))
-        entity_c = set(extract_entities(cand_text))
-        ent_ov = len(entity_q & entity_c)
 
         # Hard gate: if both sides have clear entities but none overlap, they are almost surely different events.
         # This prevents catastrophic merges (different people/places) especially in non-English feeds.

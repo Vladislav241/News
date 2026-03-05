@@ -119,8 +119,9 @@ def _build_queries(q_raw: str) -> list[str]:
     q = (q_raw or "").strip()
     if not q:
         return []
-    # A few deterministic variants; we stop early once we have enough unique results.
-    # Keep this small to avoid quota spikes.
+    # Deterministic variants.
+    # IMPORTANT: YouTube `search.list` is quota-expensive, so keep this small.
+    # You can override the cap via env YT_VIDEO_MAX_SEARCH_CALLS.
     return [
         f"{q} report",
         f"{q} news report",
@@ -145,9 +146,17 @@ def fetch_video_report_from_youtube(q_raw: str, lang: str = "en", max_results: i
     seen: set[str] = set()
     items: list[dict[str, Any]] = []
 
+    try:
+        max_calls = int(os.getenv("YT_VIDEO_MAX_SEARCH_CALLS", "2"))
+    except Exception:
+        max_calls = 2
+    max_calls = max(1, min(int(max_calls), 10))
+
     api_calls = 0
     last_err: str | None = None
-    for q in queries:
+    executed_queries = queries[:max_calls]
+
+    for q in executed_queries:
         data, status, err = _youtube_search(key, q=q, lang_norm=lang_norm, max_results=max_results)
         api_calls += 1
         if err:
@@ -203,7 +212,7 @@ def fetch_video_report_from_youtube(q_raw: str, lang: str = "en", max_results: i
         "meta": {
             "api_calls": int(api_calls),
             "quota_units": int(quota_units),
-            "queries": queries[: min(len(queries), 5)],
+            "queries": executed_queries[: min(len(executed_queries), 5)],
         },
     }
 
