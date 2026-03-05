@@ -219,6 +219,61 @@ def _guess_title_from_url(url: str) -> str:
         return ""
 
 
+# --- clustering safety: avoid catastrophic cross-topic merges on low-signal titles ---
+# Some feeds occasionally emit items with missing/garbled <title> ("Live", "Photos", "Watch", "World"),
+# or extremely generic gallery headlines. If we generate a shared cluster_key from such text, unrelated
+# stories can get glued together and then "snowball" (the cluster becomes a magnet for more bad merges).
+#
+# Strategy:
+# - If the normalized title looks low-signal AND the raw title has no clear anchors (entities/digits),
+#   fall back to a per-URL hash cluster key.
+# This may increase the number of separate clusters for very short/garbled headlines, but it prevents
+# the much worse UX of unrelated sources appearing inside the same cluster.
+_LOW_SIGNAL_TOKENS = {
+    # common feed boilerplate / gallery wording
+    "live", "updates", "update", "breaking", "analysis", "opinion", "photos", "photo", "videos", "video",
+    "watch", "listen", "read", "latest", "today", "top", "highlights", "gallery", "images",
+    # overly generic section labels
+    "world", "news", "general",
+}
+
+
+def _has_anchor_in_raw_title(raw_title: str) -> bool:
+    t = (raw_title or "").strip()
+    if not t:
+        return False
+    # Digits (years, counts, etc.) are often strong discriminators.
+    if _re.search(r"\d", t):
+        return True
+    # Proper-noun-like tokens (e.g. Trump, Iran, Kyiv) are anchors.
+    # Keep this intentionally simple and language-agnostic.
+    if _re.search(r"\b[A-ZА-ЯЁ][a-zа-яё]{2,}\b", t):
+        return True
+    return False
+
+
+def _is_low_signal_norm_title(norm_title: str, raw_title: str) -> bool:
+    nt = (norm_title or "").strip()
+    if not nt:
+        return True
+
+    toks = nt.split()
+    if len(toks) <= 3:
+        # Allow short titles ONLY if they have an anchor (e.g. a named entity or digits).
+        return not _has_anchor_in_raw_title(raw_title)
+
+    # If most tokens are boilerplate, treat as low-signal.
+    content = [t for t in toks if t not in _LOW_SIGNAL_TOKENS]
+    if len(content) <= 3:
+        return True
+
+    # Very short normalized strings are risky (often just "photos videos" etc.).
+    if len(nt) < 18 and not _has_anchor_in_raw_title(raw_title):
+        return True
+
+    return False
+
+
 def _guess_title_from_desc(desc: str) -> str:
     """Fallback title from description/summary."""
     d = (desc or "").strip()
@@ -1396,10 +1451,13 @@ def run_ingest_cycle() -> dict[str, Any]:
                         norm_title = normalize_title_for_key(desc, lang)
                     if not norm_title:
                         norm_title = normalize_title_for_key(_guess_title_from_url(art.get("url") or ""), lang)
-                    if not norm_title:
-                        # Absolute last resort: stable per-URL key (prevents cross-topic merges).
+
+                    # If the title is still missing OR looks low-signal, fall back to a per-URL key.
+                    # This prevents unrelated stories from being merged because of generic gallery/boilerplate titles.
+                    if (not norm_title) or _is_low_signal_norm_title(norm_title, title):
                         u = (art.get("url") or "").split("#", 1)[0].split("?", 1)[0]
                         norm_title = "url:" + hashlib.sha1(u.encode("utf-8", errors="ignore")).hexdigest()[:16]
+
                     cluster_key = canonical_cluster_key(lang, norm_title)
 
                 existing = db.connect().execute(
