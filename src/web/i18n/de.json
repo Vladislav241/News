@@ -134,5 +134,9 @@
     "source_diffs": "Unterschiede zwischen Quellen",
     "key_facts": "Wichtige Fakten",
     "uncertainties": "Unsicherheiten"
-  }
+  },
+  "ui.event_map": "Ereigniskarte",
+  "ui.open_full_map": "Große Karte öffnen",
+  "ui.event_map_empty": "Für dieses Ereignis ist noch kein Ort verfügbar.",
+  "ui.event_map_hint": "Sieh direkt auf der Karte, wo aktuelle Ereignisse passiert sind."
 }

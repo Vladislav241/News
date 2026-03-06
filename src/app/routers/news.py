@@ -92,6 +92,231 @@ def _compute_is_trending(cluster: dict[str, Any], sources_count: int) -> bool:
     if not dt:
         return True
 
+
+# ----------------------------
+# Event map helpers
+# ----------------------------
+_MAP_PLACE_INDEX: list[dict[str, Any]] = [
+    {"key": "tehran", "label": "Tehran, Iran", "lat": 35.6892, "lon": 51.3890},
+    {"key": "dubai", "label": "Dubai, UAE", "lat": 25.2048, "lon": 55.2708},
+    {"key": "abu dhabi", "label": "Abu Dhabi, UAE", "lat": 24.4539, "lon": 54.3773},
+    {"key": "doha", "label": "Doha, Qatar", "lat": 25.2854, "lon": 51.5310},
+    {"key": "riyadh", "label": "Riyadh, Saudi Arabia", "lat": 24.7136, "lon": 46.6753},
+    {"key": "jerusalem", "label": "Jerusalem, Israel", "lat": 31.7683, "lon": 35.2137},
+    {"key": "tel aviv", "label": "Tel Aviv, Israel", "lat": 32.0853, "lon": 34.7818},
+    {"key": "gaza", "label": "Gaza", "lat": 31.5017, "lon": 34.4668},
+    {"key": "baghdad", "label": "Baghdad, Iraq", "lat": 33.3152, "lon": 44.3661},
+    {"key": "ankara", "label": "Ankara, Turkey", "lat": 39.9334, "lon": 32.8597},
+    {"key": "istanbul", "label": "Istanbul, Turkey", "lat": 41.0082, "lon": 28.9784},
+    {"key": "cairo", "label": "Cairo, Egypt", "lat": 30.0444, "lon": 31.2357},
+    {"key": "london", "label": "London, UK", "lat": 51.5074, "lon": -0.1278},
+    {"key": "manchester", "label": "Manchester, UK", "lat": 53.4808, "lon": -2.2426},
+    {"key": "paris", "label": "Paris, France", "lat": 48.8566, "lon": 2.3522},
+    {"key": "berlin", "label": "Berlin, Germany", "lat": 52.5200, "lon": 13.4050},
+    {"key": "munich", "label": "Munich, Germany", "lat": 48.1351, "lon": 11.5820},
+    {"key": "rome", "label": "Rome, Italy", "lat": 41.9028, "lon": 12.4964},
+    {"key": "madrid", "label": "Madrid, Spain", "lat": 40.4168, "lon": -3.7038},
+    {"key": "amsterdam", "label": "Amsterdam, Netherlands", "lat": 52.3676, "lon": 4.9041},
+    {"key": "brussels", "label": "Brussels, Belgium", "lat": 50.8503, "lon": 4.3517},
+    {"key": "warsaw", "label": "Warsaw, Poland", "lat": 52.2297, "lon": 21.0122},
+    {"key": "athens", "label": "Athens, Greece", "lat": 37.9838, "lon": 23.7275},
+    {"key": "stockholm", "label": "Stockholm, Sweden", "lat": 59.3293, "lon": 18.0686},
+    {"key": "kyiv", "label": "Kyiv, Ukraine", "lat": 50.4501, "lon": 30.5234},
+    {"key": "kiev", "label": "Kyiv, Ukraine", "lat": 50.4501, "lon": 30.5234},
+    {"key": "odesa", "label": "Odesa, Ukraine", "lat": 46.4825, "lon": 30.7233},
+    {"key": "odessa", "label": "Odesa, Ukraine", "lat": 46.4825, "lon": 30.7233},
+    {"key": "moscow", "label": "Moscow, Russia", "lat": 55.7558, "lon": 37.6173},
+    {"key": "saint petersburg", "label": "Saint Petersburg, Russia", "lat": 59.9311, "lon": 30.3609},
+    {"key": "st petersburg", "label": "Saint Petersburg, Russia", "lat": 59.9311, "lon": 30.3609},
+    {"key": "beijing", "label": "Beijing, China", "lat": 39.9042, "lon": 116.4074},
+    {"key": "shanghai", "label": "Shanghai, China", "lat": 31.2304, "lon": 121.4737},
+    {"key": "hong kong", "label": "Hong Kong", "lat": 22.3193, "lon": 114.1694},
+    {"key": "taipei", "label": "Taipei, Taiwan", "lat": 25.0330, "lon": 121.5654},
+    {"key": "tokyo", "label": "Tokyo, Japan", "lat": 35.6762, "lon": 139.6503},
+    {"key": "seoul", "label": "Seoul, South Korea", "lat": 37.5665, "lon": 126.9780},
+    {"key": "new delhi", "label": "New Delhi, India", "lat": 28.6139, "lon": 77.2090},
+    {"key": "delhi", "label": "New Delhi, India", "lat": 28.6139, "lon": 77.2090},
+    {"key": "singapore", "label": "Singapore", "lat": 1.3521, "lon": 103.8198},
+    {"key": "washington", "label": "Washington, DC, USA", "lat": 38.9072, "lon": -77.0369},
+    {"key": "washington dc", "label": "Washington, DC, USA", "lat": 38.9072, "lon": -77.0369},
+    {"key": "new york", "label": "New York, USA", "lat": 40.7128, "lon": -74.0060},
+    {"key": "los angeles", "label": "Los Angeles, USA", "lat": 34.0522, "lon": -118.2437},
+    {"key": "san francisco", "label": "San Francisco, USA", "lat": 37.7749, "lon": -122.4194},
+    {"key": "chicago", "label": "Chicago, USA", "lat": 41.8781, "lon": -87.6298},
+    {"key": "miami", "label": "Miami, USA", "lat": 25.7617, "lon": -80.1918},
+    {"key": "atlanta", "label": "Atlanta, USA", "lat": 33.7490, "lon": -84.3880},
+    {"key": "boston", "label": "Boston, USA", "lat": 42.3601, "lon": -71.0589},
+    {"key": "philadelphia", "label": "Philadelphia, USA", "lat": 39.9526, "lon": -75.1652},
+    {"key": "dallas", "label": "Dallas, USA", "lat": 32.7767, "lon": -96.7970},
+    {"key": "houston", "label": "Houston, USA", "lat": 29.7604, "lon": -95.3698},
+    {"key": "austin", "label": "Austin, USA", "lat": 30.2672, "lon": -97.7431},
+    {"key": "seattle", "label": "Seattle, USA", "lat": 47.6062, "lon": -122.3321},
+    {"key": "toronto", "label": "Toronto, Canada", "lat": 43.6532, "lon": -79.3832},
+    {"key": "ottawa", "label": "Ottawa, Canada", "lat": 45.4215, "lon": -75.6972},
+    {"key": "vancouver", "label": "Vancouver, Canada", "lat": 49.2827, "lon": -123.1207},
+    {"key": "montreal", "label": "Montreal, Canada", "lat": 45.5017, "lon": -73.5673},
+    {"key": "mexico city", "label": "Mexico City, Mexico", "lat": 19.4326, "lon": -99.1332},
+    {"key": "brasilia", "label": "Brasília, Brazil", "lat": -15.7939, "lon": -47.8828},
+    {"key": "sao paulo", "label": "São Paulo, Brazil", "lat": -23.5558, "lon": -46.6396},
+    {"key": "rio de janeiro", "label": "Rio de Janeiro, Brazil", "lat": -22.9068, "lon": -43.1729},
+    {"key": "buenos aires", "label": "Buenos Aires, Argentina", "lat": -34.6037, "lon": -58.3816},
+    {"key": "sydney", "label": "Sydney, Australia", "lat": -33.8688, "lon": 151.2093},
+    {"key": "melbourne", "label": "Melbourne, Australia", "lat": -37.8136, "lon": 144.9631},
+]
+
+_COUNTRY_FALLBACKS: dict[str, dict[str, Any]] = {
+    "world": {"label": "World", "lat": 20.0, "lon": 0.0},
+    "us": {"label": "Washington, DC, USA", "lat": 38.9072, "lon": -77.0369},
+    "usa": {"label": "Washington, DC, USA", "lat": 38.9072, "lon": -77.0369},
+    "united states": {"label": "Washington, DC, USA", "lat": 38.9072, "lon": -77.0369},
+    "uk": {"label": "London, UK", "lat": 51.5074, "lon": -0.1278},
+    "united kingdom": {"label": "London, UK", "lat": 51.5074, "lon": -0.1278},
+    "germany": {"label": "Berlin, Germany", "lat": 52.5200, "lon": 13.4050},
+    "france": {"label": "Paris, France", "lat": 48.8566, "lon": 2.3522},
+    "ukraine": {"label": "Kyiv, Ukraine", "lat": 50.4501, "lon": 30.5234},
+    "russia": {"label": "Moscow, Russia", "lat": 55.7558, "lon": 37.6173},
+    "china": {"label": "Beijing, China", "lat": 39.9042, "lon": 116.4074},
+    "japan": {"label": "Tokyo, Japan", "lat": 35.6762, "lon": 139.6503},
+    "israel": {"label": "Jerusalem, Israel", "lat": 31.7683, "lon": 35.2137},
+    "iran": {"label": "Tehran, Iran", "lat": 35.6892, "lon": 51.3890},
+    "uae": {"label": "Dubai, UAE", "lat": 25.2048, "lon": 55.2708},
+    "united arab emirates": {"label": "Dubai, UAE", "lat": 25.2048, "lon": 55.2708},
+    "india": {"label": "New Delhi, India", "lat": 28.6139, "lon": 77.2090},
+    "canada": {"label": "Ottawa, Canada", "lat": 45.4215, "lon": -75.6972},
+    "australia": {"label": "Canberra, Australia", "lat": -35.2809, "lon": 149.1300},
+}
+
+_MAP_ALIAS_TO_KEY: dict[str, str] = {
+    "u.s.": "united states",
+    "u.s": "united states",
+    "us": "united states",
+    "u.k.": "united kingdom",
+    "uk": "united kingdom",
+    "washington, dc": "washington dc",
+    "washington d.c.": "washington dc",
+    "washington d.c": "washington dc",
+    "dc": "washington dc",
+    "nyc": "new york",
+    "la": "los angeles",
+    "st. petersburg": "st petersburg",
+    "sao paolo": "sao paulo",
+}
+
+_MAP_PLACE_BY_KEY: dict[str, dict[str, Any]] = {entry["key"]: entry for entry in _MAP_PLACE_INDEX}
+for alias, target in _MAP_ALIAS_TO_KEY.items():
+    if target in _MAP_PLACE_BY_KEY:
+        _MAP_PLACE_BY_KEY[alias] = _MAP_PLACE_BY_KEY[target]
+
+_MAP_KEYS_SORTED = sorted(_MAP_PLACE_BY_KEY.keys(), key=len, reverse=True)
+_MAP_GEO_CACHE: dict[str, dict[str, Any]] = {}
+
+
+def _normalize_location_text(text: str) -> str:
+    s = (text or "").lower()
+    s = s.replace("’", "'").replace("‘", "'").replace("`", "'")
+    s = re.sub(r"[^a-z0-9\s,.'-]+", " ", s)
+    s = s.replace("d.c.", "dc").replace("d.c", "dc")
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def _cluster_location_parts(c: dict[str, Any], sources: list[dict[str, Any]]) -> dict[str, str]:
+    summary_chunks = [c.get("summary_text") or "", c.get("country") or "", c.get("topic") or ""]
+    try:
+        sj = _safe_json_load(c.get("summary_json")) or {}
+        summary_chunks.append(sj.get("brief") or "")
+        for arr_key in ("key_facts", "uncertainties"):
+            arr = sj.get(arr_key)
+            if isinstance(arr, list):
+                summary_chunks.extend(str(x) for x in arr[:6])
+    except Exception:
+        pass
+    source_title_chunks: list[str] = []
+    source_name_chunks: list[str] = []
+    for s in sources[:10]:
+        source_title_chunks.append(s.get("title") or "")
+        source_name_chunks.append(s.get("source_name") or "")
+    return {
+        "title": c.get("title") or "",
+        "summary": " ".join(x for x in summary_chunks if x),
+        "source_titles": " ".join(x for x in source_title_chunks if x),
+        "source_names": " ".join(x for x in source_name_chunks if x),
+    }
+
+
+def _iter_location_matches(text: str) -> list[tuple[str, dict[str, Any]]]:
+    norm = _normalize_location_text(text)
+    if not norm:
+        return []
+    out: list[tuple[str, dict[str, Any]]] = []
+    for key in _MAP_KEYS_SORTED:
+        entry = _MAP_PLACE_BY_KEY.get(key)
+        if not entry:
+            continue
+        if re.search(rf"(?<![a-z]){re.escape(key)}(?![a-z])", norm):
+            out.append((key, entry))
+    return out
+
+
+def _extract_cluster_map_location(c: dict[str, Any], sources: Optional[list[dict[str, Any]]] = None) -> Optional[dict[str, Any]]:
+    srcs = list(sources or [])
+    cid = str(c.get("id") or "")
+    cache_key = hashlib.sha1((cid + "|" + str(c.get("updated_at") or "") + "|" + str(c.get("title") or "")).encode("utf-8", errors="ignore")).hexdigest()
+    hit = _MAP_GEO_CACHE.get(cache_key)
+    if hit:
+        return dict(hit)
+
+    parts = _cluster_location_parts(c, srcs)
+    weighted_sections = [
+        ("title", 120, 0.98),
+        ("summary", 70, 0.90),
+        ("source_titles", 48, 0.82),
+        ("source_names", 10, 0.60),
+    ]
+
+    scores: dict[str, dict[str, Any]] = {}
+    for section_name, base_score, confidence in weighted_sections:
+        matches = _iter_location_matches(parts.get(section_name, ""))
+        for idx, (matched_key, entry) in enumerate(matches):
+            canonical_key = entry["key"]
+            bucket = scores.setdefault(canonical_key, {"score": 0, "entry": entry, "match": matched_key, "confidence": confidence})
+            bonus = max(0, 14 - min(idx, 12))
+            bucket["score"] += base_score + bonus
+            if confidence > bucket["confidence"]:
+                bucket["confidence"] = confidence
+                bucket["match"] = matched_key
+
+    best: Optional[dict[str, Any]] = None
+    if scores:
+        best = max(scores.values(), key=lambda x: (int(x["score"]), float(x["confidence"]), len(str(x["entry"].get("key") or ""))))
+
+    if best and int(best["score"]) >= 48:
+        entry = best["entry"]
+        result = {
+            "label": entry["label"],
+            "lat": entry["lat"],
+            "lon": entry["lon"],
+            "confidence": round(float(best["confidence"]), 2),
+            "match": best["match"],
+        }
+        _MAP_GEO_CACHE[cache_key] = dict(result)
+        return result
+
+    ctry = _normalize_location_text(str(c.get("country") or ""))
+    if ctry in _COUNTRY_FALLBACKS:
+        fb = _COUNTRY_FALLBACKS[ctry]
+        result = {
+            "label": fb["label"],
+            "lat": fb["lat"],
+            "lon": fb["lon"],
+            "confidence": 0.45,
+            "match": ctry,
+        }
+        _MAP_GEO_CACHE[cache_key] = dict(result)
+        return result
+
+    return None
+
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     now = datetime.now(timezone.utc)
@@ -382,6 +607,7 @@ def _decorate_cluster_row(c: dict[str, Any], include_sources: bool = True) -> di
         "summary_status": c.get("summary_status") or "none",
         "summary_model": c.get("summary_model"),
         "summary_raw": (c.get("summary_raw_text") or ""),
+        "map_location": _extract_cluster_map_location(c, sources),
     }
 
     if include_sources:

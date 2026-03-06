@@ -141,5 +141,9 @@
     "source_diffs": "Source differences",
     "key_facts": "Key facts",
     "uncertainties": "Uncertainties"
-  }
+  },
+  "ui.event_map": "Мапа події",
+  "ui.open_full_map": "Відкрити повну мапу",
+  "ui.event_map_empty": "Локація цієї події поки недоступна.",
+  "ui.event_map_hint": "Дивись, де сталися нещодавні події, прямо на мапі."
 }

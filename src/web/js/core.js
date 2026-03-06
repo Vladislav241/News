@@ -27,6 +27,79 @@ function isUrlQuery(q) {
 let pendingOpenClusterId = null;
 let pendingOpenRequiresAuth = false; // true when coming from a shared link
 
+function __checkneNormalizeStoryTitle(value) {
+  return String(value || '')
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[‘’´`]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/&amp;/gi, '&')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+    .toLowerCase();
+}
+window.__checkneNormalizeStoryTitle = __checkneNormalizeStoryTitle;
+
+function __checkneFindCardInFeed({ clusterId = null, title = '' } = {}) {
+  const cards = document.getElementById('cards');
+  if (!cards) return null;
+  if (clusterId != null && clusterId !== '' && !Number.isNaN(Number(clusterId))) {
+    const exact = cards.querySelector(`.newsCard[data-id="${String(clusterId)}"], .newsCard[data-cluster-id="${String(clusterId)}"]`);
+    if (exact) return exact;
+  }
+
+  const normalizedTitle = __checkneNormalizeStoryTitle(title);
+  if (!normalizedTitle) return null;
+
+  const list = Array.from(cards.querySelectorAll('.newsCard'));
+  let best = null;
+  let bestScore = -1;
+  for (const card of list) {
+    const cardNorm = String(card.getAttribute('data-title-normalized') || '').trim() || __checkneNormalizeStoryTitle(card.getAttribute('data-title') || card.querySelector('.newsTitle')?.textContent || '');
+    if (!cardNorm) continue;
+    if (cardNorm === normalizedTitle) return card;
+    let score = -1;
+    if (cardNorm.includes(normalizedTitle) || normalizedTitle.includes(cardNorm)) score = Math.min(cardNorm.length, normalizedTitle.length);
+    else {
+      const words = normalizedTitle.split(/\s+/).filter(Boolean);
+      const hits = words.filter(w => w.length >= 4 && cardNorm.includes(w)).length;
+      if (hits) score = hits;
+    }
+    if (score > bestScore) { bestScore = score; best = card; }
+  }
+  return bestScore > 0 ? best : null;
+}
+
+function __checkneOpenCardElement(card) {
+  if (!card) return false;
+  const details = card.querySelector('details.newsDetails');
+  if (details && !details.open) {
+    const body = details.querySelector('.newsOpenBody');
+    if (body && typeof window.__checkneAnimateDetails === 'function') {
+      try { window.__checkneAnimateDetails(details, body, true); } catch { details.open = true; }
+    } else {
+      details.open = true;
+    }
+  }
+  try { card.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch { try { card.scrollIntoView(); } catch {} }
+  card.classList.add('isDeepLinked');
+  setTimeout(() => card.classList.remove('isDeepLinked'), 1600);
+  return true;
+}
+
+async function openStoryInFeed({ clusterId = null, title = '' } = {}) {
+  const found = __checkneFindCardInFeed({ clusterId, title });
+  if (found) return __checkneOpenCardElement(found);
+  if (clusterId != null && clusterId !== '' && !Number.isNaN(Number(clusterId))) {
+    try {
+      return await ensureItemInFeedAndOpen(Number(clusterId));
+    } catch {}
+  }
+  return false;
+}
+window.openStoryInFeed = openStoryInFeed;
+window.__checkneOpenStoryInFeed = openStoryInFeed;
+
 function readDeepLinkParams() {
   try {
     const url = new URL(window.location.href);
@@ -49,30 +122,9 @@ function clearDeepLinkParams() {
 }
 
 function openCardInDOM(clusterId) {
-  const cards = document.getElementById('cards');
-  if (!cards) return false;
-  const card = cards.querySelector(`.newsCard[data-id="${String(clusterId)}"]`);
+  const card = __checkneFindCardInFeed({ clusterId });
   if (!card) return false;
-  const details = card.querySelector('details.newsDetails');
-  if (details && !details.open) {
-    const body = details.querySelector('.newsOpenBody');
-    // Use the premium smooth details animation when available (prevents instant snaps on deep links).
-    if (body && typeof window.__checkneAnimateDetails === 'function') {
-      try { window.__checkneAnimateDetails(details, body, true); } catch { details.open = true; }
-    } else {
-      details.open = true;
-    }
-  }
-  // Scroll the opened card into view (nicely)
-  try {
-    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  } catch {
-    card.scrollIntoView();
-  }
-  // Brief highlight so user notices the opened item
-  card.classList.add('isDeepLinked');
-  setTimeout(() => card.classList.remove('isDeepLinked'), 1400);
-  return true;
+  return __checkneOpenCardElement(card);
 }
 
 async function ensureItemInFeedAndOpen(clusterId) {
@@ -562,3 +614,17 @@ async function setLanguage(lang, { persist = true, refetch = true } = {}) {
   window.openUpgradeModal = openUpgradeModal;
   window.closeUpgradeModal = closeUpgradeModal;
 })();
+
+document.addEventListener('click', async (e) => {
+  const link = e.target && typeof e.target.closest === 'function'
+    ? e.target.closest('[data-open-feed-title], [data-open-feed-cluster-id], a[href^="#open-feed"]')
+    : null;
+  if (!link) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const clusterId = link.getAttribute('data-open-feed-cluster-id') || link.getAttribute('data-cluster-id') || null;
+  const title = link.getAttribute('data-open-feed-title') || link.getAttribute('data-title') || link.textContent || '';
+  try {
+    await openStoryInFeed({ clusterId, title });
+  } catch {}
+}, { capture: true });

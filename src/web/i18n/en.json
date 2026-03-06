@@ -141,5 +141,9 @@
     "source_diffs": "Source differences",
     "key_facts": "Key facts",
     "uncertainties": "Uncertainties"
-  }
+  },
+  "ui.event_map": "Event map",
+  "ui.open_full_map": "Open full map",
+  "ui.event_map_empty": "Location is not available for this event yet.",
+  "ui.event_map_hint": "See where recent stories happened directly on the map."
 }

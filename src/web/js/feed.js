@@ -180,6 +180,28 @@ function createCardElement(item, ctx, seen, idx) {
         </details>`;
   }
 
+  // --- Event map
+  let eventMapHtml = '';
+  try {
+    const mapLoc = item?.map_location;
+    const lat = Number(mapLoc?.lat);
+    const lng = Number(mapLoc?.lon ?? mapLoc?.lng);
+    if (score > 70 && Number.isFinite(lat) && Number.isFinite(lng)) {
+      const mapLabel = escapeHtml(String(mapLoc?.label || 'Mapped location'));
+      eventMapHtml = `
+        <details class="accordion" open>
+          <summary class="accordionSummary">Event map</summary>
+          <div class="accordionBody">
+            <div class="muted" style="margin-bottom:12px;">${mapLabel}</div>
+            <div class="eventMapMini" data-cluster-id="${idStr}"></div>
+            <div class="eventMapActions">
+              <button type="button" class="eventMapOpenBtn" data-open-full-map="${idStr}">Open full map</button>
+            </div>
+          </div>
+        </details>`;
+    }
+  } catch {}
+
   // --- Source differences
   const facts = Array.isArray(item.summary_facts) ? item.summary_facts : [];
   const uncertainties = Array.isArray(item.summary_uncertainties) ? item.summary_uncertainties : [];
@@ -332,6 +354,7 @@ const showTrackingUI = state.mode === 'fav';
           <span class="chip">Latest: ${escapeHtml(item.latest_published_at ? new Date(item.latest_published_at).toLocaleString() : '')}</span>
         </div>
         ${whyHtml}
+        ${eventMapHtml}
         ${diffsSectionHtml}
 
         <details class="accordion">
@@ -962,6 +985,9 @@ async function fetchFeed(opts) {
   const data = await res.json();
   const items = data.items || [];
 
+  try { window.__checkneFeedItems = items; } catch {}
+  try { document.dispatchEvent(new CustomEvent("checkne:feedItemsUpdated", { detail: { items } })); } catch {}
+
   // keep cache for smooth expand/collapse
   lastFeedItems = items;
 
@@ -1031,6 +1057,9 @@ async function fetchFavorites(opts = {}) {
     }
     const data = await r.json();
     const items = (data && data.items) ? data.items : [];
+
+    try { window.__checkneFeedItems = items; } catch {}
+    try { document.dispatchEvent(new CustomEvent("checkne:feedItemsUpdated", { detail: { items } })); } catch {}
 
     lastFavItems = items;
 
