@@ -236,9 +236,10 @@ function getDeviceId() {
 }
 const DEVICE_ID = getDeviceId();
 
-// Feed policy: when sorting by "Newest", push low-credibility items to the bottom
-// so the top of the list stays "confirmed".
-const CONFIRMED_SCORE_THRESHOLD = 55;
+// Feed policy: when sorting by "Newest", push low-score items to the bottom
+// so every dark badge (< LOW_SCORE_THRESHOLD) always stays after the light ones.
+// Must stay in sync with the card UI threshold from state.js.
+const CONFIRMED_SCORE_THRESHOLD = LOW_SCORE_THRESHOLD;
 
 function loadPrefs() {
   try {
