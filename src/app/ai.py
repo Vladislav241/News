@@ -187,12 +187,12 @@ def summarize_cluster(
     lang_n = _norm_lang(lang)
     out_lang = _LANG_LABELS.get(lang_n, "English")
 
-    # Build context (up to 10)
+    # Build context (up to 6)
     items: list[str] = []
     src_names: list[str] = []
     seen = set()
 
-    for s in (sources or [])[:10]:
+    for s in (sources or [])[:6]:
         src = (s.get("source_name") or "unknown").strip() or "unknown"
         if src.lower() not in seen:
             seen.add(src.lower())
@@ -249,7 +249,8 @@ def summarize_cluster(
         resp = client.chat.completions.create(
             model=model,
             messages=messages,
-            temperature=0.2,
+            temperature=0.1,
+            max_tokens=320,
         )
         return (resp.choices[0].message.content or "").strip()
 

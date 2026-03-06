@@ -39,7 +39,7 @@ _LLM_DECISION_CACHE_TTL_SEC = int(os.getenv("CLUSTER_LLM_CACHE_TTL_SEC", str(6 *
 # Simple rate-limit so a single ingest cycle can't explode into hundreds of LLM calls.
 _LLM_WINDOW_START = 0.0
 _LLM_CALLS_IN_WINDOW = 0
-_LLM_MAX_CALLS_PER_MIN = int(os.getenv("CLUSTER_LLM_MAX_CALLS_PER_MIN", "30"))
+_LLM_MAX_CALLS_PER_MIN = int(os.getenv("CLUSTER_LLM_MAX_CALLS_PER_MIN", "12"))
 
 def _llm_allow_call() -> bool:
     """
@@ -116,7 +116,7 @@ _STOP_EN = {
 # You can also override model with OPENAI_MODEL (default: gpt-5-mini).
 _LLM_ENABLED = os.getenv("CLUSTER_LLM_ENABLED", "").strip() in {"1", "true", "yes", "on"}
 _OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
-_OPENAI_MODEL = os.getenv("OPENAI_MODEL", "").strip() or "gpt-5-mini"
+_OPENAI_MODEL = os.getenv("OPENAI_CLUSTER_MATCH_MODEL", "").strip() or os.getenv("OPENAI_MODEL", "").strip() or "gpt-4.1-nano"
 _OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "").strip() or "https://api.openai.com/v1"
 
 # Small in-process cache to avoid paying twice for the same pair.

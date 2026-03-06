@@ -281,10 +281,17 @@ class Database:
                     model TEXT,
                     status TEXT NOT NULL,
                     created_at TEXT NOT NULL,
+                    source_fingerprint TEXT,
+                    source_count INTEGER NOT NULL DEFAULT 0,
                     FOREIGN KEY(cluster_id) REFERENCES clusters(id) ON DELETE CASCADE
                 );
                 """
             )
+
+            # Backwards-compatible summary metadata columns used to avoid re-summarizing
+            # the same cluster sources on every ingest cycle.
+            conn.execute("ALTER TABLE article_summaries ADD COLUMN IF NOT EXISTS source_fingerprint TEXT;")
+            conn.execute("ALTER TABLE article_summaries ADD COLUMN IF NOT EXISTS source_count INTEGER NOT NULL DEFAULT 0;")
 
             # --- Trust score history (server-side) ---
             # Stores score snapshots for a cluster over time so the UI can render a stable chart
@@ -1137,19 +1144,21 @@ class Database:
         model: str,
         status: str,
         raw_text: Optional[str] = None,
+        source_fingerprint: Optional[str] = None,
+        source_count: int = 0,
     ) -> None:
         now = _utc_now_iso()
         existing = self._fetchone("SELECT cluster_id FROM article_summaries WHERE cluster_id=?", (cluster_id,))
 
         if existing:
             self._exec(
-                "UPDATE article_summaries SET summary_text=?, summary_json=?, raw_text=?, model=?, status=?, created_at=? WHERE cluster_id=?",
-                (summary_text, summary_json, raw_text, model, status, now, cluster_id),
+                "UPDATE article_summaries SET summary_text=?, summary_json=?, raw_text=?, model=?, status=?, created_at=?, source_fingerprint=?, source_count=? WHERE cluster_id=?",
+                (summary_text, summary_json, raw_text, model, status, now, source_fingerprint, int(source_count or 0), cluster_id),
             )
         else:
             self._exec(
-                "INSERT INTO article_summaries(cluster_id, summary_text, summary_json, raw_text, model, status, created_at) VALUES(?, ?, ?, ?, ?, ?, ?)",
-                (cluster_id, summary_text, summary_json, raw_text, model, status, now),
+                "INSERT INTO article_summaries(cluster_id, summary_text, summary_json, raw_text, model, status, created_at, source_fingerprint, source_count) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (cluster_id, summary_text, summary_json, raw_text, model, status, now, source_fingerprint, int(source_count or 0)),
             )
 
     def get_summary(self, cluster_id: int) -> Optional[dict[str, Any]]:

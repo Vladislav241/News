@@ -47,6 +47,68 @@ DEFAULT_RSS_SOURCES: dict[str, Any] = {
 
 SIMILARITY_THRESHOLD = 0.33
 
+
+def _parse_iso_utc(value: str | None) -> datetime | None:
+    s = (value or "").strip()
+    if not s:
+        return None
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def _summary_source_fingerprint(sources: list[dict[str, Any]]) -> str:
+    rows: list[tuple[str, str, str, str]] = []
+    for s in (sources or []):
+        src = (s.get("source_name") or "").strip().lower()
+        title = (s.get("title") or "").strip().lower()
+        url = (s.get("url") or "").strip()
+        published = (s.get("published_at") or "").strip()
+        if not (src or title or url):
+            continue
+        rows.append((src[:120], title[:220], url[:240], published[:40]))
+    rows.sort()
+    payload = json.dumps(rows[:16], ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha1(payload.encode("utf-8", errors="ignore")).hexdigest()
+
+
+def _should_refresh_summary(cluster_id: int, sources: list[dict[str, Any]], min_interval_seconds: int) -> tuple[bool, str, str, int]:
+    uniq_sources = {
+        (s.get("source_name") or "").strip().lower()
+        for s in (sources or [])
+        if (s.get("source_name") or "").strip()
+    }
+    source_count = len(uniq_sources)
+    fingerprint = _summary_source_fingerprint(sources)
+    existing = db.get_summary(int(cluster_id)) or {}
+    if not existing:
+        return True, "missing", fingerprint, source_count
+
+    old_fp = (existing.get("source_fingerprint") or "").strip()
+    old_count = int(existing.get("source_count") or 0)
+    created_at = _parse_iso_utc(existing.get("created_at"))
+    now = datetime.now(timezone.utc)
+
+    if (existing.get("status") or "").strip().lower() != "success":
+        if not created_at or (now - created_at).total_seconds() >= max(300, min_interval_seconds // 4):
+            return True, "retry_failed", fingerprint, source_count
+        return False, "recent_failed", fingerprint, source_count
+
+    if old_fp and old_fp == fingerprint:
+        return False, "fingerprint_unchanged", fingerprint, source_count
+
+    if old_count != source_count and source_count >= max(2, old_count + 2):
+        return True, "source_count_jump", fingerprint, source_count
+
+    if created_at and (now - created_at).total_seconds() < min_interval_seconds:
+        return False, "rate_limited", fingerprint, source_count
+
+    return True, "fingerprint_changed", fingerprint, source_count
+
 # =========================================================
 # CLUSTERING GATES HELPERS (cheap, offline)
 # =========================================================
@@ -1562,25 +1624,44 @@ def run_ingest_cycle() -> dict[str, Any]:
         touched_sorted = [cid for cid in touched_sorted if uniq_sources_count(cid) >= 2][:top_n]
 
         # Summaries only for top clusters
+        summary_model = os.getenv("OPENAI_SUMMARY_MODEL", "").strip() or os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+        try:
+            summary_min_interval = int(os.getenv("SUMMARY_REGEN_MIN_INTERVAL_SECONDS", str(6 * 60 * 60)))
+        except Exception:
+            summary_min_interval = 6 * 60 * 60
+
         for cid in touched_sorted:
             try:
                 meta = db.get_cluster_meta(cid)
                 title = (meta.get("title") or "Event").strip()
                 sources = db.get_cluster_sources(cid)
 
+                should_run, reason, source_fp, source_count = _should_refresh_summary(
+                    cluster_id=int(cid),
+                    sources=sources,
+                    min_interval_seconds=summary_min_interval,
+                )
+                if not should_run:
+                    stats.setdefault("summaries_skipped", 0)
+                    stats["summaries_skipped"] += 1
+                    logger.info("summary skipped for cluster_id=%s reason=%s", cid, reason)
+                    continue
+
                 stats["summaries_attempted"] += 1
                 brief, summary_json, status, raw_text = summarize_cluster(
                     cluster_title=title,
                     sources=sources,
-                    model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
+                    model=summary_model,
                 )
                 db.upsert_summary(
                     cluster_id=cid,
                     summary_text=brief,
                     summary_json=summary_json,
                     raw_text=raw_text,
-                    model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
+                    model=summary_model,
                     status=status,
+                    source_fingerprint=source_fp,
+                    source_count=source_count,
                 )
                 if status == "success":
                     stats["summaries_success"] += 1
