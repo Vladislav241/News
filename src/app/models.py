@@ -9,6 +9,7 @@ class AppConfig:
     db_path: str = "news.db"
     refresh_interval_seconds: int = 900
     rss_sources_json: str = ""
+    rss_local_sources_json: str = ""
     newsapi_key: str = ""
     openai_api_key: str = ""
     max_external_requests_per_cycle: int = 60

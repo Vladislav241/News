@@ -29,20 +29,115 @@ DEFAULT_RSS_SOURCES: dict[str, Any] = {
     "world": {
         "en": {
             "general": [
-                {"name": "AP Top News", "url": "https://apnews.com/hub/ap-top-news/rss"},
                 {"name": "BBC World", "url": "https://feeds.bbci.co.uk/news/world/rss.xml"},
+                {"name": "CNN Top Stories", "url": "https://rss.cnn.com/rss/cnn_topstories.rss"},
+                {"name": "Reuters World", "url": "https://www.reuters.com/world/rss"},
                 {"name": "The Guardian World", "url": "https://www.theguardian.com/world/rss"},
-                {"name": "Al Jazeera", "url": "https://www.aljazeera.com/xml/rss/all.xml"},
-                {"name": "DW", "url": "https://rss.dw.com/rdf/rss-en-all"},
-                # NOTE: Reuters does not provide an official free RSS for all content.
-                # This mirror works sometimes but can be unstable.
-                {"name": "Reuters World (Unofficial Mirror)", "url": "https://www.reutersagency.com/feed/?best-sectors=world&post_type=best"},
-                {"name": "NYT World", "url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"},
+                {"name": "AP Top News", "url": "https://apnews.com/hub/ap-top-news?output=rss"},
+                {"name": "France24 EN", "url": "https://www.france24.com/en/rss"},
+                {"name": "Politico Europe", "url": "https://www.politico.eu/feed/"},
+            ],
+            "business": [
+                {"name": "Reuters Business", "url": "https://www.reuters.com/business/rss"},
+                {"name": "Bloomberg", "url": "https://feeds.bloomberg.com/markets/news.rss"},
+                {"name": "CNBC", "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html"},
+            ],
+            "technology": [
+                {"name": "BBC Technology", "url": "https://feeds.bbci.co.uk/news/technology/rss.xml"},
+                {"name": "The Verge", "url": "https://www.theverge.com/rss/index.xml"},
+                {"name": "TechCrunch", "url": "https://techcrunch.com/feed/"},
+            ],
+            "politics": [
+                {"name": "Politico", "url": "https://www.politico.com/rss/politics08.xml"},
                 {"name": "The Hill", "url": "https://thehill.com/feed/"},
-                {"name": "Axios", "url": "https://api.axios.com/feed/"},
             ],
         }
-    }
+    },
+    "us": {
+        "en": {
+            "general": [
+                {"name": "NYTimes U.S.", "url": "https://rss.nytimes.com/services/xml/rss/nyt/US.xml"},
+                {"name": "Washington Post", "url": "https://feeds.washingtonpost.com/rss/rss_the-front-page"},
+                {"name": "Reuters U.S.", "url": "https://www.reuters.com/world/us/rss"},
+                {"name": "NPR News", "url": "https://feeds.npr.org/1001/rss.xml"},
+                {"name": "ABC News", "url": "https://abcnews.go.com/abcnews/topstories"},
+            ],
+            "business": [
+                {"name": "NYTimes Business", "url": "https://rss.nytimes.com/services/xml/rss/nyt/Business.xml"},
+                {"name": "CNBC Markets", "url": "https://www.cnbc.com/id/10001147/device/rss/rss.html"},
+            ],
+            "politics": [
+                {"name": "NYTimes Politics", "url": "https://rss.nytimes.com/services/xml/rss/nyt/Politics.xml"},
+                {"name": "Politico", "url": "https://www.politico.com/rss/politics08.xml"},
+            ],
+        }
+    },
+    "gb": {
+        "en": {
+            "general": [
+                {"name": "BBC UK", "url": "https://feeds.bbci.co.uk/news/uk/rss.xml"},
+                {"name": "The Guardian UK", "url": "https://www.theguardian.com/uk-news/rss"},
+                {"name": "Sky News UK", "url": "https://feeds.skynews.com/feeds/rss/uk.xml"},
+                {"name": "Independent UK", "url": "https://www.independent.co.uk/news/uk/rss"},
+            ],
+            "business": [
+                {"name": "BBC Business", "url": "https://feeds.bbci.co.uk/news/business/rss.xml"},
+                {"name": "Guardian Business", "url": "https://www.theguardian.com/business/rss"},
+            ],
+            "politics": [
+                {"name": "BBC Politics", "url": "https://feeds.bbci.co.uk/news/politics/rss.xml"},
+                {"name": "The Guardian Politics", "url": "https://www.theguardian.com/politics/rss"},
+            ],
+        }
+    },
+    "de": {
+        "de": {
+            "general": [
+                {"name": "Tagesschau", "url": "https://www.tagesschau.de/xml/rss2/"},
+                {"name": "Spiegel Top", "url": "https://www.spiegel.de/schlagzeilen/tops/index.rss"},
+                {"name": "Zeit Online", "url": "https://newsfeed.zeit.de/index"},
+                {"name": "Sueddeutsche Top", "url": "https://rss.sueddeutsche.de/rss/Topthemen"},
+            ],
+            "business": [
+                {"name": "Handelsblatt", "url": "https://www.handelsblatt.com/contentexport/feed/news"},
+                {"name": "Tagesschau Wirtschaft", "url": "https://www.tagesschau.de/wirtschaft/index~rss2.xml"},
+            ],
+            "technology": [
+                {"name": "Heise News", "url": "https://www.heise.de/rss/heise-atom.xml"},
+            ],
+            "politics": [
+                {"name": "Tagesschau Inland", "url": "https://www.tagesschau.de/inland/index~rss2.xml"},
+            ],
+        },
+        "en": {
+            "general": [
+                {"name": "DW English Germany", "url": "https://rss.dw.com/xml/rss-en-ger"},
+                {"name": "Der Spiegel International", "url": "https://www.spiegel.de/international/index.rss"},
+            ],
+        },
+    },
+    "fr": {
+        "fr": {
+            "general": [
+                {"name": "Le Monde", "url": "https://www.lemonde.fr/rss/une.xml"},
+                {"name": "Le Monde France", "url": "https://www.lemonde.fr/france/rss_full.xml"},
+                {"name": "France24 FR", "url": "https://www.france24.com/fr/rss"},
+                {"name": "Le Figaro", "url": "https://www.lefigaro.fr/rss/figaro_actualites.xml"},
+            ],
+            "business": [
+                {"name": "Le Monde Economie", "url": "https://www.lemonde.fr/economie/rss_full.xml"},
+                {"name": "Le Figaro Economie", "url": "https://www.lefigaro.fr/rss/figaro_economie.xml"},
+            ],
+            "politics": [
+                {"name": "Le Figaro Politique", "url": "https://www.lefigaro.fr/rss/figaro_politique.xml"},
+            ],
+        },
+        "en": {
+            "general": [
+                {"name": "France24 EN", "url": "https://www.france24.com/en/rss"},
+            ],
+        },
+    },
 }
 
 SIMILARITY_THRESHOLD = 0.33
@@ -1226,49 +1321,64 @@ def backfill_article_images(*, days: int = 365, limit: int = 200, budget: int = 
 
 def _parse_rss_sources() -> dict[str, Any]:
     cfg = db.get_config()
+
+    def _merge(defaults: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        for country, by_lang in (defaults or {}).items():
+            out[country] = {}
+            for lang, by_topic in (by_lang or {}).items():
+                out[country][lang] = {}
+                for topic, items in (by_topic or {}).items():
+                    out[country][lang][topic] = list(items or [])
+
+        for country, by_lang in (overrides or {}).items():
+            if not isinstance(by_lang, dict):
+                continue
+            out.setdefault(country, {})
+            for lang, by_topic in (by_lang or {}).items():
+                if not isinstance(by_topic, dict):
+                    continue
+                out[country].setdefault(lang, {})
+                for topic, items in (by_topic or {}).items():
+                    cur = list(out[country][lang].get(topic) or [])
+                    add = list(items or [])
+                    seen = {str(x.get("url") or "").strip() for x in cur if isinstance(x, dict)}
+                    for it in add:
+                        if not isinstance(it, dict):
+                            continue
+                        u = str(it.get("url") or "").strip()
+                        if not u or u in seen:
+                            continue
+                        cur.append(it)
+                        seen.add(u)
+                    out[country][lang][topic] = cur
+        return out
+
+    sources = DEFAULT_RSS_SOURCES
+
     if cfg.rss_sources_json:
         try:
             custom = json.loads(cfg.rss_sources_json)
-
-            # "Fail open" merge: if the DB config is partial (common in production),
-            # keep custom overrides but fill missing country/language/topic buckets
-            # from DEFAULT_RSS_SOURCES so the standard interests (business/tech/etc)
-            # still get content.
-            def _merge(defaults: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
-                out: dict[str, Any] = {}
-                for country, by_lang in (defaults or {}).items():
-                    out[country] = {}
-                    for lang, by_topic in (by_lang or {}).items():
-                        out[country][lang] = {}
-                        for topic, items in (by_topic or {}).items():
-                            out[country][lang][topic] = list(items or [])
-
-                for country, by_lang in (overrides or {}).items():
-                    out.setdefault(country, {})
-                    for lang, by_topic in (by_lang or {}).items():
-                        out[country].setdefault(lang, {})
-                        for topic, items in (by_topic or {}).items():
-                            cur = list(out[country][lang].get(topic) or [])
-                            add = list(items or [])
-                            # de-dup by URL
-                            seen = {str(x.get("url") or "").strip() for x in cur if isinstance(x, dict)}
-                            for it in add:
-                                if not isinstance(it, dict):
-                                    continue
-                                u = str(it.get("url") or "").strip()
-                                if not u or u in seen:
-                                    continue
-                                cur.append(it)
-                                seen.add(u)
-                            out[country][lang][topic] = cur
-                return out
-
             if isinstance(custom, dict):
-                return _merge(DEFAULT_RSS_SOURCES, custom)
-            return DEFAULT_RSS_SOURCES
+                sources = _merge(DEFAULT_RSS_SOURCES, custom)
         except Exception:
             logger.exception("Failed to parse RSS_SOURCES_JSON, using DEFAULT_RSS_SOURCES")
-    return DEFAULT_RSS_SOURCES
+
+    if cfg.rss_local_sources_json:
+        try:
+            local_custom = json.loads(cfg.rss_local_sources_json)
+            if isinstance(local_custom, dict):
+                # Local sources are region-only. Never merge them into the world bucket.
+                local_only = {
+                    str(country).strip().lower(): by_lang
+                    for country, by_lang in local_custom.items()
+                    if str(country).strip().lower() != "world"
+                }
+                sources = _merge(sources, local_only)
+        except Exception:
+            logger.exception("Failed to parse RSS_LOCAL_SOURCES_JSON, ignoring local overrides")
+
+    return sources
 
 
 def _to_iso(dt_struct) -> str | None:
@@ -1458,6 +1568,63 @@ def _iter_all_feeds(sources_cfg: dict[str, Any]) -> list[dict[str, str]]:
     return uniq
 
 
+def _select_feeds_for_cycle(feeds: list[dict[str, str]], max_feeds: int) -> list[dict[str, str]]:
+    """Select feeds fairly across regions/topics instead of taking the first N.
+
+    Production was often limited by MAX_EXTERNAL_REQUESTS_PER_CYCLE. Because the
+    config is ordered with `world` first, a simple slice starved `us/gb/de/fr`
+    completely once the world bucket alone exceeded the cap.
+
+    This round-robin selector preserves broad World coverage *and* guarantees
+    regional buckets get regular ingest slots every cycle.
+    """
+    if max_feeds <= 0 or len(feeds) <= max_feeds:
+        return list(feeds)
+
+    country_priority = {"world": 0, "us": 1, "gb": 2, "de": 3, "fr": 4}
+    topic_priority = {
+        "general": 0,
+        "politics": 1,
+        "business": 2,
+        "technology": 3,
+        "science": 4,
+        "health": 5,
+        "sports": 6,
+        "entertainment": 7,
+    }
+
+    grouped: dict[tuple[str, str], list[dict[str, str]]] = {}
+    for f in feeds:
+        key = ((f.get("country") or "world").lower(), (f.get("topic") or "general").lower())
+        grouped.setdefault(key, []).append(f)
+
+    ordered_keys = sorted(
+        grouped.keys(),
+        key=lambda k: (country_priority.get(k[0], 99), topic_priority.get(k[1], 99), k[0], k[1]),
+    )
+
+    selected: list[dict[str, str]] = []
+    while len(selected) < max_feeds:
+        made_progress = False
+        for key in ordered_keys:
+            bucket = grouped.get(key) or []
+            if not bucket:
+                continue
+            selected.append(bucket.pop(0))
+            made_progress = True
+            if len(selected) >= max_feeds:
+                break
+        if not made_progress:
+            break
+
+    return selected
+
+
+def _scoped_cluster_key(country: str, base_key: str) -> str:
+    scope = (country or "world").strip().lower() or "world"
+    return f"{scope}|{base_key}"
+
+
 # =========================================================
 # MAIN INGEST CYCLE
 # =========================================================
@@ -1488,7 +1655,7 @@ def run_ingest_cycle() -> dict[str, Any]:
 
         stats["feeds_total"] = len(feeds)
         max_feeds = max(10, int(cfg.max_external_requests_per_cycle))
-        feeds = feeds[:max_feeds]
+        feeds = _select_feeds_for_cycle(feeds, max_feeds)
         stats["feeds_used"] = len(feeds)
 
         all_articles: list[dict[str, Any]] = []
@@ -1551,14 +1718,15 @@ def run_ingest_cycle() -> dict[str, Any]:
 
         touched_clusters: set[int] = set()
 
-        inserted_by_lang: dict[str, list[int]] = {}
+        inserted_by_scope_lang: dict[tuple[str, str], list[int]] = {}
         for aid in inserted_article_ids:
             art = db.get_article_by_id(aid)
             lang = (art.get("language") or "en").lower()
-            inserted_by_lang.setdefault(lang, []).append(aid)
+            country = (art.get("country") or "world").lower()
+            inserted_by_scope_lang.setdefault((country, lang), []).append(aid)
 
-        for lang, aids in inserted_by_lang.items():
-            candidates_db = db.list_recent_clusters(language=lang, limit=900)
+        for (scope_country, lang), aids in inserted_by_scope_lang.items():
+            candidates_db = db.list_recent_clusters(language=lang, country=scope_country, limit=900)
             candidates_meta: list[dict[str, Any]] = []
             for c in candidates_db:
                 cid = int(c["id"])
@@ -1569,6 +1737,7 @@ def run_ingest_cycle() -> dict[str, Any]:
                 ctext = title_text
                 latest = db.get_cluster_latest_published_at(cid)
                 c_topic = (c.get("topic") or "general").strip().lower()
+                c_country = (c.get("country") or "world").strip().lower() or "world"
                 c_ents = _extract_entities(title_text)
                 c_terms = _title_signature_terms(title_text)
                 candidates_meta.append(
@@ -1577,6 +1746,7 @@ def run_ingest_cycle() -> dict[str, Any]:
                         "text": ctext,
                         "title_text": title_text,
                         "topic": c_topic,
+                        "country": c_country,
                         "latest_published_at": latest,
                         "entities": c_ents,
                         "title_terms": c_terms,
@@ -1594,7 +1764,7 @@ def run_ingest_cycle() -> dict[str, Any]:
                 is_liveblog = _is_liveblog(art.get("url"), title)
 
                 if is_liveblog:
-                    cluster_key = _liveblog_cluster_key(lang, (art.get("url") or ""))
+                    cluster_key = _scoped_cluster_key(scope_country, _liveblog_cluster_key(lang, (art.get("url") or "")))
                 else:
                     norm_title = normalize_title_for_key(title, lang)
                     if not norm_title:
@@ -1609,7 +1779,7 @@ def run_ingest_cycle() -> dict[str, Any]:
                         u = (art.get("url") or "").split("#", 1)[0].split("?", 1)[0]
                         norm_title = "url:" + hashlib.sha1(u.encode("utf-8", errors="ignore")).hexdigest()[:16]
 
-                    cluster_key = canonical_cluster_key(lang, norm_title)
+                    cluster_key = _scoped_cluster_key(scope_country, canonical_cluster_key(lang, norm_title))
 
                 existing = db.connect().execute(
                     "SELECT id FROM clusters WHERE cluster_key=?",
@@ -1631,6 +1801,8 @@ def run_ingest_cycle() -> dict[str, Any]:
                         c_topic = (c.get("topic") or "general").strip().lower()
 
                         if bool(c.get("is_liveblog")) != bool(is_liveblog):
+                            continue
+                        if (c.get("country") or "world") != scope_country:
                             continue
                         if c_topic != a_topic and "general" not in (c_topic, a_topic):
                             continue

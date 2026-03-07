@@ -14,4 +14,6 @@ services:
         value: "1"
       - key: COOKIE_SECURE
         value: "1"
+      - key: MAX_EXTERNAL_REQUESTS_PER_CYCLE
+        value: "80"
       # Set OPENAI_API_KEY in Render dashboard (Environment tab), do NOT commit it.

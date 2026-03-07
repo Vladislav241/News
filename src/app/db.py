@@ -157,6 +157,7 @@ class Database:
             db_path=os.getenv("DB_PATH", "news.db"),
             refresh_interval_seconds=int(os.getenv("REFRESH_INTERVAL_SECONDS", "900")),
             rss_sources_json=os.getenv("RSS_SOURCES_JSON", "").strip(),
+            rss_local_sources_json=os.getenv("RSS_LOCAL_SOURCES_JSON", "").strip(),
             newsapi_key=os.getenv("NEWSAPI_KEY", "").strip(),
             openai_api_key=os.getenv("OPENAI_API_KEY", "").strip(),
             max_external_requests_per_cycle=int(os.getenv("MAX_EXTERNAL_REQUESTS_PER_CYCLE", "60")),
@@ -792,17 +793,43 @@ class Database:
         except IntegrityError:
             return False
 
-    def list_recent_clusters(self, language: str, limit: int = 600) -> list[dict[str, Any]]:
-        return self._fetchall(
-            """
+    def list_recent_clusters(self, language: str, country: str | None = None, limit: int = 600) -> list[dict[str, Any]]:
+        language = (language or "").strip().lower()
+        country = (country or "").strip().lower()
+
+        sql = """
             SELECT id, cluster_key, title, topic, country, language, created_at, updated_at
             FROM clusters
             WHERE language=?
+        """
+        params: list[Any] = [language]
+
+        if country:
+            # Backward-compatible country scoping:
+            # - prefer the cluster's own country flag for new rows
+            # - but also include older clusters that were created before
+            #   regional clustering was isolated, as long as they contain
+            #   at least one article from the requested country.
+            sql += """
+              AND (
+                    country=?
+                    OR EXISTS (
+                        SELECT 1
+                        FROM cluster_articles ca
+                        JOIN articles a ON a.id = ca.article_id
+                        WHERE ca.cluster_id = clusters.id
+                          AND LOWER(COALESCE(a.country, '')) = ?
+                    )
+              )
+            """
+            params.extend([country, country])
+
+        sql += """
             ORDER BY updated_at DESC
             LIMIT ?
-            """,
-            (language, limit),
-        )
+        """
+        params.append(limit)
+        return self._fetchall(sql, tuple(params))
 
     def get_cluster_article_texts(self, cluster_id: int, limit: int = 12) -> list[str]:
         rows = self._fetchall(
@@ -1731,8 +1758,19 @@ class Database:
             placeholders = ",".join("?" for _ in allowed_langs)
             where.append(f"c.language IN ({placeholders})")
             params.extend(allowed_langs)
-            where.append("c.country=?")
-            params.append(country)
+            where.append(
+                """(
+                    c.country=?
+                    OR EXISTS (
+                        SELECT 1
+                        FROM cluster_articles ca
+                        JOIN articles a ON a.id = ca.article_id
+                        WHERE ca.cluster_id = c.id
+                          AND LOWER(COALESCE(a.country, '')) = ?
+                    )
+                )"""
+            )
+            params.extend([country, country])
         else:
             if language and language not in {"all", "*"}:
                 where.append("c.language=?")
