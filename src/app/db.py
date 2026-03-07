@@ -1739,77 +1739,107 @@ class Database:
             "fr": ("fr", "en"),
         }
 
-        where = []
-        params: list[Any] = []
-
-        if country in country_language_map:
-            # Country feeds should feel local: keep them country-specific and,
-            # when the UI language is English, include the country's main local
-            # news language as well so local agencies can still surface.
-            allowed_langs = list(country_language_map[country])
+        def _allowed_langs_for_country(scope_country: str) -> list[str]:
+            allowed_langs = list(country_language_map[scope_country])
             if language and language not in {"all", "*"}:
                 if language in allowed_langs:
                     allowed_langs = [language]
                 elif language == "en" and "en" in allowed_langs:
                     # Keep local + English for country feeds in the default English UI.
-                    allowed_langs = list(country_language_map[country])
+                    allowed_langs = list(country_language_map[scope_country])
                 else:
                     allowed_langs = [language]
-            placeholders = ",".join("?" for _ in allowed_langs)
-            where.append(f"c.language IN ({placeholders})")
-            params.extend(allowed_langs)
-            where.append(
-                """(
-                    c.country=?
-                    OR EXISTS (
-                        SELECT 1
-                        FROM cluster_articles ca
-                        JOIN articles a ON a.id = ca.article_id
-                        WHERE ca.cluster_id = c.id
-                          AND LOWER(COALESCE(a.country, '')) = ?
+            return allowed_langs
+
+        def _fetch_rows(include_world_fallback: bool) -> list[dict[str, Any]]:
+            where = []
+            params: list[Any] = []
+
+            if country in country_language_map:
+                # Country feeds should feel local: keep them country-specific first.
+                # On older production DBs, many historical clusters were stored as
+                # `world` before local-country ingest was enabled. If the strict
+                # country query is empty, we transparently fall back to `world`
+                # instead of returning an empty feed.
+                allowed_langs = _allowed_langs_for_country(country)
+                placeholders = ",".join("?" for _ in allowed_langs)
+                where.append(f"c.language IN ({placeholders})")
+                params.extend(allowed_langs)
+
+                if include_world_fallback:
+                    where.append(
+                        """(
+                            c.country=?
+                            OR c.country='world'
+                            OR EXISTS (
+                                SELECT 1
+                                FROM cluster_articles ca
+                                JOIN articles a ON a.id = ca.article_id
+                                WHERE ca.cluster_id = c.id
+                                  AND (
+                                      LOWER(COALESCE(a.country, '')) = ?
+                                      OR LOWER(COALESCE(a.country, '')) = 'world'
+                                  )
+                            )
+                        )"""
                     )
-                )"""
-            )
-            params.extend([country, country])
-        else:
-            if language and language not in {"all", "*"}:
-                where.append("c.language=?")
-                params.append(language)
+                else:
+                    where.append(
+                        """(
+                            c.country=?
+                            OR EXISTS (
+                                SELECT 1
+                                FROM cluster_articles ca
+                                JOIN articles a ON a.id = ca.article_id
+                                WHERE ca.cluster_id = c.id
+                                  AND LOWER(COALESCE(a.country, '')) = ?
+                            )
+                        )"""
+                    )
+                params.extend([country, country])
+            else:
+                if language and language not in {"all", "*"}:
+                    where.append("c.language=?")
+                    params.append(language)
+
+                if not where:
+                    where.append("1=1")
+
+                if country:
+                    where.append("(c.country=? OR c.country='world')")
+                    params.append(country)
 
             if not where:
                 where.append("1=1")
 
-            if country:
-                where.append("(c.country=? OR c.country='world')")
-                params.append(country)
+            if since_iso:
+                where.append("c.updated_at >= ?")
+                params.append(since_iso)
 
-        if not where:
-            where.append("1=1")
+            sql = f"""
+                SELECT
+                    c.*,
+                    s.credibility_score,
+                    s.score_details_json,
+                    s.computed_at as score_computed_at,
+                    sm.summary_text,
+                    sm.summary_json,
+                    sm.raw_text as summary_raw_text,
+                    sm.status as summary_status,
+                    sm.model as summary_model
+                FROM clusters c
+                LEFT JOIN article_scores s ON s.cluster_id=c.id
+                LEFT JOIN article_summaries sm ON sm.cluster_id=c.id
+                WHERE {" AND ".join(where)}
+                ORDER BY c.updated_at DESC, c.id DESC
+                LIMIT ?
+            """
+            params.append(max(1, min(400, int(limit))))
+            return self._fetchall(sql, tuple(params))
 
-        if since_iso:
-            where.append("c.updated_at >= ?")
-            params.append(since_iso)
-
-        sql = f"""
-            SELECT
-                c.*,
-                s.credibility_score,
-                s.score_details_json,
-                s.computed_at as score_computed_at,
-                sm.summary_text,
-                sm.summary_json,
-                sm.raw_text as summary_raw_text,
-                sm.status as summary_status,
-                sm.model as summary_model
-            FROM clusters c
-            LEFT JOIN article_scores s ON s.cluster_id=c.id
-            LEFT JOIN article_summaries sm ON sm.cluster_id=c.id
-            WHERE {" AND ".join(where)}
-            ORDER BY c.updated_at DESC, c.id DESC
-            LIMIT ?
-        """
-        params.append(max(1, min(400, int(limit))))
-        rows = self._fetchall(sql, tuple(params))
+        rows = _fetch_rows(include_world_fallback=False)
+        if not rows and country in country_language_map:
+            rows = _fetch_rows(include_world_fallback=True)
 
         def _infer_topic_from_title(title: str) -> str:
             """Best-effort topic inference for legacy rows.
