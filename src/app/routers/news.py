@@ -165,7 +165,6 @@ _MAP_PLACE_INDEX: list[dict[str, Any]] = [
 ]
 
 _COUNTRY_FALLBACKS: dict[str, dict[str, Any]] = {
-    "world": {"label": "World", "lat": 20.0, "lon": 0.0},
     "us": {"label": "Washington, DC, USA", "lat": 38.9072, "lon": -77.0369},
     "usa": {"label": "Washington, DC, USA", "lat": 38.9072, "lon": -77.0369},
     "united states": {"label": "Washington, DC, USA", "lat": 38.9072, "lon": -77.0369},
@@ -298,12 +297,13 @@ def _extract_cluster_map_location(c: dict[str, Any], sources: Optional[list[dict
             "lon": entry["lon"],
             "confidence": round(float(best["confidence"]), 2),
             "match": best["match"],
+            "kind": "city",
         }
         _MAP_GEO_CACHE[cache_key] = dict(result)
         return result
 
     ctry = _normalize_location_text(str(c.get("country") or ""))
-    if ctry in _COUNTRY_FALLBACKS:
+    if ctry and ctry not in {"world", "global", "international", "general"} and ctry in _COUNTRY_FALLBACKS:
         fb = _COUNTRY_FALLBACKS[ctry]
         result = {
             "label": fb["label"],
@@ -311,6 +311,7 @@ def _extract_cluster_map_location(c: dict[str, Any], sources: Optional[list[dict
             "lon": fb["lon"],
             "confidence": 0.45,
             "match": ctry,
+            "kind": "country",
         }
         _MAP_GEO_CACHE[cache_key] = dict(result)
         return result

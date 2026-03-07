@@ -152,6 +152,11 @@ function createCardElement(item, ctx, seen, idx) {
       <div class="aiSummaryTitle">${t("ui.ai_summary","AI Summary")}</div>
       <div class="aiSummaryText"><span class="muted">${escapeHtml(aiState.text)}</span></div>
     </div>`;
+  } else if (aiState.status === 'empty') {
+    summaryHtml = `<div class="aiSummaryBlock" data-status="empty">
+      <div class="aiSummaryTitle">${t("ui.ai_summary","AI Summary")}</div>
+      <div class="aiSummaryText"><span class="muted">${escapeHtml(aiState.text || 'AI summary is not available for this story yet.')}</span></div>
+    </div>`;
   }
 
   const unconfirmed = sourcesCount <= 1 ? `<span class="chip chipDanger">${t("ui.unconfirmed","Unconfirmed")}</span>` : '';

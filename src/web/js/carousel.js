@@ -404,11 +404,12 @@ function getAiSummaryState(item) {
   if (text) {
     return { status: "ready", text };
   }
-  // If backend reports a failure, don't show a scary error in UI.
   if (st === "failed") {
-    return { status: "empty", text: "" };
+    return { status: "empty", text: "AI summary is not available for this story yet." };
   }
-  // Default: generating / not ready yet.
+  if (st === "ready") {
+    return { status: "empty", text: "AI summary is not available for this story yet." };
+  }
   return { status: "loading", text: t("ui.loading","Loading…") };
 }
 

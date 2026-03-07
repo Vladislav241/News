@@ -963,6 +963,14 @@
 
     .newsHero { display:flex; gap: 14px; align-items:stretch; }
     .aiSummaryBlock { flex: 1; min-width: 240px; }
+.aiSummaryBlock[data-status="empty"],
+.aiSummaryBlock[data-status="loading"],
+.aiSummaryBlock[data-status="locked"]{
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  min-height: 180px;
+}
     .aiSummaryTitle { font-weight: 750; margin-bottom: 8px; }
     .newsCard.isLow .aiSummaryTitle { color: #fff; }
     .aiSummaryText { font-size: 14px; line-height: 1.45; color: rgba(15,23,42,.86); }
