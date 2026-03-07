@@ -33,8 +33,13 @@
     headlines: "/static/icons/TopHeadlines.svg",
     tracking_stats: "/static/icons/TrackingStats.svg",
     market_clock: "/static/icons/MarketClock.svg",
-      media_bias: "/static/icons/Perspective.svg",
-};
+    media_bias: "/static/icons/Perspective.svg",
+    pro_momentum: "/static/icons/MomentumTimeline.svg",
+    pro_entities: "/static/icons/Entities.svg",
+    pro_related_coverage: "/static/icons/RelatedCoverage.svg",
+    pro_recent_history: "/static/icons/RecentHistory.svg",
+    pro_video_report: "/static/icons/VideoReport.svg",
+  };
 
   const PRO_ICON_POOL = [
     "/static/icons/FxRates.svg",

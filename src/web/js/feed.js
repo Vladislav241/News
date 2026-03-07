@@ -301,12 +301,20 @@ const showTrackingUI = state.mode === 'fav';
     <img class="reportIcon" src="/static/icons/Report.svg" alt="Report" />
   </button>`;
 
-  // Tracking toggle (replaces the old star button).
-  // Visual contract:
-  // - tracked   => white toggle
-  // - not track => black toggle
-  const trackToggleHtml = `<button class="trackToggle ${favOn ? 'on' : ''}" type="button" title="Tracking" aria-label="Tracking" data-track="${id}">
-    <span class="trackDot"></span>
+  // Tracking toggle (animated eye: closed when OFF, open when ON).
+  const trackToggleHtml = `<button class="trackToggle ${favOn ? 'on' : ''}" type="button" title="Tracking" aria-label="Tracking" aria-pressed="${favOn ? 'true' : 'false'}" data-track="${id}">
+    <span class="eyeToggleIcon" aria-hidden="true">
+      <svg class="eyeSvg eyeClosed" viewBox="0 0 24 16" focusable="false">
+        <path class="eyeStroke" d="M3 5.5c2.2 2 4.9 3 9 3s6.8-1 9-3"></path>
+        <path class="eyeStroke" d="M9.2 8.1l-1.1 3.1"></path>
+        <path class="eyeStroke" d="M12 8.5v3.5"></path>
+        <path class="eyeStroke" d="M14.8 8.1l1.1 3.1"></path>
+      </svg>
+      <svg class="eyeSvg eyeOpen" viewBox="0 0 24 16" focusable="false">
+        <path class="eyeFill" d="M1.8 8c2.2-3.3 5.8-5.3 10.2-5.3S20 4.7 22.2 8c-2.2 3.3-5.8 5.3-10.2 5.3S4 11.3 1.8 8Z"></path>
+        <circle class="eyePupil" cx="12" cy="8" r="3.2"></circle>
+      </svg>
+    </span>
   </button>`;
 
   // Trending flame badge (server-side; consistent across devices)
@@ -491,6 +499,7 @@ const showTrackingUI = state.mode === 'fav';
 
       const nowOn = toggleFav(id);
       trackBtn.classList.toggle('on', nowOn);
+      trackBtn.setAttribute('aria-pressed', nowOn ? 'true' : 'false');
 
       const n = getFavIds().length;
       const favCountEl = document.getElementById('favCount');

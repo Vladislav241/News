@@ -797,34 +797,69 @@
     .newsCard.isLow .trackIconWrap.red{ border-color: rgba(239,68,68,.55); }
     .trackIcon{ width: 18px; height: 18px; object-fit: contain; display:block; }
 
-    /* Tracking toggle (replaces the old star button) */
+    /* Tracking toggle (animated eye: closed -> open) */
     .trackToggle{
       width: 52px;
       height: 34px;
       border-radius: 999px;
       display:flex;
       align-items:center;
-      justify-content: center;
+      justify-content:center;
       padding: 0 6px;
       background: transparent;
       border: 1px solid rgba(0, 0, 0, 0.6);
+      color: #111113;
       cursor: pointer;
+      overflow: hidden;
+      transition: border-color .22s ease, transform .18s ease;
+      -webkit-tap-highlight-color: transparent;
     }
-    .trackToggle .trackDot{
-      width: 18px;
-      height: 18px;
-      border-radius: 50%;
-      background: #fff; /* default = NOT tracked (black) */
-      display:block;
-       border: 1px solid rgba(0, 0, 0, 0.6);
+    .trackToggle:hover{ transform: translateY(-1px); }
+    .trackToggle .eyeToggleIcon{
+      position: relative;
+      width: 24px;
+      height: 16px;
+      display: block;
     }
-    .trackToggle.on .trackDot{
-      background: #111113; /* tracked = white */
-      border: 1px solid rgba(0, 0, 0, 0.6);
+    .trackToggle .eyeSvg{
+      position:absolute;
+      inset:0;
+      width:100%;
+      height:100%;
+      overflow:visible;
     }
-    .newsCard.isLow .trackToggle{ border-color: rgba(255,255,255,.18); }
-    .newsCard.isLow .trackToggle .trackDot{ background: #111113; }
-    .newsCard.isLow .trackToggle.on .trackDot{ background:#fff; border-color: rgba(255,255,255,.35); }
+    .trackToggle .eyeClosed,
+    .trackToggle .eyeOpen{
+      transform-origin:center;
+      transition:
+        opacity .26s ease,
+        transform .38s cubic-bezier(.22,.7,.2,1);
+      will-change: opacity, transform;
+    }
+    .trackToggle .eyeClosed{
+      opacity:1;
+      transform: translateY(0) scaleY(1);
+    }
+    .trackToggle .eyeOpen{
+      opacity:0;
+      transform: translateY(1px) scaleY(.14);
+    }
+    .trackToggle.on .eyeClosed{
+      opacity:0;
+      transform: translateY(-2px) scaleY(.2);
+    }
+    .trackToggle.on .eyeOpen{
+      opacity:1;
+      transform: translateY(0) scaleY(1);
+    }
+    .trackToggle .eyeStroke{ stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+    .trackToggle .eyeFill{ fill: currentColor; }
+    .trackToggle .eyePupil{ fill: #fff; transition: fill .22s ease; }
+    .newsCard.isLow .trackToggle{
+      border-color: rgba(255,255,255,.18);
+      color:#fff;
+    }
+    .newsCard.isLow .trackToggle .eyePupil{ fill:#111113; }
 
     /* Share button (top-right on cards) */
     .shareBtn{
@@ -1256,7 +1291,7 @@
 
       /* Controls: slightly smaller */
       .trackToggle{ width: 46px; height: 30px; }
-      .trackToggle .trackDot{ width: 16px; height: 16px; }
+      .trackToggle .eyeToggleIcon{ width: 21px; height: 14px; }
       .scoreBadge{ min-width: 74px; padding: 5px 9px; font-size: 13px; }
       .openBtn, .shareBtn{ width: 40px; height: 30px; border-radius: 10px; }
 
@@ -4358,9 +4393,7 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
   flex: 0 0 auto;
   margin-top: 1px;
 }
-.widgetPickV2.isPro .widgetPickIcon{ background:#fff; }
 .widgetPickIcon img{ width: 50px; height: 50px; display:block; margin-top: 5px;}
-.widgetPickV2.isPro .widgetPickIcon img{ filter: invert(1); } /* keep icon visible if it's dark */
 
 .widgetPickMeta{ flex: 1 1 auto; min-width: 0; }
 .widgetPickNameV2{ font-weight: 900; font-size: 18px; margin-bottom: 8px; }

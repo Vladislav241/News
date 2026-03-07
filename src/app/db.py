@@ -4,6 +4,8 @@ import json
 import os
 import re
 import threading
+from functools import lru_cache
+from urllib.parse import urlparse
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -50,6 +52,123 @@ def _adapt_sqlite_dialect(sql: str) -> str:
         if "on conflict" not in s.lower():
             s = s + " ON CONFLICT DO NOTHING"
     return _sql_qmark_to_percent(s)
+
+
+@lru_cache(maxsize=1)
+def _get_local_source_matchers() -> dict[str, dict[str, tuple[str, ...]]]:
+    """Parse RSS_LOCAL_SOURCES_JSON into SQL-friendly country matchers.
+
+    This is used as a production-safe fallback when legacy rows in the DB were
+    inserted before country-scoped clustering was enabled. In that case the
+    article/cluster may still say `world`, but the outlet itself clearly belongs
+    to the selected local feed (e.g. Spiegel/Daily Mail/LA Times).
+    """
+    raw = (os.getenv("RSS_LOCAL_SOURCES_JSON", "") or "").strip()
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+
+    out: dict[str, dict[str, tuple[str, ...]]] = {}
+    for country, by_lang in data.items():
+        ckey = (str(country or "").strip().lower() or "world")
+        if ckey == "world" or not isinstance(by_lang, dict):
+            continue
+        source_keys: set[str] = set()
+        source_names: set[str] = set()
+        hosts: set[str] = set()
+        for _, by_topic in by_lang.items():
+            if not isinstance(by_topic, dict):
+                continue
+            for _, items in by_topic.items():
+                for item in (items or []):
+                    if not isinstance(item, dict):
+                        continue
+                    name = (str(item.get("name") or "").strip())
+                    url = (str(item.get("url") or "").strip())
+                    if name:
+                        source_names.add(name.lower())
+                        source_keys.add(normalize_source_key(name))
+                    if url:
+                        try:
+                            host = (urlparse(url).netloc or "").strip().lower()
+                        except Exception:
+                            host = ""
+                        if host.startswith("www."):
+                            host = host[4:]
+                        if host:
+                            hosts.add(host)
+        out[ckey] = {
+            "source_keys": tuple(sorted(source_keys)),
+            "source_names": tuple(sorted(source_names)),
+            "hosts": tuple(sorted(hosts)),
+        }
+    return out
+
+
+def _append_local_source_exists(where: list[str], params: list[Any], country: str) -> None:
+    matchers = _get_local_source_matchers().get((country or "").strip().lower()) or {}
+    source_keys = list(matchers.get("source_keys") or ())
+    source_names = list(matchers.get("source_names") or ())
+    hosts = list(matchers.get("hosts") or ())
+
+    local_parts: list[str] = [
+        "c.country=?",
+        """EXISTS (
+            SELECT 1
+            FROM cluster_articles ca
+            JOIN articles a ON a.id = ca.article_id
+            WHERE ca.cluster_id = c.id
+              AND LOWER(COALESCE(a.country, '')) = ?
+        )""",
+    ]
+    local_params: list[Any] = [country, country]
+
+    if source_keys:
+        placeholders = ",".join("?" for _ in source_keys)
+        local_parts.append(
+            f"""EXISTS (
+                SELECT 1
+                FROM cluster_articles ca
+                JOIN articles a ON a.id = ca.article_id
+                WHERE ca.cluster_id = c.id
+                  AND LOWER(COALESCE(a.source_key, '')) IN ({placeholders})
+            )"""
+        )
+        local_params.extend(source_keys)
+
+    if source_names:
+        placeholders = ",".join("?" for _ in source_names)
+        local_parts.append(
+            f"""EXISTS (
+                SELECT 1
+                FROM cluster_articles ca
+                JOIN articles a ON a.id = ca.article_id
+                WHERE ca.cluster_id = c.id
+                  AND LOWER(COALESCE(a.source_name, '')) IN ({placeholders})
+            )"""
+        )
+        local_params.extend(source_names)
+
+    if hosts:
+        host_checks = " OR ".join(["LOWER(COALESCE(a.url, '')) LIKE ?" for _ in hosts])
+        local_parts.append(
+            f"""EXISTS (
+                SELECT 1
+                FROM cluster_articles ca
+                JOIN articles a ON a.id = ca.article_id
+                WHERE ca.cluster_id = c.id
+                  AND ({host_checks})
+            )"""
+        )
+        local_params.extend([f"%{h}%" for h in hosts])
+
+    where.append("(" + " OR ".join(local_parts) + ")")
+    params.extend(local_params)
 
 class _PGCursor:
     def __init__(self, cur) -> None:
@@ -1739,9 +1858,21 @@ class Database:
             "fr": ("fr", "en"),
         }
 
-        limit_n = max(1, min(400, int(limit)))
+        base_where: list[str] = []
+        base_params: list[Any] = []
 
-        def _fetch_rows(where_parts: list[str], params_list: list[Any], limit_value: int) -> list[dict[str, Any]]:
+        def _fetch_query_rows(extra_where: list[str], extra_params: list[Any], row_limit: int, exclude_ids: list[int] | None = None) -> list[dict[str, Any]]:
+            where = list(extra_where)
+            params = list(extra_params)
+            if exclude_ids:
+                placeholders = ",".join("?" for _ in exclude_ids)
+                where.append(f"c.id NOT IN ({placeholders})")
+                params.extend(exclude_ids)
+            if since_iso:
+                where.append("c.updated_at >= ?")
+                params.append(since_iso)
+            if not where:
+                where.append("1=1")
             sql = f"""
                 SELECT
                     c.*,
@@ -1756,16 +1887,12 @@ class Database:
                 FROM clusters c
                 LEFT JOIN article_scores s ON s.cluster_id=c.id
                 LEFT JOIN article_summaries sm ON sm.cluster_id=c.id
-                WHERE {" AND ".join(where_parts)}
+                WHERE {" AND ".join(where)}
                 ORDER BY c.updated_at DESC, c.id DESC
                 LIMIT ?
             """
-            q_params = list(params_list)
-            q_params.append(max(1, min(400, int(limit_value))))
-            return self._fetchall(sql, tuple(q_params))
-
-        strict_rows: list[dict[str, Any]] = []
-        rows: list[dict[str, Any]] = []
+            params.append(max(1, min(400, int(row_limit))))
+            return self._fetchall(sql, tuple(params))
 
         if country in country_language_map:
             # Country feeds should feel local: keep them country-specific and,
@@ -1780,68 +1907,33 @@ class Database:
                     allowed_langs = list(country_language_map[country])
                 else:
                     allowed_langs = [language]
-
             placeholders = ",".join("?" for _ in allowed_langs)
-            base_where = [f"c.language IN ({placeholders})"]
-            base_params: list[Any] = list(allowed_langs)
-            if since_iso:
-                base_where.append("c.updated_at >= ?")
-                base_params.append(since_iso)
+            base_where.append(f"c.language IN ({placeholders})")
+            base_params.extend(allowed_langs)
 
-            strict_where = list(base_where)
-            strict_params = list(base_params)
-            strict_where.append(
-                """(
-                    c.country=?
-                    OR EXISTS (
-                        SELECT 1
-                        FROM cluster_articles ca
-                        JOIN articles a ON a.id = ca.article_id
-                        WHERE ca.cluster_id = c.id
-                          AND LOWER(COALESCE(a.country, '')) = ?
-                    )
-                )"""
-            )
-            strict_params.extend([country, country])
-            strict_rows = _fetch_rows(strict_where, strict_params, limit_n)
+            local_where = list(base_where)
+            local_params = list(base_params)
+            _append_local_source_exists(local_where, local_params, country)
+            rows = _fetch_query_rows(local_where, local_params, limit)
 
-            # Production DBs may still contain many legacy rows stored as world/en
-            # even though the current UI is scoped to GB/DE/FR/US. When the strict
-            # country slice is sparse (or empty), top up the feed with same-language
-            # WORLD rows so the regional feed never renders blank on production.
-            rows = list(strict_rows)
-            if len(rows) < limit_n:
-                extra_where = list(base_where)
-                extra_params = list(base_params)
-                extra_where.append("c.country='world'")
-                if rows:
-                    extra_where.append(
-                        "c.id NOT IN (" + ",".join("?" for _ in rows) + ")"
-                    )
-                    extra_params.extend([int(r.get("id")) for r in rows if r.get("id") is not None])
-                extra_rows = _fetch_rows(extra_where, extra_params, limit_n - len(rows))
-                if extra_rows:
-                    rows.extend(extra_rows)
+            # Legacy production DBs may still have mostly world-scoped clusters.
+            # Only if absolutely nothing local is found, fall back to the broader
+            # world feed in the same language set so the UI never goes blank.
+            if not rows:
+                fallback_where = list(base_where)
+                fallback_params = list(base_params)
+                fallback_where.append("c.country='world'")
+                rows = _fetch_query_rows(fallback_where, fallback_params, limit)
         else:
-            where = []
-            params: list[Any] = []
-
             if language and language not in {"all", "*"}:
-                where.append("c.language=?")
-                params.append(language)
-
-            if not where:
-                where.append("1=1")
+                base_where.append("c.language=?")
+                base_params.append(language)
 
             if country:
-                where.append("(c.country=? OR c.country='world')")
-                params.append(country)
+                base_where.append("(c.country=? OR c.country='world')")
+                base_params.append(country)
 
-            if since_iso:
-                where.append("c.updated_at >= ?")
-                params.append(since_iso)
-
-            rows = _fetch_rows(where, params, limit_n)
+            rows = _fetch_query_rows(base_where, base_params, limit)
 
         def _infer_topic_from_title(title: str) -> str:
             """Best-effort topic inference for legacy rows.
