@@ -10,12 +10,12 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional, Dict
 
-from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi import APIRouter, HTTPException, Request, Depends, BackgroundTasks
 from pydantic import BaseModel
 
 from ..db import db
 from ..auth.deps import get_current_user_optional, require_user
-from ..ingest import run_ingest_cycle, backfill_article_images
+from ..ingest import run_ingest_cycle, backfill_article_images, _should_refresh_summary
 from ..scoring import compute_importance, compute_credibility
 from ..translate import translate_feed_items
 
@@ -53,6 +53,118 @@ def _market_set_cached(key: str, value: Any) -> None:
         pass
 
 router = APIRouter()
+
+_SUMMARY_BACKFILL_LOCK = threading.Lock()
+_SUMMARY_BACKFILL_INFLIGHT: set[int] = set()
+
+def _should_queue_summary_backfill(row: dict[str, Any]) -> bool:
+    try:
+        cid = int(row.get("id") or row.get("cluster_id") or 0)
+    except Exception:
+        return False
+    if cid <= 0:
+        return False
+
+    status = str(row.get("summary_status") or "").strip().lower()
+    text = str(row.get("summary_text") or "").strip()
+    try:
+        score = int(row.get("credibility_score") or 0)
+    except Exception:
+        score = 0
+
+    try:
+        sources_count = int(row.get("sources_count") or 0)
+    except Exception:
+        sources_count = 0
+
+    if text and status == "success":
+        return False
+    if status in {"skipped", "locked"}:
+        return False
+    if score < 70:
+        return False
+    if sources_count < 2:
+        return False
+    return True
+
+def _backfill_summaries_for_cluster_ids(cluster_ids: list[int]) -> None:
+    if not cluster_ids:
+        return
+
+    try:
+        summary_model = (os.getenv("OPENAI_SUMMARY_MODEL", "").strip() or os.getenv("OPENAI_MODEL", "gpt-4.1-mini"))
+    except Exception:
+        summary_model = "gpt-4.1-mini"
+
+    try:
+        min_interval_seconds = int(os.getenv("SUMMARY_REGEN_MIN_INTERVAL_SECONDS", str(30 * 60)) or (30 * 60))
+    except Exception:
+        min_interval_seconds = 30 * 60
+
+    try:
+        from ..ai import summarize_cluster
+
+        for cid in cluster_ids:
+            try:
+                sources = db.get_cluster_sources(int(cid))
+                should_run, _reason, source_fp, source_count = _should_refresh_summary(
+                    cluster_id=int(cid),
+                    sources=sources,
+                    min_interval_seconds=min_interval_seconds,
+                )
+                if not should_run:
+                    continue
+
+                meta = db.get_cluster_meta(int(cid)) or {}
+                title = (meta.get("title") or "Event").strip()
+                lang = (meta.get("language") or "en").strip().lower()
+                brief, summary_json, status, raw_text = summarize_cluster(
+                    cluster_title=title,
+                    sources=sources,
+                    lang=lang,
+                    model=summary_model,
+                )
+                db.upsert_summary(
+                    cluster_id=int(cid),
+                    summary_text=brief,
+                    summary_json=summary_json,
+                    raw_text=raw_text,
+                    model=summary_model,
+                    status=status,
+                    source_fingerprint=source_fp,
+                    source_count=source_count,
+                )
+            except Exception:
+                log_video.exception("summary backfill failed for cluster_id=%s", cid)
+    finally:
+        with _SUMMARY_BACKFILL_LOCK:
+            for cid in cluster_ids:
+                _SUMMARY_BACKFILL_INFLIGHT.discard(int(cid))
+
+def _queue_missing_summaries(rows: list[dict[str, Any]], background_tasks: BackgroundTasks | None, max_jobs: int = 4) -> None:
+    if background_tasks is None:
+        return
+
+    picked: list[int] = []
+    for row in rows:
+        if len(picked) >= max_jobs:
+            break
+        if not _should_queue_summary_backfill(row):
+            continue
+        try:
+            cid = int(row.get("id") or row.get("cluster_id") or 0)
+        except Exception:
+            continue
+        if cid <= 0:
+            continue
+        with _SUMMARY_BACKFILL_LOCK:
+            if cid in _SUMMARY_BACKFILL_INFLIGHT:
+                continue
+            _SUMMARY_BACKFILL_INFLIGHT.add(cid)
+        picked.append(cid)
+
+    if picked:
+        background_tasks.add_task(_backfill_summaries_for_cluster_ids, picked)
 
 # ----------------------------
 # Trending (🔥) server-side flag
@@ -104,7 +216,13 @@ _MAP_PLACE_INDEX: list[dict[str, Any]] = [
     {"key": "riyadh", "label": "Riyadh, Saudi Arabia", "lat": 24.7136, "lon": 46.6753},
     {"key": "jerusalem", "label": "Jerusalem, Israel", "lat": 31.7683, "lon": 35.2137},
     {"key": "tel aviv", "label": "Tel Aviv, Israel", "lat": 32.0853, "lon": 34.7818},
+    {"key": "haifa", "label": "Haifa, Israel", "lat": 32.7940, "lon": 34.9896},
     {"key": "gaza", "label": "Gaza", "lat": 31.5017, "lon": 34.4668},
+    {"key": "rafah", "label": "Rafah, Gaza", "lat": 31.2972, "lon": 34.2436},
+    {"key": "khan younis", "label": "Khan Younis, Gaza", "lat": 31.3461, "lon": 34.3039},
+    {"key": "damascus", "label": "Damascus, Syria", "lat": 33.5138, "lon": 36.2765},
+    {"key": "aleppo", "label": "Aleppo, Syria", "lat": 36.2021, "lon": 37.1343},
+    {"key": "beirut", "label": "Beirut, Lebanon", "lat": 33.8938, "lon": 35.5018},
     {"key": "baghdad", "label": "Baghdad, Iraq", "lat": 33.3152, "lon": 44.3661},
     {"key": "ankara", "label": "Ankara, Turkey", "lat": 39.9334, "lon": 32.8597},
     {"key": "istanbul", "label": "Istanbul, Turkey", "lat": 41.0082, "lon": 28.9784},
@@ -123,8 +241,18 @@ _MAP_PLACE_INDEX: list[dict[str, Any]] = [
     {"key": "stockholm", "label": "Stockholm, Sweden", "lat": 59.3293, "lon": 18.0686},
     {"key": "kyiv", "label": "Kyiv, Ukraine", "lat": 50.4501, "lon": 30.5234},
     {"key": "kiev", "label": "Kyiv, Ukraine", "lat": 50.4501, "lon": 30.5234},
+    {"key": "kharkiv", "label": "Kharkiv, Ukraine", "lat": 49.9935, "lon": 36.2304},
+    {"key": "dnipro", "label": "Dnipro, Ukraine", "lat": 48.4647, "lon": 35.0462},
+    {"key": "lviv", "label": "Lviv, Ukraine", "lat": 49.8397, "lon": 24.0297},
+    {"key": "sumy", "label": "Sumy, Ukraine", "lat": 50.9077, "lon": 34.7981},
+    {"key": "chernihiv", "label": "Chernihiv, Ukraine", "lat": 51.4982, "lon": 31.2893},
+    {"key": "zaporizhzhia", "label": "Zaporizhzhia, Ukraine", "lat": 47.8388, "lon": 35.1396},
+    {"key": "kherson", "label": "Kherson, Ukraine", "lat": 46.6354, "lon": 32.6169},
+    {"key": "mykolaiv", "label": "Mykolaiv, Ukraine", "lat": 46.9750, "lon": 31.9946},
     {"key": "odesa", "label": "Odesa, Ukraine", "lat": 46.4825, "lon": 30.7233},
     {"key": "odessa", "label": "Odesa, Ukraine", "lat": 46.4825, "lon": 30.7233},
+    {"key": "donetsk", "label": "Donetsk, Ukraine", "lat": 48.0159, "lon": 37.8029},
+    {"key": "mariupol", "label": "Mariupol, Ukraine", "lat": 47.0971, "lon": 37.5434},
     {"key": "moscow", "label": "Moscow, Russia", "lat": 55.7558, "lon": 37.6173},
     {"key": "saint petersburg", "label": "Saint Petersburg, Russia", "lat": 59.9311, "lon": 30.3609},
     {"key": "st petersburg", "label": "Saint Petersburg, Russia", "lat": 59.9311, "lon": 30.3609},
@@ -208,33 +336,23 @@ for alias, target in _MAP_ALIAS_TO_KEY.items():
 
 _MAP_KEYS_SORTED = sorted(_MAP_PLACE_BY_KEY.keys(), key=len, reverse=True)
 _MAP_GEO_CACHE: dict[str, dict[str, Any]] = {}
-_MAP_QUERY_CACHE: dict[str, Optional[dict[str, Any]]] = {}
 
 _EVENT_LOCATION_STOPWORDS = {
-    'russia', 'russian', 'ukraine', 'ukrainian', 'iran', 'iranian', 'israel', 'israeli', 'gaza', 'hamas',
-    'hezbollah', 'houthi', 'trump', 'biden', 'zelenskyy', 'zelenskiy', 'putin', 'eu', 'european union',
-    'nato', 'un', 'u.n.', 'us', 'u.s.', 'usa', 'uk', 'u.k.', 'pm', 'am', 'tv', 'series', 'kennedy', 'bessette'
+    "trump", "biden", "zelenskyy", "zelenskiy", "putin", "maga", "tucker", "carlson",
+    "republican", "democrat", "kennedy", "bessette", "tv", "series", "marketwatch",
+    "france24", "bloomberg", "cnn", "bbc", "nyt", "ukraine", "russia", "iran", "israel",
+    "u.s", "u.s.", "us", "usa", "u.k", "u.k.", "uk", "eu", "un", "u.n.",
+    "nationwide", "statewide", "global", "world", "international",
 }
-
 _EVENT_KEYWORDS = (
-    'attack', 'attacks', 'attacked', 'strike', 'strikes', 'struck', 'missile', 'drone', 'shelling', 'bombing',
-    'bombed', 'killed', 'kills', 'killing', 'dead', 'dies', 'died', 'injured', 'injures', 'explosion', 'blast',
-    'earthquake', 'quake', 'flood', 'flooding', 'wildfire', 'fire', 'crash', 'shooting', 'protest', 'protests',
-    'alert', 'evacuation', 'raid', 'raids', 'offensive', 'troops', 'fighting', 'battle', 'war', 'explodes'
+    "attack", "attacks", "attacked", "strike", "strikes", "struck", "drone", "missile", "shelling",
+    "bombing", "bombed", "killed", "kills", "killing", "dead", "dies", "died", "injured", "injures",
+    "explosion", "blast", "earthquake", "quake", "flood", "flooding", "wildfire", "fire", "crash",
+    "shooting", "protest", "protests", "alert", "evacuation", "raid", "raids", "offensive", "battle",
+    "war", "hit", "hits", "celebrate", "celebration", "demonstrators", "demonstration"
 )
-
-_LOCATION_PREPOSITIONS = ('in', 'near', 'outside', 'around', 'across', 'at', 'inside', 'from', 'off')
-
-_COUNTRY_HINTS = {
-    'us': 'United States', 'usa': 'United States', 'united states': 'United States',
-    'uk': 'United Kingdom', 'united kingdom': 'United Kingdom', 'uae': 'United Arab Emirates',
-    'south korea': 'South Korea', 'north korea': 'North Korea', 'russia': 'Russia', 'ukraine': 'Ukraine',
-    'germany': 'Germany', 'france': 'France', 'poland': 'Poland', 'israel': 'Israel', 'iran': 'Iran',
-    'china': 'China', 'japan': 'Japan', 'india': 'India', 'canada': 'Canada', 'australia': 'Australia',
-    'turkey': 'Turkey', 'qatar': 'Qatar', 'saudi arabia': 'Saudi Arabia', 'egypt': 'Egypt', 'taiwan': 'Taiwan',
-    'brazil': 'Brazil', 'argentina': 'Argentina', 'mexico': 'Mexico', 'spain': 'Spain', 'italy': 'Italy',
-    'netherlands': 'Netherlands', 'belgium': 'Belgium', 'greece': 'Greece', 'sweden': 'Sweden'
-}
+_LOCATION_PREPOSITIONS = ("in", "near", "outside", "around", "across", "at", "inside", "from", "off")
+_COUNTRY_ONLY_KEYS = set(_COUNTRY_FALLBACKS.keys())
 
 
 def _normalize_location_text(text: str) -> str:
@@ -247,15 +365,9 @@ def _normalize_location_text(text: str) -> str:
 
 
 def _display_location_text(text: str) -> str:
-    s = (text or '').strip()
-    s = re.sub(r'\s+', ' ', s)
-    s = s.strip(" ,.;:-")
-    return s
-
-
-def _canonical_country_hint(country: str) -> str:
-    norm = _normalize_location_text(country)
-    return _COUNTRY_HINTS.get(norm, _display_location_text(country)) if norm else ''
+    s = str(text or "").strip()
+    s = re.sub(r"\s+", " ", s)
+    return s.strip(" ,.;:-")
 
 
 def _looks_like_location_candidate(raw: str) -> bool:
@@ -263,90 +375,44 @@ def _looks_like_location_candidate(raw: str) -> bool:
     if not disp or len(disp) < 3 or len(disp) > 64:
         return False
     norm = _normalize_location_text(disp)
-    if not norm or norm in _EVENT_LOCATION_STOPWORDS:
+    if not norm or norm in _EVENT_LOCATION_STOPWORDS or norm in _COUNTRY_ONLY_KEYS:
         return False
-    words = [w for w in re.split(r'[-\s]+', disp) if w]
+    words = [w for w in re.split(r"[-\s]+", disp) if w]
     if not words or len(words) > 5:
         return False
-    bad = {'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday','January','February','March','April','May','June','July','August','September','October','November','December','Nationwide','Statewide','Worldwide','Global'}
-    if any(w in bad for w in words):
+    banned = {"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"}
+    if any(w.lower() in banned for w in words):
         return False
     capitals = sum(1 for w in words if w[:1].isupper() or w[:1].isdigit())
     return capitals >= max(1, len(words) - 1)
 
 
 def _event_pattern_location_candidates(text: str) -> list[str]:
-    raw = text or ''
+    raw = str(text or "")
     if not raw:
         return []
-    out: list[str] = []
-    keyword_re = r'(?i)(?:' + '|'.join(re.escape(x) for x in _EVENT_KEYWORDS) + r')'
-    prep_re = r'(?i)(?:' + '|'.join(re.escape(x) for x in _LOCATION_PREPOSITIONS) + r')'
+    keyword_re = r"(?i)(?:" + "|".join(re.escape(x) for x in _EVENT_KEYWORDS) + r")"
+    prep_re = r"(?i)(?:" + "|".join(re.escape(x) for x in _LOCATION_PREPOSITIONS) + r")"
     patterns = [
         rf"{keyword_re}[^.\n,:;]{{0,120}}?\b{prep_re}\s+([A-Z][A-Za-z'’.-]*(?:[ -][A-Z][A-Za-z'’.-]*){{0,3}})",
         rf"\b([A-Z][A-Za-z'’.-]*(?:[ -][A-Z][A-Za-z'’.-]*){{0,3}})\b[^.\n,:;]{{0,40}}?(?:was|were|is|are)?\s*(?:hit|hits|struck|attacked|bombed|shelled|flooded|evacuated)\b",
         rf"\b([A-Z][A-Za-z'’.-]*(?:[ -][A-Z][A-Za-z'’.-]*){{0,3}}),\s*([A-Z][A-Za-z'’.-]*(?:[ -][A-Z][A-Za-z'’.-]*){{0,3}})",
     ]
+    out: list[str] = []
     for pat in patterns:
         for m in re.finditer(pat, raw):
-            groups = [g for g in m.groups() if g]
-            for g in groups[:2]:
-                disp = _display_location_text(g)
-                if _looks_like_location_candidate(disp):
-                    out.append(disp)
+            for grp in [g for g in m.groups() if g][:2]:
+                cand = _display_location_text(grp)
+                if _looks_like_location_candidate(cand):
+                    out.append(cand)
     dedup: list[str] = []
     seen: set[str] = set()
     for cand in out:
-        key = _normalize_location_text(cand)
-        if key and key not in seen:
-            seen.add(key)
+        norm = _normalize_location_text(cand)
+        if norm and norm not in seen:
+            seen.add(norm)
             dedup.append(cand)
     return dedup
-
-
-def _geocode_location_query(query: str, country_hint: str = '') -> Optional[dict[str, Any]]:
-    disp = _display_location_text(query)
-    if not disp:
-        return None
-    cache_key = _normalize_location_text(disp + '|' + country_hint)
-    if cache_key in _MAP_QUERY_CACHE:
-        hit = _MAP_QUERY_CACHE.get(cache_key)
-        return dict(hit) if isinstance(hit, dict) else None
-    url = 'https://nominatim.openstreetmap.org/search'
-    params = {
-        'q': f'{disp}, {country_hint}' if country_hint and country_hint.lower() not in disp.lower() else disp,
-        'format': 'jsonv2',
-        'limit': 1,
-        'addressdetails': 1,
-    }
-    headers = {'User-Agent': 'CheckneNewsMap/1.0'}
-    try:
-        r = requests.get(url, params=params, headers=headers, timeout=1.6)
-        if r.ok:
-            arr = r.json()
-            if isinstance(arr, list) and arr:
-                item = arr[0]
-                addr = item.get('address') or {}
-                kind = 'country' if item.get('type') == 'country' else 'city'
-                label_parts = [
-                    addr.get('city') or addr.get('town') or addr.get('village') or addr.get('municipality') or addr.get('state') or disp,
-                    addr.get('country') or country_hint or ''
-                ]
-                label = ', '.join(x for x in label_parts if x)
-                result = {
-                    'label': label,
-                    'lat': float(item.get('lat')),
-                    'lon': float(item.get('lon')),
-                    'kind': kind,
-                    'match': _normalize_location_text(disp),
-                    'confidence': 0.88 if kind == 'city' else 0.72,
-                }
-                _MAP_QUERY_CACHE[cache_key] = dict(result)
-                return result
-    except Exception:
-        pass
-    _MAP_QUERY_CACHE[cache_key] = None
-    return None
 
 
 def _cluster_location_parts(c: dict[str, Any], sources: list[dict[str, Any]]) -> dict[str, str]:
@@ -366,13 +432,13 @@ def _cluster_location_parts(c: dict[str, Any], sources: list[dict[str, Any]]) ->
     for s in sources[:10]:
         source_title_chunks.append(s.get("title") or "")
         source_name_chunks.append(s.get("source_name") or "")
-        source_desc_chunks.append(s.get("description") or s.get("summary") or "")
+        source_desc_chunks.append(s.get("description") or "")
     return {
         "title": c.get("title") or "",
         "summary": " ".join(x for x in summary_chunks if x),
         "source_titles": " ".join(x for x in source_title_chunks if x),
-        "source_names": " ".join(x for x in source_name_chunks if x),
         "source_descriptions": " ".join(x for x in source_desc_chunks if x),
+        "source_names": " ".join(x for x in source_name_chunks if x),
     }
 
 
@@ -399,88 +465,80 @@ def _extract_cluster_map_location(c: dict[str, Any], sources: Optional[list[dict
         return dict(hit)
 
     parts = _cluster_location_parts(c, srcs)
-    country_hint = _canonical_country_hint(str(c.get("country") or ""))
     weighted_sections = [
-        ("title", 120, 0.98, 0.92),
-        ("summary", 70, 0.90, 0.86),
-        ("source_titles", 54, 0.84, 0.80),
-        ("source_descriptions", 34, 0.76, 0.74),
-        ("source_names", 8, 0.55, 0.45),
+        ("title", 120, 0.98),
+        ("summary", 70, 0.90),
+        ("source_titles", 48, 0.82),
+        ("source_descriptions", 20, 0.72),
+        ("source_names", 8, 0.58),
     ]
 
     scores: dict[str, dict[str, Any]] = {}
+    section_keys: dict[str, set[str]] = {}
 
-    def add_candidate(raw_label: str, score: int, confidence: float, source_kind: str, matched_key: Optional[str] = None) -> None:
-        disp = _display_location_text(raw_label)
-        if not disp:
-            return
-        norm = _normalize_location_text(matched_key or disp)
-        if not norm:
-            return
-        bucket = scores.setdefault(norm, {
-            "score": 0,
-            "label": disp,
-            "match": matched_key or disp,
-            "confidence": confidence,
-            "entry": _MAP_PLACE_BY_KEY.get(norm),
-            "source_kind": source_kind,
-        })
-        bucket["score"] += int(score)
-        if confidence > float(bucket.get("confidence") or 0):
+    def add_score(entry: dict[str, Any], matched_key: str, amount: int, confidence: float) -> None:
+        canonical_key = str(entry.get("key") or matched_key)
+        bucket = scores.setdefault(canonical_key, {"score": 0, "entry": entry, "match": matched_key, "confidence": confidence, "sections": set()})
+        bucket["score"] += int(amount)
+        bucket["sections"].add(matched_key)
+        if confidence > bucket["confidence"]:
             bucket["confidence"] = confidence
-            bucket["match"] = matched_key or disp
-            bucket["source_kind"] = source_kind
-        if bucket.get("entry") is None and norm in _MAP_PLACE_BY_KEY:
-            bucket["entry"] = _MAP_PLACE_BY_KEY[norm]
+            bucket["match"] = matched_key
 
-    for section_name, base_score, confidence, pattern_conf in weighted_sections:
-        section_text = parts.get(section_name, "")
-        matches = _iter_location_matches(section_text)
+    for section_name, base_score, confidence in weighted_sections:
+        matches = _iter_location_matches(parts.get(section_name, ""))
+        matched_keys_in_section: set[str] = set()
         for idx, (matched_key, entry) in enumerate(matches):
-            bonus = max(0, 16 - min(idx, 12))
-            add_candidate(entry["label"], base_score + bonus, confidence, "indexed", matched_key)
-        pattern_matches = _event_pattern_location_candidates(section_text)
-        for idx, cand in enumerate(pattern_matches):
-            bonus = max(0, 22 - min(idx * 4, 18))
-            if section_name == "title":
-                bonus += 28
-            add_candidate(cand, base_score + bonus, pattern_conf, "pattern")
+            matched_keys_in_section.add(str(entry.get("key") or matched_key))
+            bonus = max(0, 14 - min(idx, 12))
+            add_score(entry, matched_key, base_score + bonus, confidence)
+        section_keys[section_name] = matched_keys_in_section
 
-    if country_hint:
-        norm_country = _normalize_location_text(country_hint)
-        for norm, bucket in list(scores.items()):
-            label_norm = _normalize_location_text(str(bucket.get("label") or ""))
-            if norm_country and label_norm == norm_country:
-                bucket["score"] -= 28
-                bucket["confidence"] = min(float(bucket.get("confidence") or 0), 0.62)
-            elif country_hint.lower() in str(bucket.get("label") or "").lower():
-                bucket["score"] += 8
+    # Strong title event patterns beat generic country mentions.
+    for idx, cand in enumerate(_event_pattern_location_candidates(parts.get("title", ""))):
+        norm = _normalize_location_text(cand)
+        entry = _MAP_PLACE_BY_KEY.get(norm)
+        if entry:
+            add_score(entry, norm, 180 - min(idx * 12, 36), 0.99)
+
+    # Summary/source titles can reinforce a city already hinted by the title.
+    for section_name, base_score, confidence in (("summary", 42, 0.90), ("source_titles", 34, 0.84), ("source_descriptions", 18, 0.74)):
+        for idx, cand in enumerate(_event_pattern_location_candidates(parts.get(section_name, ""))[:4]):
+            norm = _normalize_location_text(cand)
+            entry = _MAP_PLACE_BY_KEY.get(norm)
+            if entry:
+                add_score(entry, norm, base_score - min(idx * 4, 12), confidence)
+
+    # Penalize broad country fallback keys when a more specific city is present anywhere.
+    specific_city_keys = {k for k in scores if k not in _COUNTRY_ONLY_KEYS}
+    if specific_city_keys:
+        for key, bucket in list(scores.items()):
+            if key in _COUNTRY_ONLY_KEYS:
+                bucket["score"] -= 90
+                bucket["confidence"] = min(float(bucket["confidence"]), 0.50)
+
+    # Prefer candidates confirmed by multiple sections.
+    for bucket in scores.values():
+        section_count = len(bucket.get("sections") or ())
+        if section_count >= 2:
+            bucket["score"] += 16 * min(section_count, 3)
 
     best: Optional[dict[str, Any]] = None
     if scores:
-        best = max(scores.values(), key=lambda x: (int(x["score"]), float(x["confidence"]), len(str(x.get("label") or ""))))
+        best = max(scores.values(), key=lambda x: (int(x["score"]), float(x["confidence"]), len(str(x["entry"].get("key") or ""))))
 
-    if best:
-        entry = best.get("entry")
-        score_val = int(best.get("score") or 0)
-        conf_val = float(best.get("confidence") or 0)
-        if isinstance(entry, dict) and score_val >= 42:
-            result = {
-                "label": entry["label"],
-                "lat": entry["lat"],
-                "lon": entry["lon"],
-                "confidence": round(conf_val, 2),
-                "match": best.get("match"),
-                "kind": "city",
-            }
-            _MAP_GEO_CACHE[cache_key] = dict(result)
-            return result
-        if score_val >= 54:
-            geo = _geocode_location_query(str(best.get("label") or best.get("match") or ""), country_hint=country_hint)
-            if geo:
-                geo["confidence"] = round(max(float(geo.get("confidence") or 0), conf_val), 2)
-                _MAP_GEO_CACHE[cache_key] = dict(geo)
-                return geo
+    if best and int(best["score"]) >= 56:
+        entry = best["entry"]
+        result = {
+            "label": entry["label"],
+            "lat": entry["lat"],
+            "lon": entry["lon"],
+            "confidence": round(float(best["confidence"]), 2),
+            "match": best["match"],
+            "kind": "city",
+        }
+        _MAP_GEO_CACHE[cache_key] = dict(result)
+        return result
 
     ctry = _normalize_location_text(str(c.get("country") or ""))
     if ctry and ctry not in {"world", "global", "international", "general"} and ctry in _COUNTRY_FALLBACKS:
@@ -497,7 +555,6 @@ def _extract_cluster_map_location(c: dict[str, Any], sources: Optional[list[dict
         return result
 
     return None
-
 
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
@@ -1186,6 +1243,7 @@ async def get_trending_interests(
 
 @router.get("/api/news")
 async def get_news(
+    background_tasks: BackgroundTasks,
     user=Depends(get_current_user_optional),
     ui_lang: str = "en",
     interests: str = "",
@@ -1246,6 +1304,8 @@ async def get_news(
             since_iso=since,
             limit=limit_n,
         )
+
+        _queue_missing_summaries(clusters[:12], background_tasks, max_jobs=4)
 
         # Paywall: guests get full details only for the first 3 items.
         is_guest = user is None
@@ -1480,6 +1540,7 @@ async def news_similar(
 @router.get("/api/news/by_ids")
 async def news_by_ids(
     ids: str,
+    background_tasks: BackgroundTasks,
     user=Depends(get_current_user_optional),
     ui_lang: str = "en",
     interests: str = "",
@@ -1500,6 +1561,7 @@ async def news_by_ids(
 
     id_list = list(dict.fromkeys(id_list))[:200]
     rows = db.get_clusters_by_ids(id_list)
+    _queue_missing_summaries(rows, background_tasks, max_jobs=6)
     items = [_decorate_cluster_row(r, include_sources=True) for r in rows]
 
     # Apply paywall for guests.
