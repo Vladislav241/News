@@ -379,16 +379,31 @@ def _feed_cache_key(
     limit: int,
     bucket: int,
     variant: str,
+    keep_days: int,
 ) -> str:
     qn = (q or "").strip().lower()
     sn = (since or "").strip()
     inorm = (interests or "general").strip().lower()
     v = (variant or "guest").strip().lower()
-    return f"v4|{bucket}|v={v}|i={inorm}|c={country}|l={language}|ui={ui_lang}|since={sn}|q={qn}|limit={limit}"
+    return f"v5|{bucket}|v={v}|i={inorm}|c={country}|l={language}|ui={ui_lang}|since={sn}|q={qn}|limit={limit}|days={int(keep_days)}"
 
 _REFRESH_STATE: dict[str, Any] = {"last_ts_by_ip": {}}
 REFRESH_COOLDOWN_SECONDS = 180
 FEED_KEEP_DAYS = 30
+FEED_KEEP_DAYS_PRO = 60
+FEED_KEEP_DAYS_ANALYST = 90
+FEED_MAX_ITEMS_FREE = 120
+FEED_MAX_ITEMS_PRO = 300
+FEED_MAX_ITEMS_ANALYST = 500
+
+
+def _feed_limits_for_plan(plan: str | None) -> tuple[int, int]:
+    p = str(plan or "free").strip().lower()
+    if p == "analyst":
+        return FEED_MAX_ITEMS_ANALYST, FEED_KEEP_DAYS_ANALYST
+    if p == "pro":
+        return FEED_MAX_ITEMS_PRO, FEED_KEEP_DAYS_PRO
+    return FEED_MAX_ITEMS_FREE, FEED_KEEP_DAYS
 
 
 def _days_ago_iso(days: int) -> str:
@@ -1005,7 +1020,18 @@ async def get_news(
         interests_norm = ",".join(sorted(set(interests_list)))
         country = (country or "world").strip().lower()
         language = (language or "all").strip().lower()
-        limit_n = max(1, min(400, int(limit)))
+
+        plan = "free"
+        if user is not None:
+            try:
+                sub = db.get_user_subscription(int(user["id"]))
+                if sub and sub.get("plan"):
+                    plan = str(sub.get("plan") or "free").strip().lower()
+            except Exception:
+                plan = "free"
+
+        max_limit_for_plan, keep_days_for_plan = _feed_limits_for_plan(plan)
+        limit_n = max(1, min(max_limit_for_plan, int(limit or max_limit_for_plan)))
 
         # NOTE: bucketed snapshots make the feed deterministic across devices.
         # The helper is called _snapshot_bucket() in this file.
@@ -1021,7 +1047,8 @@ async def get_news(
             q=q,
             limit=limit_n,
             bucket=bucket,
-            variant=("auth" if user else "guest"),
+            variant=(f"auth:{plan}" if user else "guest"),
+            keep_days=keep_days_for_plan,
         )
 
         now = time.time()
@@ -1055,7 +1082,7 @@ async def get_news(
                 it["guest_locked"] = True
                 items.append(it)
 
-        cutoff = _days_ago_iso(FEED_KEEP_DAYS)
+        cutoff = _days_ago_iso(keep_days_for_plan)
         items = [
             it
             for it in items
@@ -1129,6 +1156,9 @@ async def get_news(
             "cutoff": cutoff,
             "snapshot_bucket": bucket,
             "snapshot_at": snapshot_at,
+            "plan": plan,
+            "max_limit": max_limit_for_plan,
+            "keep_days": keep_days_for_plan,
         }
 
         with _FEED_CACHE_LOCK:

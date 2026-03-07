@@ -1686,19 +1686,48 @@ class Database:
         country = (country or "").strip().lower()
         language = (language or "all").strip().lower()
 
+        country_language_map: dict[str, tuple[str, ...]] = {
+            "us": ("en",),
+            "gb": ("en",),
+            "de": ("de", "en"),
+            "fr": ("fr", "en"),
+        }
+
         where = []
         params: list[Any] = []
-        if language and language not in {"all", "*"}:
-            where.append("c.language=?")
-            params.append(language)
+
+        if country in country_language_map:
+            # Country feeds should feel local: keep them country-specific and,
+            # when the UI language is English, include the country's main local
+            # news language as well so local agencies can still surface.
+            allowed_langs = list(country_language_map[country])
+            if language and language not in {"all", "*"}:
+                if language in allowed_langs:
+                    allowed_langs = [language]
+                elif language == "en" and "en" in allowed_langs:
+                    # Keep local + English for country feeds in the default English UI.
+                    allowed_langs = list(country_language_map[country])
+                else:
+                    allowed_langs = [language]
+            placeholders = ",".join("?" for _ in allowed_langs)
+            where.append(f"c.language IN ({placeholders})")
+            params.extend(allowed_langs)
+            where.append("c.country=?")
+            params.append(country)
+        else:
+            if language and language not in {"all", "*"}:
+                where.append("c.language=?")
+                params.append(language)
+
+            if not where:
+                where.append("1=1")
+
+            if country:
+                where.append("(c.country=? OR c.country='world')")
+                params.append(country)
 
         if not where:
             where.append("1=1")
-
-
-        if country:
-            where.append("(c.country=? OR c.country='world')")
-            params.append(country)
 
         if since_iso:
             where.append("c.updated_at >= ?")

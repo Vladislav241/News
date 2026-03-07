@@ -932,6 +932,13 @@ function incrementalUpdateFeed(sortedItems, opts) {
   updateLoadMoreBlock(filtered.length);
 }
 
+function getFeedLimitForCurrentPlan() {
+  const plan = String((typeof billingState !== 'undefined' && billingState && billingState.plan) ? billingState.plan : 'free').toLowerCase();
+  if (plan === 'analyst') return 500;
+  if (plan === 'pro') return 300;
+  return 120;
+}
+
 async function fetchFeed(opts) {
   const options = opts || {};
   const quiet = !!options.quiet;
@@ -961,6 +968,7 @@ async function fetchFeed(opts) {
       `&country=${encodeURIComponent(state.country)}` +
       `&language=all` +
       `&ui_lang=${encodeURIComponent(state.language || "en")}` +
+      `&limit=${encodeURIComponent(String(getFeedLimitForCurrentPlan()))}` +
       (trendId ? `&trend_cluster_id=${trendId}` : "") +
       (q ? `&q=${q}` : "");
 
