@@ -387,8 +387,8 @@ def _event_pattern_location_candidates(text: str) -> list[str]:
     raw = str(text or "")
     if not raw:
         return []
-    keyword_re = r"(?i)(?:" + "|".join(re.escape(x) for x in _EVENT_KEYWORDS) + r")"
-    prep_re = r"(?i)(?:" + "|".join(re.escape(x) for x in _LOCATION_PREPOSITIONS) + r")"
+    keyword_re = r"(?:" + "|".join(re.escape(x) for x in _EVENT_KEYWORDS) + r")"
+    prep_re = r"(?:" + "|".join(re.escape(x) for x in _LOCATION_PREPOSITIONS) + r")"
     patterns = [
         rf"{keyword_re}[^.\n,:;]{{0,120}}?\b{prep_re}\s+([A-Z][A-Za-z'’.-]*(?:[ -][A-Z][A-Za-z'’.-]*){{0,3}})",
         rf"\b([A-Z][A-Za-z'’.-]*(?:[ -][A-Z][A-Za-z'’.-]*){{0,3}})\b[^.\n,:;]{{0,40}}?(?:was|were|is|are)?\s*(?:hit|hits|struck|attacked|bombed|shelled|flooded|evacuated)\b",
