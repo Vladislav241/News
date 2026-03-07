@@ -1739,83 +1739,9 @@ class Database:
             "fr": ("fr", "en"),
         }
 
-        def _allowed_langs_for_country(scope_country: str) -> list[str]:
-            allowed_langs = list(country_language_map[scope_country])
-            if language and language not in {"all", "*"}:
-                if language in allowed_langs:
-                    allowed_langs = [language]
-                elif language == "en" and "en" in allowed_langs:
-                    # Keep local + English for country feeds in the default English UI.
-                    allowed_langs = list(country_language_map[scope_country])
-                else:
-                    allowed_langs = [language]
-            return allowed_langs
+        limit_n = max(1, min(400, int(limit)))
 
-        def _fetch_rows(include_world_fallback: bool) -> list[dict[str, Any]]:
-            where = []
-            params: list[Any] = []
-
-            if country in country_language_map:
-                # Country feeds should feel local: keep them country-specific first.
-                # On older production DBs, many historical clusters were stored as
-                # `world` before local-country ingest was enabled. If the strict
-                # country query is empty, we transparently fall back to `world`
-                # instead of returning an empty feed.
-                allowed_langs = _allowed_langs_for_country(country)
-                placeholders = ",".join("?" for _ in allowed_langs)
-                where.append(f"c.language IN ({placeholders})")
-                params.extend(allowed_langs)
-
-                if include_world_fallback:
-                    where.append(
-                        """(
-                            c.country=?
-                            OR c.country='world'
-                            OR EXISTS (
-                                SELECT 1
-                                FROM cluster_articles ca
-                                JOIN articles a ON a.id = ca.article_id
-                                WHERE ca.cluster_id = c.id
-                                  AND (
-                                      LOWER(COALESCE(a.country, '')) = ?
-                                      OR LOWER(COALESCE(a.country, '')) = 'world'
-                                  )
-                            )
-                        )"""
-                    )
-                else:
-                    where.append(
-                        """(
-                            c.country=?
-                            OR EXISTS (
-                                SELECT 1
-                                FROM cluster_articles ca
-                                JOIN articles a ON a.id = ca.article_id
-                                WHERE ca.cluster_id = c.id
-                                  AND LOWER(COALESCE(a.country, '')) = ?
-                            )
-                        )"""
-                    )
-                params.extend([country, country])
-            else:
-                if language and language not in {"all", "*"}:
-                    where.append("c.language=?")
-                    params.append(language)
-
-                if not where:
-                    where.append("1=1")
-
-                if country:
-                    where.append("(c.country=? OR c.country='world')")
-                    params.append(country)
-
-            if not where:
-                where.append("1=1")
-
-            if since_iso:
-                where.append("c.updated_at >= ?")
-                params.append(since_iso)
-
+        def _fetch_rows(where_parts: list[str], params_list: list[Any], limit_value: int) -> list[dict[str, Any]]:
             sql = f"""
                 SELECT
                     c.*,
@@ -1830,16 +1756,92 @@ class Database:
                 FROM clusters c
                 LEFT JOIN article_scores s ON s.cluster_id=c.id
                 LEFT JOIN article_summaries sm ON sm.cluster_id=c.id
-                WHERE {" AND ".join(where)}
+                WHERE {" AND ".join(where_parts)}
                 ORDER BY c.updated_at DESC, c.id DESC
                 LIMIT ?
             """
-            params.append(max(1, min(400, int(limit))))
-            return self._fetchall(sql, tuple(params))
+            q_params = list(params_list)
+            q_params.append(max(1, min(400, int(limit_value))))
+            return self._fetchall(sql, tuple(q_params))
 
-        rows = _fetch_rows(include_world_fallback=False)
-        if not rows and country in country_language_map:
-            rows = _fetch_rows(include_world_fallback=True)
+        strict_rows: list[dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
+
+        if country in country_language_map:
+            # Country feeds should feel local: keep them country-specific and,
+            # when the UI language is English, include the country's main local
+            # news language as well so local agencies can still surface.
+            allowed_langs = list(country_language_map[country])
+            if language and language not in {"all", "*"}:
+                if language in allowed_langs:
+                    allowed_langs = [language]
+                elif language == "en" and "en" in allowed_langs:
+                    # Keep local + English for country feeds in the default English UI.
+                    allowed_langs = list(country_language_map[country])
+                else:
+                    allowed_langs = [language]
+
+            placeholders = ",".join("?" for _ in allowed_langs)
+            base_where = [f"c.language IN ({placeholders})"]
+            base_params: list[Any] = list(allowed_langs)
+            if since_iso:
+                base_where.append("c.updated_at >= ?")
+                base_params.append(since_iso)
+
+            strict_where = list(base_where)
+            strict_params = list(base_params)
+            strict_where.append(
+                """(
+                    c.country=?
+                    OR EXISTS (
+                        SELECT 1
+                        FROM cluster_articles ca
+                        JOIN articles a ON a.id = ca.article_id
+                        WHERE ca.cluster_id = c.id
+                          AND LOWER(COALESCE(a.country, '')) = ?
+                    )
+                )"""
+            )
+            strict_params.extend([country, country])
+            strict_rows = _fetch_rows(strict_where, strict_params, limit_n)
+
+            # Production DBs may still contain many legacy rows stored as world/en
+            # even though the current UI is scoped to GB/DE/FR/US. When the strict
+            # country slice is sparse (or empty), top up the feed with same-language
+            # WORLD rows so the regional feed never renders blank on production.
+            rows = list(strict_rows)
+            if len(rows) < limit_n:
+                extra_where = list(base_where)
+                extra_params = list(base_params)
+                extra_where.append("c.country='world'")
+                if rows:
+                    extra_where.append(
+                        "c.id NOT IN (" + ",".join("?" for _ in rows) + ")"
+                    )
+                    extra_params.extend([int(r.get("id")) for r in rows if r.get("id") is not None])
+                extra_rows = _fetch_rows(extra_where, extra_params, limit_n - len(rows))
+                if extra_rows:
+                    rows.extend(extra_rows)
+        else:
+            where = []
+            params: list[Any] = []
+
+            if language and language not in {"all", "*"}:
+                where.append("c.language=?")
+                params.append(language)
+
+            if not where:
+                where.append("1=1")
+
+            if country:
+                where.append("(c.country=? OR c.country='world')")
+                params.append(country)
+
+            if since_iso:
+                where.append("c.updated_at >= ?")
+                params.append(since_iso)
+
+            rows = _fetch_rows(where, params, limit_n)
 
         def _infer_topic_from_title(title: str) -> str:
             """Best-effort topic inference for legacy rows.
