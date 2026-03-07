@@ -187,22 +187,18 @@ NEW_UPDATE_GRACE = timedelta(minutes=10)
 
 
 def _compute_is_trending(cluster: dict[str, Any], sources_count: int) -> bool:
-    """Compute a deterministic server-side 'trending' flag.
-
-    v1 heuristic:
-      - sources_count >= TRENDING_MIN_OUTLETS
-      - cluster updated recently (updated_at or latest_published_at within TRENDING_WINDOW)
-
-    Notes:
-      - if timestamps are missing/invalid, fall back to outlets-only.
-      - we treat naive timestamps as UTC.
-    """
     if sources_count < TRENDING_MIN_OUTLETS:
         return False
 
     dt = _parse_dt(cluster.get("updated_at")) or _parse_dt(cluster.get("latest_published_at"))
     if not dt:
         return True
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+
+    now = datetime.now(timezone.utc)
+    return (now - dt) <= TRENDING_WINDOW
 
 
 # ----------------------------
@@ -555,11 +551,6 @@ def _extract_cluster_map_location(c: dict[str, Any], sources: Optional[list[dict
         return result
 
     return None
-
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    now = datetime.now(timezone.utc)
-    return (now - dt) <= TRENDING_WINDOW
 
 
 def _compute_is_new(cluster: dict[str, Any]) -> bool:
