@@ -824,6 +824,25 @@ class Database:
             out.append(f"{t} {d}".strip())
         return out
 
+    def get_cluster_article_titles(self, cluster_id: int, limit: int = 12) -> list[str]:
+        rows = self._fetchall(
+            """
+            SELECT a.title
+            FROM cluster_articles ca
+            JOIN articles a ON a.id = ca.article_id
+            WHERE ca.cluster_id=?
+            ORDER BY ca.inserted_at DESC
+            LIMIT ?
+            """,
+            (cluster_id, limit),
+        )
+        out: list[str] = []
+        for r in rows:
+            t = (r.get("title") or "").strip()
+            if t:
+                out.append(t)
+        return out
+
     def get_cluster_sources(self, cluster_id: int) -> list[dict[str, Any]]:
         rows = self.connect().execute(
             """

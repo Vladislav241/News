@@ -120,6 +120,88 @@ _CAP_SEQ_RE = _re.compile(
 )
 _NOISE = {"the", "and", "for", "with", "from", "says", "said", "new", "news", "live", "update", "breaking"}
 
+_TITLE_SIG_STOP = {
+    "the", "and", "for", "with", "from", "into", "after", "before", "amid", "over", "under", "against",
+    "says", "said", "say", "new", "news", "live", "latest", "update", "updates", "breaking", "watch",
+    "photos", "photo", "video", "videos", "story", "stories", "report", "reports", "analysis", "opinion",
+    "world", "general", "english", "edition", "top", "headline", "headlines", "week", "today", "night",
+    "morning", "afternoon", "evening", "hours", "hour", "minute", "minutes", "still", "more", "than",
+    "their", "there", "about", "this", "that", "these", "those", "have", "has", "had", "been", "will",
+}
+
+
+def _title_signature_terms(text: str, limit: int = 12) -> set[str]:
+    raw = (text or "").strip()
+    if not raw:
+        return set()
+    norm = normalize_title_for_key(raw, "en") or ""
+    if not norm:
+        norm = _re.sub(r"[^a-zA-Z0-9а-яА-ЯёЁ\s]+", " ", raw.lower())
+        norm = _re.sub(r"\s+", " ", norm).strip()
+    out: list[str] = []
+    for tok in norm.split():
+        if len(tok) < 4 and not tok.isdigit():
+            continue
+        if tok in _TITLE_SIG_STOP or tok in _NOISE:
+            continue
+        if tok.isdigit() and len(tok) < 2:
+            continue
+        out.append(tok)
+    if len(out) > limit:
+        out = out[:limit]
+    return set(out)
+
+
+def _signature_overlap(a: set[str], b: set[str]) -> int:
+    if not a or not b:
+        return 0
+    return len(a & b)
+
+
+def _should_skip_candidate_by_title(
+    article_title: str,
+    article_desc: str,
+    article_terms: set[str],
+    article_entities: set[str],
+    candidate_title_text: str,
+    candidate_terms: set[str],
+    candidate_entities: set[str],
+) -> bool:
+    """Hard offline gate that blocks cross-topic merges before TF-IDF runs.
+
+    Main goal: stop clusters from being polluted by a single noisy source/description.
+    We intentionally trust titles much more than descriptions here.
+    """
+    cand_title = (candidate_title_text or "").strip()
+    if not cand_title:
+        return False
+
+    title_entities = _extract_entities(article_title)
+    cand_title_entities = _extract_entities(cand_title)
+    title_ent_overlap = len(title_entities & cand_title_entities)
+    term_overlap = _signature_overlap(article_terms, candidate_terms)
+    entity_overlap = len(article_entities & candidate_entities)
+
+    # Strong disagreement between title anchors on both sides = almost certainly different stories.
+    if len(article_terms) >= 2 and len(candidate_terms) >= 2 and term_overlap == 0 and title_ent_overlap == 0:
+        if len(title_entities) >= 1 and len(cand_title_entities) >= 1:
+            return True
+        # When both sides have several strong title terms and no entity support, don't let descriptions glue them together.
+        if len(article_terms) >= 3 and len(candidate_terms) >= 3:
+            return True
+
+    # If overall entities are rich on both sides but there is zero overlap and no shared title terms, reject.
+    if len(article_entities) >= 3 and len(candidate_entities) >= 3 and entity_overlap == 0 and term_overlap == 0:
+        return True
+
+    # Short emergency titles can rely on description a bit, but only if there is at least one shared anchor.
+    if len(article_terms) >= 1 and len(candidate_terms) >= 1 and term_overlap == 0 and title_ent_overlap == 0:
+        desc_terms = _title_signature_terms(article_desc, limit=8)
+        if desc_terms and len(desc_terms & candidate_terms) == 0 and entity_overlap == 0:
+            return True
+
+    return False
+
 
 def _extract_entities(text: str) -> set[str]:
     if not text:
@@ -1480,19 +1562,25 @@ def run_ingest_cycle() -> dict[str, Any]:
             candidates_meta: list[dict[str, Any]] = []
             for c in candidates_db:
                 cid = int(c["id"])
-                txts = db.get_cluster_article_texts(cid, limit=10)
-                ctext = " ".join([(c.get("title") or "")] + txts).strip()
+                c_title = (c.get("title") or "").strip()
+                recent_titles = db.get_cluster_article_titles(cid, limit=8)
+                title_text = " ".join([c_title] + recent_titles).strip()
+                # Use title-focused text for matching; descriptions are noisier and can pull unrelated stories in.
+                ctext = title_text
                 latest = db.get_cluster_latest_published_at(cid)
                 c_topic = (c.get("topic") or "general").strip().lower()
-                c_ents = _extract_entities(ctext)
+                c_ents = _extract_entities(title_text)
+                c_terms = _title_signature_terms(title_text)
                 candidates_meta.append(
                     {
                         "cid": cid,
                         "text": ctext,
+                        "title_text": title_text,
                         "topic": c_topic,
                         "latest_published_at": latest,
                         "entities": c_ents,
-                        "is_liveblog": _is_liveblog(None, (c.get("title") or "")),
+                        "title_terms": c_terms,
+                        "is_liveblog": _is_liveblog(None, c_title),
                     }
                 )
 
@@ -1501,6 +1589,7 @@ def run_ingest_cycle() -> dict[str, Any]:
                 title = (art.get("title") or "").strip()
                 desc = (art.get("description") or "").strip()
                 article_text = f"{title} {desc}".strip()
+                a_title_terms = _title_signature_terms(title)
 
                 is_liveblog = _is_liveblog(art.get("url"), title)
 
@@ -1554,6 +1643,17 @@ def run_ingest_cycle() -> dict[str, Any]:
                         if len(a_ents) >= 4 and len(c_ents) >= 4:
                             if _jaccard(a_ents, c_ents) < min_j:
                                 continue
+
+                        if _should_skip_candidate_by_title(
+                            article_title=title,
+                            article_desc=desc,
+                            article_terms=a_title_terms,
+                            article_entities=a_ents,
+                            candidate_title_text=str(c.get("title_text") or c.get("text") or ""),
+                            candidate_terms=set(c.get("title_terms") or set()),
+                            candidate_entities=c_ents,
+                        ):
+                            continue
 
                         candidates.append((int(c["cid"]), str(c["text"])))
 
@@ -1619,14 +1719,14 @@ def run_ingest_cycle() -> dict[str, Any]:
         def uniq_sources_count(cid: int) -> int:
             return len({(s.get("source_name") or "").strip().lower() for s in db.get_cluster_sources(cid)})
 
-        top_n = 12
+        top_n = 20
         touched_sorted = sorted(list(touched_clusters), key=lambda x: uniq_sources_count(x), reverse=True)
         touched_sorted = [cid for cid in touched_sorted if uniq_sources_count(cid) >= 2][:top_n]
 
         # Summaries only for top clusters
         summary_model = os.getenv("OPENAI_SUMMARY_MODEL", "").strip() or os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
         try:
-            summary_min_interval = int(os.getenv("SUMMARY_REGEN_MIN_INTERVAL_SECONDS", str(6 * 60 * 60)))
+            summary_min_interval = int(os.getenv("SUMMARY_REGEN_MIN_INTERVAL_SECONDS", str(30 * 60)))
         except Exception:
             summary_min_interval = 6 * 60 * 60
 

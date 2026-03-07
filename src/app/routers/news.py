@@ -208,6 +208,33 @@ for alias, target in _MAP_ALIAS_TO_KEY.items():
 
 _MAP_KEYS_SORTED = sorted(_MAP_PLACE_BY_KEY.keys(), key=len, reverse=True)
 _MAP_GEO_CACHE: dict[str, dict[str, Any]] = {}
+_MAP_QUERY_CACHE: dict[str, Optional[dict[str, Any]]] = {}
+
+_EVENT_LOCATION_STOPWORDS = {
+    'russia', 'russian', 'ukraine', 'ukrainian', 'iran', 'iranian', 'israel', 'israeli', 'gaza', 'hamas',
+    'hezbollah', 'houthi', 'trump', 'biden', 'zelenskyy', 'zelenskiy', 'putin', 'eu', 'european union',
+    'nato', 'un', 'u.n.', 'us', 'u.s.', 'usa', 'uk', 'u.k.', 'pm', 'am', 'tv', 'series', 'kennedy', 'bessette'
+}
+
+_EVENT_KEYWORDS = (
+    'attack', 'attacks', 'attacked', 'strike', 'strikes', 'struck', 'missile', 'drone', 'shelling', 'bombing',
+    'bombed', 'killed', 'kills', 'killing', 'dead', 'dies', 'died', 'injured', 'injures', 'explosion', 'blast',
+    'earthquake', 'quake', 'flood', 'flooding', 'wildfire', 'fire', 'crash', 'shooting', 'protest', 'protests',
+    'alert', 'evacuation', 'raid', 'raids', 'offensive', 'troops', 'fighting', 'battle', 'war', 'explodes'
+)
+
+_LOCATION_PREPOSITIONS = ('in', 'near', 'outside', 'around', 'across', 'at', 'inside', 'from', 'off')
+
+_COUNTRY_HINTS = {
+    'us': 'United States', 'usa': 'United States', 'united states': 'United States',
+    'uk': 'United Kingdom', 'united kingdom': 'United Kingdom', 'uae': 'United Arab Emirates',
+    'south korea': 'South Korea', 'north korea': 'North Korea', 'russia': 'Russia', 'ukraine': 'Ukraine',
+    'germany': 'Germany', 'france': 'France', 'poland': 'Poland', 'israel': 'Israel', 'iran': 'Iran',
+    'china': 'China', 'japan': 'Japan', 'india': 'India', 'canada': 'Canada', 'australia': 'Australia',
+    'turkey': 'Turkey', 'qatar': 'Qatar', 'saudi arabia': 'Saudi Arabia', 'egypt': 'Egypt', 'taiwan': 'Taiwan',
+    'brazil': 'Brazil', 'argentina': 'Argentina', 'mexico': 'Mexico', 'spain': 'Spain', 'italy': 'Italy',
+    'netherlands': 'Netherlands', 'belgium': 'Belgium', 'greece': 'Greece', 'sweden': 'Sweden'
+}
 
 
 def _normalize_location_text(text: str) -> str:
@@ -217,6 +244,109 @@ def _normalize_location_text(text: str) -> str:
     s = s.replace("d.c.", "dc").replace("d.c", "dc")
     s = re.sub(r"\s+", " ", s).strip()
     return s
+
+
+def _display_location_text(text: str) -> str:
+    s = (text or '').strip()
+    s = re.sub(r'\s+', ' ', s)
+    s = s.strip(" ,.;:-")
+    return s
+
+
+def _canonical_country_hint(country: str) -> str:
+    norm = _normalize_location_text(country)
+    return _COUNTRY_HINTS.get(norm, _display_location_text(country)) if norm else ''
+
+
+def _looks_like_location_candidate(raw: str) -> bool:
+    disp = _display_location_text(raw)
+    if not disp or len(disp) < 3 or len(disp) > 64:
+        return False
+    norm = _normalize_location_text(disp)
+    if not norm or norm in _EVENT_LOCATION_STOPWORDS:
+        return False
+    words = [w for w in re.split(r'[-\s]+', disp) if w]
+    if not words or len(words) > 5:
+        return False
+    bad = {'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday','January','February','March','April','May','June','July','August','September','October','November','December','Nationwide','Statewide','Worldwide','Global'}
+    if any(w in bad for w in words):
+        return False
+    capitals = sum(1 for w in words if w[:1].isupper() or w[:1].isdigit())
+    return capitals >= max(1, len(words) - 1)
+
+
+def _event_pattern_location_candidates(text: str) -> list[str]:
+    raw = text or ''
+    if not raw:
+        return []
+    out: list[str] = []
+    keyword_re = r'(?i)(?:' + '|'.join(re.escape(x) for x in _EVENT_KEYWORDS) + r')'
+    prep_re = r'(?i)(?:' + '|'.join(re.escape(x) for x in _LOCATION_PREPOSITIONS) + r')'
+    patterns = [
+        rf"{keyword_re}[^.\n,:;]{{0,120}}?\b{prep_re}\s+([A-Z][A-Za-z'’.-]*(?:[ -][A-Z][A-Za-z'’.-]*){{0,3}})",
+        rf"\b([A-Z][A-Za-z'’.-]*(?:[ -][A-Z][A-Za-z'’.-]*){{0,3}})\b[^.\n,:;]{{0,40}}?(?:was|were|is|are)?\s*(?:hit|hits|struck|attacked|bombed|shelled|flooded|evacuated)\b",
+        rf"\b([A-Z][A-Za-z'’.-]*(?:[ -][A-Z][A-Za-z'’.-]*){{0,3}}),\s*([A-Z][A-Za-z'’.-]*(?:[ -][A-Z][A-Za-z'’.-]*){{0,3}})",
+    ]
+    for pat in patterns:
+        for m in re.finditer(pat, raw):
+            groups = [g for g in m.groups() if g]
+            for g in groups[:2]:
+                disp = _display_location_text(g)
+                if _looks_like_location_candidate(disp):
+                    out.append(disp)
+    dedup: list[str] = []
+    seen: set[str] = set()
+    for cand in out:
+        key = _normalize_location_text(cand)
+        if key and key not in seen:
+            seen.add(key)
+            dedup.append(cand)
+    return dedup
+
+
+def _geocode_location_query(query: str, country_hint: str = '') -> Optional[dict[str, Any]]:
+    disp = _display_location_text(query)
+    if not disp:
+        return None
+    cache_key = _normalize_location_text(disp + '|' + country_hint)
+    if cache_key in _MAP_QUERY_CACHE:
+        hit = _MAP_QUERY_CACHE.get(cache_key)
+        return dict(hit) if isinstance(hit, dict) else None
+    url = 'https://nominatim.openstreetmap.org/search'
+    params = {
+        'q': f'{disp}, {country_hint}' if country_hint and country_hint.lower() not in disp.lower() else disp,
+        'format': 'jsonv2',
+        'limit': 1,
+        'addressdetails': 1,
+    }
+    headers = {'User-Agent': 'CheckneNewsMap/1.0'}
+    try:
+        r = requests.get(url, params=params, headers=headers, timeout=1.6)
+        if r.ok:
+            arr = r.json()
+            if isinstance(arr, list) and arr:
+                item = arr[0]
+                addr = item.get('address') or {}
+                kind = 'country' if item.get('type') == 'country' else 'city'
+                label_parts = [
+                    addr.get('city') or addr.get('town') or addr.get('village') or addr.get('municipality') or addr.get('state') or disp,
+                    addr.get('country') or country_hint or ''
+                ]
+                label = ', '.join(x for x in label_parts if x)
+                result = {
+                    'label': label,
+                    'lat': float(item.get('lat')),
+                    'lon': float(item.get('lon')),
+                    'kind': kind,
+                    'match': _normalize_location_text(disp),
+                    'confidence': 0.88 if kind == 'city' else 0.72,
+                }
+                _MAP_QUERY_CACHE[cache_key] = dict(result)
+                return result
+    except Exception:
+        pass
+    _MAP_QUERY_CACHE[cache_key] = None
+    return None
 
 
 def _cluster_location_parts(c: dict[str, Any], sources: list[dict[str, Any]]) -> dict[str, str]:
@@ -232,14 +362,17 @@ def _cluster_location_parts(c: dict[str, Any], sources: list[dict[str, Any]]) ->
         pass
     source_title_chunks: list[str] = []
     source_name_chunks: list[str] = []
+    source_desc_chunks: list[str] = []
     for s in sources[:10]:
         source_title_chunks.append(s.get("title") or "")
         source_name_chunks.append(s.get("source_name") or "")
+        source_desc_chunks.append(s.get("description") or s.get("summary") or "")
     return {
         "title": c.get("title") or "",
         "summary": " ".join(x for x in summary_chunks if x),
         "source_titles": " ".join(x for x in source_title_chunks if x),
         "source_names": " ".join(x for x in source_name_chunks if x),
+        "source_descriptions": " ".join(x for x in source_desc_chunks if x),
     }
 
 
@@ -266,41 +399,88 @@ def _extract_cluster_map_location(c: dict[str, Any], sources: Optional[list[dict
         return dict(hit)
 
     parts = _cluster_location_parts(c, srcs)
+    country_hint = _canonical_country_hint(str(c.get("country") or ""))
     weighted_sections = [
-        ("title", 120, 0.98),
-        ("summary", 70, 0.90),
-        ("source_titles", 48, 0.82),
-        ("source_names", 10, 0.60),
+        ("title", 120, 0.98, 0.92),
+        ("summary", 70, 0.90, 0.86),
+        ("source_titles", 54, 0.84, 0.80),
+        ("source_descriptions", 34, 0.76, 0.74),
+        ("source_names", 8, 0.55, 0.45),
     ]
 
     scores: dict[str, dict[str, Any]] = {}
-    for section_name, base_score, confidence in weighted_sections:
-        matches = _iter_location_matches(parts.get(section_name, ""))
+
+    def add_candidate(raw_label: str, score: int, confidence: float, source_kind: str, matched_key: Optional[str] = None) -> None:
+        disp = _display_location_text(raw_label)
+        if not disp:
+            return
+        norm = _normalize_location_text(matched_key or disp)
+        if not norm:
+            return
+        bucket = scores.setdefault(norm, {
+            "score": 0,
+            "label": disp,
+            "match": matched_key or disp,
+            "confidence": confidence,
+            "entry": _MAP_PLACE_BY_KEY.get(norm),
+            "source_kind": source_kind,
+        })
+        bucket["score"] += int(score)
+        if confidence > float(bucket.get("confidence") or 0):
+            bucket["confidence"] = confidence
+            bucket["match"] = matched_key or disp
+            bucket["source_kind"] = source_kind
+        if bucket.get("entry") is None and norm in _MAP_PLACE_BY_KEY:
+            bucket["entry"] = _MAP_PLACE_BY_KEY[norm]
+
+    for section_name, base_score, confidence, pattern_conf in weighted_sections:
+        section_text = parts.get(section_name, "")
+        matches = _iter_location_matches(section_text)
         for idx, (matched_key, entry) in enumerate(matches):
-            canonical_key = entry["key"]
-            bucket = scores.setdefault(canonical_key, {"score": 0, "entry": entry, "match": matched_key, "confidence": confidence})
-            bonus = max(0, 14 - min(idx, 12))
-            bucket["score"] += base_score + bonus
-            if confidence > bucket["confidence"]:
-                bucket["confidence"] = confidence
-                bucket["match"] = matched_key
+            bonus = max(0, 16 - min(idx, 12))
+            add_candidate(entry["label"], base_score + bonus, confidence, "indexed", matched_key)
+        pattern_matches = _event_pattern_location_candidates(section_text)
+        for idx, cand in enumerate(pattern_matches):
+            bonus = max(0, 22 - min(idx * 4, 18))
+            if section_name == "title":
+                bonus += 28
+            add_candidate(cand, base_score + bonus, pattern_conf, "pattern")
+
+    if country_hint:
+        norm_country = _normalize_location_text(country_hint)
+        for norm, bucket in list(scores.items()):
+            label_norm = _normalize_location_text(str(bucket.get("label") or ""))
+            if norm_country and label_norm == norm_country:
+                bucket["score"] -= 28
+                bucket["confidence"] = min(float(bucket.get("confidence") or 0), 0.62)
+            elif country_hint.lower() in str(bucket.get("label") or "").lower():
+                bucket["score"] += 8
 
     best: Optional[dict[str, Any]] = None
     if scores:
-        best = max(scores.values(), key=lambda x: (int(x["score"]), float(x["confidence"]), len(str(x["entry"].get("key") or ""))))
+        best = max(scores.values(), key=lambda x: (int(x["score"]), float(x["confidence"]), len(str(x.get("label") or ""))))
 
-    if best and int(best["score"]) >= 48:
-        entry = best["entry"]
-        result = {
-            "label": entry["label"],
-            "lat": entry["lat"],
-            "lon": entry["lon"],
-            "confidence": round(float(best["confidence"]), 2),
-            "match": best["match"],
-            "kind": "city",
-        }
-        _MAP_GEO_CACHE[cache_key] = dict(result)
-        return result
+    if best:
+        entry = best.get("entry")
+        score_val = int(best.get("score") or 0)
+        conf_val = float(best.get("confidence") or 0)
+        if isinstance(entry, dict) and score_val >= 42:
+            result = {
+                "label": entry["label"],
+                "lat": entry["lat"],
+                "lon": entry["lon"],
+                "confidence": round(conf_val, 2),
+                "match": best.get("match"),
+                "kind": "city",
+            }
+            _MAP_GEO_CACHE[cache_key] = dict(result)
+            return result
+        if score_val >= 54:
+            geo = _geocode_location_query(str(best.get("label") or best.get("match") or ""), country_hint=country_hint)
+            if geo:
+                geo["confidence"] = round(max(float(geo.get("confidence") or 0), conf_val), 2)
+                _MAP_GEO_CACHE[cache_key] = dict(geo)
+                return geo
 
     ctry = _normalize_location_text(str(c.get("country") or ""))
     if ctry and ctry not in {"world", "global", "international", "general"} and ctry in _COUNTRY_FALLBACKS:
@@ -317,6 +497,7 @@ def _extract_cluster_map_location(c: dict[str, Any], sources: Optional[list[dict
         return result
 
     return None
+
 
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
