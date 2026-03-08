@@ -485,7 +485,7 @@ const WIDGETS = {
       name: "Media Bias",
       desc: "Left • Center • Right distribution across sources in the current story.",
       defaults: {},
-      pro: true,
+      pro: false,
       render: renderMediaBias,
       settingsUI: null,
     },
@@ -1132,14 +1132,51 @@ function createMultiSelect(mountEl, opts){
   // Header hide/show (if you dispatch this event elsewhere)
   document.addEventListener('checkne:header', () => requestAnimationFrame(update));
 
-  // Widgets were re-rendered (configure/add/remove). Re-measure for follow.
-  document.addEventListener('checkne:widgetsRendered', () => {
+  function forceRefresh(){
+    // Re-apply follow positioning after DOM/height changes.
+    // A single frame is not always enough when the feed is deep-scrolled and
+    // widget add/remove causes the page/grid height to settle over multiple paints.
+    for (const el of SIDES){
+      const s = meta.get(el);
+      if (!s || !s.inner) continue;
+      try {
+        s.inner.style.transition = 'none';
+        s.inner.style.opacity = '1';
+        s.inner.style.transform = '';
+        if (s.releaseT){
+          clearTimeout(s.releaseT);
+          s.releaseT = null;
+        }
+        s.releasing = false;
+      } catch {}
+    }
+
     meta.clear();
     requestAnimationFrame(() => {
       SIDES.forEach(captureStart);
       update();
+      requestAnimationFrame(() => {
+        SIDES.forEach(captureStart);
+        update();
+        setTimeout(() => {
+          SIDES.forEach(captureStart);
+          update();
+          for (const el of SIDES){
+            const s = meta.get(el);
+            if (!s || !s.inner) continue;
+            try { s.inner.style.transition = ''; } catch {}
+          }
+        }, 40);
+      });
     });
-  });
+  }
+
+  if (typeof window !== 'undefined'){
+    window.__checkneRefreshSidebarFollow = forceRefresh;
+  }
+
+  // Widgets were re-rendered (configure/add/remove). Re-measure for follow.
+  document.addEventListener('checkne:widgetsRendered', forceRefresh);
 }
 
 function uid(){
@@ -1745,6 +1782,11 @@ document.addEventListener('checkne:currentStoryChanged', () => {
   function renderAll(){
     renderSidebar("left");
     renderSidebar("right");
+    try {
+      if (typeof window.__checkneRefreshSidebarFollow === 'function') {
+        window.__checkneRefreshSidebarFollow();
+      }
+    } catch {}
   }
 
   function refreshWidgetType(type){
@@ -1914,7 +1956,9 @@ document.addEventListener('checkne:currentStoryChanged', () => {
     if (!requireAuth('widgets')) return;
     state.layout[side] = (state.layout[side] || []).filter(w => w.id !== id);
     saveLayout();
-    renderSidebar(side);
+    // Re-render both sidebars so the global "Add widget" tile state
+    // stays correct on both sides after a remove.
+    renderAll();
   }
 
   function addWidget(side, type){
@@ -1933,7 +1977,9 @@ document.addEventListener('checkne:currentStoryChanged', () => {
 
     state.layout[side].push({ id: uid(), type, settings: { ...(def.defaults || {}) } });
     saveLayout();
-    renderSidebar(side);
+    // Re-render both sidebars so the opposite column also hides its
+    // "Add widget" tile immediately when we hit the 5-widget cap.
+    renderAll();
   }
 
   // ===== Drag & Drop =====
