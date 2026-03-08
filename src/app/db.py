@@ -170,6 +170,28 @@ def _append_local_source_exists(where: list[str], params: list[Any], country: st
     where.append("(" + " OR ".join(local_parts) + ")")
     params.extend(local_params)
 
+
+def _append_cluster_or_article_language(where: list[str], params: list[Any], languages: list[str]) -> None:
+    langs = [str(x or "").strip().lower() for x in (languages or []) if str(x or "").strip()]
+    if not langs:
+        return
+
+    placeholders = ",".join("?" for _ in langs)
+    where.append(
+        f"""(
+            LOWER(COALESCE(c.language, '')) IN ({placeholders})
+            OR EXISTS (
+                SELECT 1
+                FROM cluster_articles ca
+                JOIN articles a ON a.id = ca.article_id
+                WHERE ca.cluster_id = c.id
+                  AND LOWER(COALESCE(a.language, '')) IN ({placeholders})
+            )
+        )"""
+    )
+    params.extend(langs)
+    params.extend(langs)
+
 class _PGCursor:
     def __init__(self, cur) -> None:
         self._cur = cur
@@ -1895,9 +1917,10 @@ class Database:
             return self._fetchall(sql, tuple(params))
 
         if country in country_language_map:
-            # Country feeds should feel local: keep them country-specific and,
-            # when the UI language is English, include the country's main local
-            # news language as well so local agencies can still surface.
+            # Country feeds should feel local. On older production DBs the cluster
+            # metadata can lag behind reality (e.g. local outlet articles merged
+            # into `world` clusters, or cluster.language left too broad), so we
+            # scope by the underlying articles as well — not only cluster columns.
             allowed_langs = list(country_language_map[country])
             if language and language not in {"all", "*"}:
                 if language in allowed_langs:
@@ -1907,21 +1930,27 @@ class Database:
                     allowed_langs = list(country_language_map[country])
                 else:
                     allowed_langs = [language]
-            placeholders = ",".join("?" for _ in allowed_langs)
-            base_where.append(f"c.language IN ({placeholders})")
-            base_params.extend(allowed_langs)
 
-            local_where = list(base_where)
-            local_params = list(base_params)
+            local_where: list[str] = []
+            local_params: list[Any] = []
+            _append_cluster_or_article_language(local_where, local_params, allowed_langs)
             _append_local_source_exists(local_where, local_params, country)
             rows = _fetch_query_rows(local_where, local_params, limit)
 
-            # Legacy production DBs may still have mostly world-scoped clusters.
-            # Only if absolutely nothing local is found, fall back to the broader
-            # world feed in the same language set so the UI never goes blank.
+            # Extremely old rows may miss article.language as well. In that case,
+            # trust the local source matcher and return those rows even without a
+            # language match so the main site doesn't show an empty regional feed.
             if not rows:
-                fallback_where = list(base_where)
-                fallback_params = list(base_params)
+                legacy_local_where: list[str] = []
+                legacy_local_params: list[Any] = []
+                _append_local_source_exists(legacy_local_where, legacy_local_params, country)
+                rows = _fetch_query_rows(legacy_local_where, legacy_local_params, limit)
+
+            # Final safety net: keep the UI non-empty if the DB truly has no local rows yet.
+            if not rows:
+                fallback_where: list[str] = []
+                fallback_params: list[Any] = []
+                _append_cluster_or_article_language(fallback_where, fallback_params, allowed_langs)
                 fallback_where.append("c.country='world'")
                 rows = _fetch_query_rows(fallback_where, fallback_params, limit)
         else:
