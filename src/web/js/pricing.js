@@ -1041,9 +1041,55 @@ function formatTimeHHMM(iso) {
     if (!iso) return "";
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return "";
-   return d.toLocaleTimeString('en-US', { hour: "2-digit", minute: "2-digit" });
+    return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
   } catch {
     return "";
+  }
+}
+
+function interpolateI18n(template, vars = {}) {
+  try {
+    return String(template || "").replace(/\{(\w+)\}/g, (_, key) => {
+      const value = vars[key];
+      return value == null ? '' : String(value);
+    });
+  } catch {
+    return String(template || '');
+  }
+}
+
+function formatRelativeTimeFromNow(iso) {
+  try {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+
+    const diffMs = Math.max(0, Date.now() - d.getTime());
+    const totalMinutes = Math.floor(diffMs / 60000);
+    const totalHours = Math.floor(totalMinutes / 60);
+    const totalDays = Math.floor(totalHours / 24);
+
+    if (totalMinutes <= 0) {
+      return t('time.just_now', 'just now');
+    }
+    if (totalMinutes < 60) {
+      return interpolateI18n(t('time.minutes_ago', '{minutes}m ago'), { minutes: totalMinutes });
+    }
+    if (totalHours < 24) {
+      const minutes = totalMinutes % 60;
+      if (minutes > 0) {
+        return interpolateI18n(t('time.hours_minutes_ago', '{hours}h {minutes}m ago'), { hours: totalHours, minutes });
+      }
+      return interpolateI18n(t('time.hours_ago', '{hours}h ago'), { hours: totalHours });
+    }
+
+    const hours = totalHours % 24;
+    if (hours > 0) {
+      return interpolateI18n(t('time.days_hours_ago', '{days}d {hours}h ago'), { days: totalDays, hours });
+    }
+    return interpolateI18n(t('time.days_ago', '{days}d ago'), { days: totalDays });
+  } catch {
+    return '';
   }
 }
 

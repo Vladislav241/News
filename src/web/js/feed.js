@@ -91,12 +91,14 @@ function createCardElement(item, ctx, seen, idx) {
   const metaTime = isNew
     ? (item.created_at || item.updated_at || item.latest_published_at)
     : (item.updated_at || item.latest_published_at || item.created_at);
-  const metaHHMM = formatTimeHHMM(metaTime);
+  const metaAge = formatRelativeTimeFromNow(metaTime);
   const primarySource = pickPrimarySourceName(item);
-  const metaLabel = isNew ? 'New' : 'Updated';
+  const metaLabel = isNew ? t('ui.new', 'New') : t('ui.updated', 'Updated');
+  const sourcePrefix = t('feed.source_prefix', 'Source');
+  const outletsLabel = t('feed.outlets', 'outlets');
   const metaLine =
-    `Source: ${escapeHtml(primarySource)} · ${sourcesCount} outlets · ${escapeHtml(item.country || 'world')} / ${escapeHtml(item.language || 'en')}` +
-    (metaHHMM ? ` · ${metaLabel} ${escapeHtml(metaHHMM)}` : '');
+    `${escapeHtml(sourcePrefix)}: ${escapeHtml(primarySource)} · ${sourcesCount} ${escapeHtml(outletsLabel)} · ${escapeHtml(item.country || 'world')} / ${escapeHtml(item.language || 'en')}` +
+    (metaAge ? ` · ${escapeHtml(metaLabel)} ${escapeHtml(metaAge)}` : '');
 
   const diffState = getSourceDiffState(item);
 
@@ -195,12 +197,12 @@ function createCardElement(item, ctx, seen, idx) {
       const mapLabel = escapeHtml(String(mapLoc?.label || 'Mapped location'));
       eventMapHtml = `
         <details class="accordion" open>
-          <summary class="accordionSummary">${escapeHtml(t("ui.event_map", "Event map"))}</summary>
+          <summary class="accordionSummary">Event map</summary>
           <div class="accordionBody">
             <div class="muted" style="margin-bottom:12px;">${mapLabel}</div>
             <div class="eventMapMini" data-cluster-id="${idStr}"></div>
             <div class="eventMapActions">
-              <button type="button" class="eventMapOpenBtn" data-open-full-map="${idStr}">${escapeHtml(t("ui.open_full_map", "Open full map"))}</button>
+              <button type="button" class="eventMapOpenBtn" data-open-full-map="${idStr}">Open full map</button>
             </div>
           </div>
         </details>`;
@@ -226,7 +228,7 @@ function createCardElement(item, ctx, seen, idx) {
       ? `${(diffState.diffs || []).map((d) => {
           const diffText = escapeHtml(d?.difference || '');
           const srcs = Array.isArray(d?.sources) ? d.sources.map(x => String(x || '').trim()).filter(Boolean) : [];
-          const srcLabel = srcs.length ? `<div class="muted" style="margin-bottom:6px;">${escapeHtml(t('ui.sources_label', 'Sources'))}: ${escapeHtml(srcs.slice(0, 4).join(' vs '))}${srcs.length > 4 ? '…' : ''}</div>` : '';
+          const srcLabel = srcs.length ? `<div class="muted" style="margin-bottom:6px;">Sources: ${escapeHtml(srcs.slice(0, 4).join(' vs '))}${srcs.length > 4 ? '…' : ''}</div>` : '';
           const evA = d?.a || null;
           const evB = d?.b || null;
           const evBlock = (evA || evB)
@@ -238,12 +240,12 @@ function createCardElement(item, ctx, seen, idx) {
 
     diffsSectionHtml = `
         <details class="accordion">
-          <summary class="accordionSummary">${escapeHtml(t("ui.source_differences", "Source differences"))}</summary>
+          <summary class="accordionSummary">Source differences</summary>
           <div class="accordionBody">
             ${topMsg}
             ${diffsHtml}
-            ${factsHtml ? `<div class="splitSmall"></div><div><b>${escapeHtml(t('ui.key_facts', 'Key facts'))}</b>${factsHtml}</div>` : ''}
-            ${uncertaintiesHtml ? `<div class="splitSmall"></div><div><b>${escapeHtml(t('ui.uncertainties', 'Uncertainties'))}</b>${uncertaintiesHtml}</div>` : ''}
+            ${factsHtml ? `<div class="splitSmall"></div><div><b>Key facts</b>${factsHtml}</div>` : ''}
+            ${uncertaintiesHtml ? `<div class="splitSmall"></div><div><b>Uncertainties</b>${uncertaintiesHtml}</div>` : ''}
           </div>
         </details>`;
   }
