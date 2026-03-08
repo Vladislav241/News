@@ -29,7 +29,7 @@
 
   const ICON_FILES = {
     fx_rates: "/static/icons/FxRates.svg",
-    crypto_prices: "/static/icons/Crypto.svg",
+    crypto_prices: "/static/icons/CryptoFix.svg",
     headlines: "/static/icons/TopHeadlines.svg",
     tracking_stats: "/static/icons/TrackingStats.svg",
     market_clock: "/static/icons/MarketClock.svg",
@@ -38,7 +38,7 @@
     pro_entities: "/static/icons/Entities.svg",
     pro_related_coverage: "/static/icons/RelatedCoverage.svg",
     pro_recent_history: "/static/icons/RecentHistory.svg",
-    pro_video_report: "/static/icons/VideoReport.svg",
+    pro_video_report: "/static/icons/VideoReportFix.svg",
   };
 
   const PRO_ICON_POOL = [
