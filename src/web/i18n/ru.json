@@ -131,12 +131,29 @@
     "tweet_prefix": "Trust score •"
   },
   "card": {
-    "source_diffs": "Различия источников",
+    "source_diffs": "Различия между источниками",
     "key_facts": "Ключевые факты",
-    "uncertainties": "Неопределённости"
+    "uncertainties": "Неопределённости",
+    "outlet": "источник",
+    "outlets": "источников",
+    "source_prefix": "Источник",
+    "sources_label": "Источники",
+    "diff_mark": "разн.",
+    "no_related_image": "Нет подходящего изображения",
+    "mapped_location": "Отмеченная локация",
+    "trending": "В тренде"
   },
   "ui.event_map": "Карта события",
   "ui.open_full_map": "Открыть полную карту",
   "ui.event_map_empty": "Локация этого события пока недоступна.",
-  "ui.event_map_hint": "Смотри, где произошли недавние события, прямо на карте."
+  "ui.event_map_hint": "Смотри, где произошли недавние события, прямо на карте.",
+  "time": {
+    "just_now": "только что",
+    "minutes_ago": "{minutes} мин назад",
+    "hours_ago": "{hours} ч назад",
+    "hours_minutes_ago": "{hours} ч {minutes} мин назад",
+    "days_ago": "{days} дн назад",
+    "days_hours_ago": "{days} дн {hours} ч назад"
+  },
+  "map.locations": "локаций"
 }

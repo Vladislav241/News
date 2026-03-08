@@ -121,7 +121,7 @@ async function loadTrendingInterests({ force } = { force: false }){
 
   const key = [
     (state.country || "world").toLowerCase(),
-    (state.language || "all").toLowerCase(),
+    "all",
     (state.interests || []).slice().sort().join(","),
     (state.language || "en").toLowerCase(), // ui lang
   ].join("|");
@@ -135,7 +135,7 @@ async function loadTrendingInterests({ force } = { force: false }){
   const params = new URLSearchParams();
   params.set("ui_lang", (state.language || "en"));
   params.set("country", (state.country || "world"));
-  params.set("language", (state.language || "all"));
+  params.set("language", "all");
   params.set("interests", (state.interests || ["general"]).join(","));
   params.set("limit", String(TRENDING_LIMIT));
 

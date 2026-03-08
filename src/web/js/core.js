@@ -455,10 +455,25 @@ function applyI18nToDOM() {
     if (!k) return;
     el.textContent = t(k, el.textContent || "");
   });
+  document.querySelectorAll("[data-i18n-html]").forEach((el) => {
+    const k = el.getAttribute("data-i18n-html");
+    if (!k) return;
+    el.innerHTML = t(k, el.innerHTML || "");
+  });
   document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
     const k = el.getAttribute("data-i18n-placeholder");
     if (!k) return;
     el.setAttribute("placeholder", t(k, el.getAttribute("placeholder") || ""));
+  });
+  document.querySelectorAll("[data-i18n-aria]").forEach((el) => {
+    const k = el.getAttribute("data-i18n-aria");
+    if (!k) return;
+    el.setAttribute("aria-label", t(k, el.getAttribute("aria-label") || ""));
+  });
+  document.querySelectorAll("[data-i18n-title]").forEach((el) => {
+    const k = el.getAttribute("data-i18n-title");
+    if (!k) return;
+    el.setAttribute("title", t(k, el.getAttribute("title") || ""));
   });
 }
 

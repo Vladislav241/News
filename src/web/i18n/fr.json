@@ -54,7 +54,13 @@
     "continue_with_google": "Continuer avec Google",
     "continue_with_email": "Continuer avec e-mail",
     "email_address": "Adresse e-mail",
-    "drag_to_delete": "Glisser pour supprimer"
+    "drag_to_delete": "Glisser pour supprimer",
+    "source_differences": "Différences entre les sources",
+    "sources_label": "Sources",
+    "key_facts": "Faits clés",
+    "uncertainties": "Incertitudes",
+    "event_map": "Carte de l’événement",
+    "open_full_map": "Ouvrir la carte complète"
   },
   "interests": {
     "general": "Général",
@@ -131,12 +137,104 @@
     "tweet_prefix": "Score de confiance •"
   },
   "card": {
-    "source_diffs": "Différences entre sources",
+    "source_diffs": "Différences entre les sources",
     "key_facts": "Faits clés",
-    "uncertainties": "Incertitudes"
+    "uncertainties": "Incertitudes",
+    "outlet": "source",
+    "outlets": "sources",
+    "source_prefix": "Source",
+    "sources_label": "Sources",
+    "diff_mark": "diff",
+    "no_related_image": "Aucune image pertinente disponible",
+    "mapped_location": "Lieu identifié",
+    "trending": "Tendance"
   },
   "ui.event_map": "Carte de l’événement",
   "ui.open_full_map": "Ouvrir la carte complète",
   "ui.event_map_empty": "Le lieu de cet événement n’est pas encore disponible.",
-  "ui.event_map_hint": "Voyez directement sur la carte où les événements récents se sont produits."
+  "ui.event_map_hint": "Voyez directement sur la carte où les événements récents se sont produits.",
+  "time": {
+    "just_now": "à l’instant",
+    "minutes_ago": "il y a {minutes} min",
+    "hours_ago": "il y a {hours} h",
+    "hours_minutes_ago": "il y a {hours} h {minutes} min",
+    "days_ago": "il y a {days} j",
+    "days_hours_ago": "il y a {days} j {hours} h"
+  },
+  "map.locations": "lieux",
+  "widgets": {
+    "fx_rates": {
+      "name": "Taux de change",
+      "desc": "Taux EUR pour les principales devises (personnalisable).",
+      "load_error": "Impossible de charger les taux."
+    },
+    "crypto_prices": {
+      "name": "Crypto",
+      "desc": "Prix BTC/ETH (personnalisables) via CoinGecko."
+    },
+    "headlines": {
+      "name": "À la une",
+      "desc": "Aperçu rapide de ce qui se trouve actuellement dans votre fil."
+    },
+    "tracking_stats": {
+      "name": "Statistiques de suivi",
+      "desc": "Combien d’éléments vous suivez + raccourcis rapides."
+    },
+    "media_bias": {
+      "name": "Biais médiatique",
+      "desc": "Répartition gauche • centre • droite des sources dans cette actualité.",
+      "left": "Gauche",
+      "center": "Centre",
+      "right": "Droite",
+      "sources": "sources",
+      "confidence": "Confiance",
+      "conf_high": "Élevée",
+      "conf_medium": "Moyenne",
+      "conf_low": "Faible",
+      "show_sources": "Afficher les sources",
+      "hide_sources": "Masquer les sources",
+      "not_enough": "Pas assez de données pour estimer le biais médiatique de cette actualité.",
+      "unavailable": "Les données de biais ne sont pas encore disponibles.",
+      "aria": "Répartition du biais médiatique"
+    },
+    "market_clock": {
+      "name": "HORLOGE MONDIALE",
+      "desc": "Choisissez des villes et voyez les fuseaux horaires locaux."
+    },
+    "pro_momentum": {
+      "name": "Chronologie de momentum",
+      "desc": "Indique si un sujet monte ou retombe."
+    },
+    "pro_entities": {
+      "name": "Entités",
+      "desc": "Personnes / pays / organisations tendance en ce moment."
+    },
+    "pro_related_coverage": {
+      "name": "Couverture liée",
+      "desc": "Plus d’articles sur le même événement — provenant d’autres médias."
+    },
+    "pro_recent_history": {
+      "name": "Historique récent",
+      "desc": "Dernières publications dans ce cluster d’événements (24h / 3j / semaine)."
+    },
+    "pro_video_report": {
+      "name": "Rapport vidéo",
+      "desc": "Regardez un reportage pertinent pour l’actualité actuellement ouverte (intégré, sans réhébergement)."
+    },
+    "pro_silence": {
+      "name": "Indicateur de silence",
+      "desc": "Montre les médias/régions notables qui ne couvrent pas cette actualité."
+    },
+    "crypto": {
+      "currency": "Devise",
+      "load_error": "Impossible de charger les données crypto."
+    },
+    "add_widget": "Ajouter un widget",
+    "widget_settings": "Paramètres du widget",
+    "free_section": "GRATUIT",
+    "pro_section": "PRO+",
+    "get_pro": "Obtenir Pro",
+    "configure": "Configurer",
+    "delete_widget": "Supprimer le widget"
+  }
 }

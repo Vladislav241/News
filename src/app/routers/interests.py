@@ -34,6 +34,65 @@ CANON_MAP = {
     "us": "US",
 }
 
+TOPIC_LABELS = {
+    "de": {
+        "Iran-Israel tensions": "Iran-Israel-Spannungen",
+        "Israel-Gaza war": "Israel-Gaza-Krieg",
+        "Russia-Ukraine war": "Russland-Ukraine-Krieg",
+        "China-Taiwan tensions": "China-Taiwan-Spannungen",
+        "European Union": "Europäische Union",
+        "United Nations": "Vereinte Nationen",
+        "US election": "US-Wahl",
+        "Inflation": "Inflation",
+        "Interest rates": "Zinssätze",
+        "Global economy": "Weltwirtschaft",
+        "Energy": "Energie",
+        "AI": "KI",
+        "Crypto": "Krypto",
+        "Cybersecurity": "Cybersicherheit",
+        "Climate": "Klima",
+        "Public health": "Öffentliche Gesundheit",
+        "United States": "Vereinigte Staaten",
+        "United Kingdom": "Vereinigtes Königreich",
+        "China": "China",
+        "India": "Indien",
+        "Germany": "Deutschland",
+        "France": "Frankreich",
+        "Japan": "Japan",
+        "NATO": "NATO",
+    },
+    "fr": {
+        "Iran-Israel tensions": "Tensions Iran-Israël",
+        "Israel-Gaza war": "Guerre Israël-Gaza",
+        "Russia-Ukraine war": "Guerre Russie-Ukraine",
+        "China-Taiwan tensions": "Tensions Chine-Taïwan",
+        "European Union": "Union européenne",
+        "United Nations": "Nations unies",
+        "US election": "Élection américaine",
+        "Inflation": "Inflation",
+        "Interest rates": "Taux d’intérêt",
+        "Global economy": "Économie mondiale",
+        "Energy": "Énergie",
+        "AI": "IA",
+        "Crypto": "Crypto",
+        "Cybersecurity": "Cybersécurité",
+        "Climate": "Climat",
+        "Public health": "Santé publique",
+        "United States": "États-Unis",
+        "United Kingdom": "Royaume-Uni",
+        "China": "Chine",
+        "India": "Inde",
+        "Germany": "Allemagne",
+        "France": "France",
+        "Japan": "Japon",
+        "NATO": "OTAN",
+    },
+}
+
+def _translate_topic_label(label: str, ui_lang: str) -> str:
+    lang = (ui_lang or "en").strip().lower()
+    return TOPIC_LABELS.get(lang, {}).get(label, label)
+
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -174,7 +233,7 @@ def trending_interests(
     clusters = db.query_clusters(
         interests=interests_list,
         country=(country or "world"),
-        language=(language or "all"),
+        language="all",
         since_iso=since_iso,
         limit=200,
     )
@@ -215,8 +274,8 @@ def trending_interests(
         seen.add(k)
 
         items.append({
-            "label": label,
-            "q": label,  # client-side search uses this query
+            "label": _translate_topic_label(label, ui_lang),
+            "q": label,  # keep canonical English query for stable backend matching
             "score": float(score_cluster(c)),
         })
         if len(items) >= limit:

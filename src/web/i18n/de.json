@@ -54,7 +54,13 @@
     "continue_with_google": "Mit Google fortfahren",
     "continue_with_email": "Mit E‑Mail fortfahren",
     "email_address": "E‑Mail-Adresse",
-    "drag_to_delete": "Zum Löschen ziehen"
+    "drag_to_delete": "Zum Löschen ziehen",
+    "source_differences": "Quellenunterschiede",
+    "sources_label": "Quellen",
+    "key_facts": "Wichtige Fakten",
+    "uncertainties": "Unsicherheiten",
+    "event_map": "Ereigniskarte",
+    "open_full_map": "Vollständige Karte öffnen"
   },
   "interests": {
     "general": "Allgemein",
@@ -133,10 +139,102 @@
   "card": {
     "source_diffs": "Unterschiede zwischen Quellen",
     "key_facts": "Wichtige Fakten",
-    "uncertainties": "Unsicherheiten"
+    "uncertainties": "Unsicherheiten",
+    "outlet": "Quelle",
+    "outlets": "Quellen",
+    "source_prefix": "Quelle",
+    "sources_label": "Quellen",
+    "diff_mark": "Diff",
+    "no_related_image": "Kein passendes Bild verfügbar",
+    "mapped_location": "Zugeordneter Ort",
+    "trending": "Trend"
   },
   "ui.event_map": "Ereigniskarte",
-  "ui.open_full_map": "Große Karte öffnen",
+  "ui.open_full_map": "Vollständige Karte öffnen",
   "ui.event_map_empty": "Für dieses Ereignis ist noch kein Ort verfügbar.",
-  "ui.event_map_hint": "Sieh direkt auf der Karte, wo aktuelle Ereignisse passiert sind."
+  "ui.event_map_hint": "Sieh direkt auf der Karte, wo aktuelle Ereignisse passiert sind.",
+  "time": {
+    "just_now": "gerade eben",
+    "minutes_ago": "vor {minutes} Min.",
+    "hours_ago": "vor {hours} Std.",
+    "hours_minutes_ago": "vor {hours} Std. {minutes} Min.",
+    "days_ago": "vor {days} T.",
+    "days_hours_ago": "vor {days} T. {hours} Std."
+  },
+  "map.locations": "Orte",
+  "widgets": {
+    "fx_rates": {
+      "name": "Wechselkurse",
+      "desc": "EUR-Kurse für wichtige Währungen (anpassbar).",
+      "load_error": "Wechselkurse konnten nicht geladen werden."
+    },
+    "crypto_prices": {
+      "name": "Krypto",
+      "desc": "BTC/ETH-Preise (anpassbar) über CoinGecko."
+    },
+    "headlines": {
+      "name": "Top-Schlagzeilen",
+      "desc": "Schneller Blick auf das, was gerade in deinem Feed ist."
+    },
+    "tracking_stats": {
+      "name": "Tracking-Statistik",
+      "desc": "Wie viele Themen du verfolgst + Schnellzugriffe."
+    },
+    "media_bias": {
+      "name": "Medien-Bias",
+      "desc": "Links • Mitte • Rechts-Verteilung der Quellen in dieser Story.",
+      "left": "Links",
+      "center": "Mitte",
+      "right": "Rechts",
+      "sources": "Quellen",
+      "confidence": "Sicherheit",
+      "conf_high": "Hoch",
+      "conf_medium": "Mittel",
+      "conf_low": "Niedrig",
+      "show_sources": "Quellen anzeigen",
+      "hide_sources": "Quellen ausblenden",
+      "not_enough": "Nicht genügend Daten, um den Medien-Bias für diese Story zu schätzen.",
+      "unavailable": "Bias-Daten sind noch nicht verfügbar.",
+      "aria": "Verteilung des Medien-Bias"
+    },
+    "market_clock": {
+      "name": "WELTUHR",
+      "desc": "Wähle Städte und sieh lokale Zeitzonen."
+    },
+    "pro_momentum": {
+      "name": "Momentum-Zeitlinie",
+      "desc": "Zeigt, ob ein Thema steigt oder abkühlt."
+    },
+    "pro_entities": {
+      "name": "Entitäten",
+      "desc": "Personen / Länder / Organisationen, die gerade im Trend liegen."
+    },
+    "pro_related_coverage": {
+      "name": "Verwandte Berichte",
+      "desc": "Mehr Artikel zum selben Ereignis — aus anderen Medien."
+    },
+    "pro_recent_history": {
+      "name": "Jüngste Historie",
+      "desc": "Neueste Veröffentlichungen in diesem Ereignis-Cluster (24h / 3d / Woche)."
+    },
+    "pro_video_report": {
+      "name": "Video-Bericht",
+      "desc": "Sieh dir einen passenden Bericht zur aktuell geöffneten Story an (eingebettet, ohne Re-Hosting)."
+    },
+    "pro_silence": {
+      "name": "Stille-Indikator",
+      "desc": "Zeigt wichtige Medien/Regionen, die diese Story nicht abdecken."
+    },
+    "crypto": {
+      "currency": "Währung",
+      "load_error": "Krypto-Daten konnten nicht geladen werden."
+    },
+    "add_widget": "Widget hinzufügen",
+    "widget_settings": "Widget-Einstellungen",
+    "free_section": "KOSTENLOS",
+    "pro_section": "PRO+",
+    "get_pro": "Pro holen",
+    "configure": "Konfigurieren",
+    "delete_widget": "Widget löschen"
+  }
 }

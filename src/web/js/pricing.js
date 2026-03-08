@@ -624,9 +624,9 @@ setTimeout(()=>{
       } else {
         mainBtn.disabled = false;
         mainBtn.textContent =
-          selectedPlan === 'free' ? 'Get Free' :
-          selectedPlan === 'pro' ? 'Upgrade to Pro' :
-          'Upgrade to Analyst';
+          selectedPlan === 'free' ? pt('pricing.get_free','Get Free') :
+          selectedPlan === 'pro' ? pt('pricing.upgrade_to_pro','Upgrade to Pro') :
+          pt('pricing.upgrade_to_analyst','Upgrade to Analyst');
       }
     }
   }
@@ -744,6 +744,8 @@ function setBillingInterval(interval) {
   });
 }
 
+function pt(key, fallback){ try { return (typeof t === "function") ? t(key, fallback) : fallback; } catch(_) { return fallback; } }
+
 function updatePricingUI() {
   // Highlight current plan + update CTA text
   document.querySelectorAll('.planCard').forEach((card) => {
@@ -753,13 +755,13 @@ function updatePricingUI() {
     card.classList.toggle('current', isCurrent);
     if (btn) {
       if (isCurrent) {
-        btn.textContent = 'Current plan';
+        btn.textContent = pt('pricing.current_plan','Current plan');
         btn.disabled = true;
       } else {
         btn.disabled = false;
-        if (plan === 'free') btn.textContent = 'Switch to Free';
-        else if (plan === 'pro') btn.textContent = 'Upgrade to Pro';
-        else btn.textContent = 'Upgrade to Analyst';
+        if (plan === 'free') btn.textContent = pt('pricing.switch_to_free','Switch to Free');
+        else if (plan === 'pro') btn.textContent = pt('pricing.upgrade_to_pro','Upgrade to Pro');
+        else btn.textContent = pt('pricing.upgrade_to_analyst','Upgrade to Analyst');
       }
     }
   });
@@ -778,9 +780,9 @@ function _fmtPeriodEnd(iso){
 
 function _planLabel(plan){
   const p = String(plan || 'free').toLowerCase();
-  if(p === 'pro') return 'Plus';
-  if(p === 'analyst') return 'Analyst';
-  return 'Free';
+  if(p === 'pro') return pt('pricing.plan_pro','Pro');
+  if(p === 'analyst') return pt('pricing.plan_analyst','Analyst');
+  return pt('pricing.plan_free','Free');
 }
 
 function updateProfileUI(){
@@ -814,7 +816,7 @@ function updateProfileUI(){
   const end = _fmtPeriodEnd(billingState?.current_period_end);
 
   if(planPill) planPill.textContent = _planLabel(plan);
-  if(statusPill) statusPill.textContent = (status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Active');
+  if(statusPill) statusPill.textContent = pt(`profile.status_${String(status || 'active').toLowerCase()}`, (status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Active'));
 
   // Actions
   if(btnManage){
@@ -829,17 +831,17 @@ function updateProfileUI(){
   if(cancelHint) cancelHint.style.display = 'none';
 
   if(!isAuthed){
-    if(renewText) renewText.textContent = 'Log in to manage your plan.';
+    if(renewText) renewText.textContent = pt('profile.login_manage_plan','Log in to manage your plan.');
     return;
   }
 
   if(plan === 'free'){
-    if(renewText) renewText.textContent = 'You are on Free. Upgrade anytime to unlock premium features.';
+    if(renewText) renewText.textContent = pt('profile.free_upgrade_anytime','You are on Free. Upgrade anytime to unlock premium features.');
     return;
   }
 
   if(cancelAt){
-    if(renewText) renewText.textContent = end ? `Your subscription is set to cancel on ${end}.` : 'Your subscription is set to cancel at period end.';
+    if(renewText) renewText.textContent = end ? pt('profile.cancel_on_date','Your subscription is set to cancel on {date}.').replace('{date}', end) : pt('profile.cancel_period_end','Your subscription is set to cancel at period end.');
     if(btnResume){
       btnResume.style.display = '';
       btnResume.disabled = false;
@@ -851,7 +853,7 @@ function updateProfileUI(){
           if(!r.ok) throw new Error(j?.detail || `HTTP ${r.status}`);
           await refreshBillingState();
         }catch(e){
-          try{ toast(String(e?.message || e || 'Failed to resume subscription'), 'error'); }catch{}
+          try{ toast(String(e?.message || e || pt('profile.failed_resume','Failed to resume subscription')), 'error'); }catch{}
         }finally{
           btnResume.disabled = false;
         }
@@ -859,15 +861,15 @@ function updateProfileUI(){
     }
     if(cancelHint){
       cancelHint.style.display = '';
-      cancelHint.textContent = 'You will keep access until the end of your current billing period.';
+      cancelHint.textContent = pt('profile.keep_access_until_end','You will keep access until the end of your current billing period.');
     }
   }else{
-    if(renewText) renewText.textContent = end ? `Renews on ${end}.` : 'Renews automatically unless canceled.';
+    if(renewText) renewText.textContent = end ? pt('profile.renews_on','Renews on {date}.').replace('{date}', end) : pt('profile.renews_auto','Renews automatically unless canceled.');
     if(btnCancel){
       btnCancel.style.display = '';
       btnCancel.disabled = false;
       btnCancel.onclick = async ()=>{
-        const ok = (typeof uiConfirm==='function') ? await uiConfirm('Cancel at period end? You will keep access until the end of the current billing period.', {title:'Cancel subscription', okText:'Yes, cancel', cancelText:'Keep'}) : (toast && toast('Confirm dialog unavailable', 'error'), false);
+        const ok = (typeof uiConfirm==='function') ? await uiConfirm(pt('profile.cancel_confirm_body','Cancel at period end? You will keep access until the end of the current billing period.'), {title:pt('profile.cancel_subscription','Cancel subscription'), okText:pt('profile.yes_cancel','Yes, cancel'), cancelText:pt('profile.keep','Keep')}) : (toast && toast('Confirm dialog unavailable', 'error'), false);
         if(!ok) return;
         try{
           btnCancel.disabled = true;
@@ -876,7 +878,7 @@ function updateProfileUI(){
           if(!r.ok) throw new Error(j?.detail || `HTTP ${r.status}`);
           await refreshBillingState();
         }catch(e){
-          try{ toast(String(e?.message || e || 'Failed to cancel subscription'), 'error'); }catch{}
+          try{ toast(String(e?.message || e || pt('profile.failed_cancel','Failed to cancel subscription')), 'error'); }catch{}
         }finally{
           btnCancel.disabled = false;
         }

@@ -47,8 +47,9 @@ DEEPL_COOLDOWN_SECONDS = int(os.getenv("DEEPL_COOLDOWN_SECONDS") or "21600")  # 
 MAX_DEEPL_TEXTS_PER_RESPONSE = int(os.getenv("MAX_DEEPL_TEXTS_PER_RESPONSE") or "140")
 
 TRANSLATE_INCLUDE_SOURCES = (os.getenv("TRANSLATE_INCLUDE_SOURCES") or "").strip() in ("1", "true", "yes")
-TRANSLATE_INCLUDE_FACTS = (os.getenv("TRANSLATE_INCLUDE_FACTS") or "").strip() in ("1", "true", "yes")
-TRANSLATE_INCLUDE_DIFFS = (os.getenv("TRANSLATE_INCLUDE_DIFFS") or "").strip() in ("1", "true", "yes")
+TRANSLATE_INCLUDE_FACTS = (os.getenv("TRANSLATE_INCLUDE_FACTS") or "1").strip().lower() in ("1", "true", "yes")
+TRANSLATE_INCLUDE_DIFFS = (os.getenv("TRANSLATE_INCLUDE_DIFFS") or "1").strip().lower() in ("1", "true", "yes")
+TRANSLATE_INCLUDE_UNCERTAINTIES = (os.getenv("TRANSLATE_INCLUDE_UNCERTAINTIES") or "1").strip().lower() in ("1", "true", "yes")
 
 # In-memory circuit breaker. (Works per-process; good enough to stop stampedes.)
 _DEEPL_DISABLED_UNTIL = 0.0
@@ -109,7 +110,12 @@ def _should_translate_text(ui_lang: str, item_lang: str | None, text: str) -> bo
     if lang in ("ru", "uk"):
         # Translate latin-heavy texts into Cyrillic UIs
         return not _looks_cyrillic(t)
-    # For other UIs (de/fr/etc) keep conservative: translate only if Cyrillic is detected.
+    # For DE/FR and other Latin-script UIs we still want English content translated
+    # even when source language metadata is missing. Keep a small guard so we do not
+    # waste quota on very short labels / acronyms.
+    latin_letters = sum(1 for ch in t if ("a" <= ch.lower() <= "z") or ("\u00c0" <= ch <= "\u024f"))
+    if lang in ("de", "fr"):
+        return _looks_cyrillic(t) or latin_letters >= 12
     return _looks_cyrillic(t)
 
 # DeepL expects uppercase language codes; Ukrainian is "UK"
@@ -385,6 +391,15 @@ async def translate_feed_items(items: List[Dict[str, Any]], ui_lang: str) -> Lis
                         if txt and _should_translate_text(lang, item_lang, txt):
                             tasks.append(("cluster", f"{cid}:diff:{idx}", "diff", txt, item_lang))
 
+        if TRANSLATE_INCLUDE_UNCERTAINTIES:
+            uncertainties = it.get("summary_uncertainties") or []
+            if isinstance(uncertainties, list):
+                for idx, u in enumerate(uncertainties):
+                    if isinstance(u, str):
+                        utxt = u.strip()
+                        if utxt and _should_translate_text(lang, item_lang, utxt):
+                            tasks.append(("cluster", f"{cid}:uncertainty:{idx}", "uncertainty", utxt, item_lang))
+
         if TRANSLATE_INCLUDE_SOURCES:
             srcs = it.get("sources") or []
             if isinstance(srcs, list):
@@ -480,6 +495,14 @@ async def translate_feed_items(items: List[Dict[str, Any]], ui_lang: str) -> Lis
                         nd["difference"] = resolved.get(("cluster", f"{cid}:diff:{i}", "diff", txt), txt)
                     new_diffs.append(nd)
                 new_it["summary_diffs"] = new_diffs
+
+        if TRANSLATE_INCLUDE_UNCERTAINTIES:
+            uncertainties = new_it.get("summary_uncertainties")
+            if isinstance(uncertainties, list):
+                new_it["summary_uncertainties"] = [
+                    resolved.get(("cluster", f"{cid}:uncertainty:{i}", "uncertainty", (u or "").strip()), u)
+                    for i, u in enumerate(uncertainties)
+                ]
 
         if TRANSLATE_INCLUDE_SOURCES:
             srcs = new_it.get("sources")

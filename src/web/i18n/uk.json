@@ -138,12 +138,29 @@
     "tweet_prefix": "Trust score •"
   },
   "card": {
-    "source_diffs": "Source differences",
-    "key_facts": "Key facts",
-    "uncertainties": "Uncertainties"
+    "source_diffs": "Відмінності між джерелами",
+    "key_facts": "Ключові факти",
+    "uncertainties": "Невизначеності",
+    "outlet": "джерело",
+    "outlets": "джерел",
+    "source_prefix": "Джерело",
+    "sources_label": "Джерела",
+    "diff_mark": "різн.",
+    "no_related_image": "Немає пов’язаного зображення",
+    "mapped_location": "Позначена локація",
+    "trending": "У тренді"
   },
   "ui.event_map": "Мапа події",
   "ui.open_full_map": "Відкрити повну мапу",
   "ui.event_map_empty": "Локація цієї події поки недоступна.",
-  "ui.event_map_hint": "Дивись, де сталися нещодавні події, прямо на мапі."
+  "ui.event_map_hint": "Дивись, де сталися нещодавні події, прямо на мапі.",
+  "time": {
+    "just_now": "щойно",
+    "minutes_ago": "{minutes} хв тому",
+    "hours_ago": "{hours} год тому",
+    "hours_minutes_ago": "{hours} год {minutes} хв тому",
+    "days_ago": "{days} дн тому",
+    "days_hours_ago": "{days} дн {hours} год тому"
+  },
+  "map.locations": "локацій"
 }

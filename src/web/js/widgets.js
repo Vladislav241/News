@@ -38,8 +38,28 @@
     pro_entities: "/static/icons/Entities.svg",
     pro_related_coverage: "/static/icons/RelatedCoverage.svg",
     pro_recent_history: "/static/icons/RecentHistory.svg",
-    pro_video_report: "/static/icons/VideoReportFix.svg",
+    pro_video_report: "/static/icons/VideoreportFix.svg",
   };
+
+
+  function wt(key, fallback){
+    try {
+      if (typeof t === 'function') return t(key, fallback);
+    } catch {}
+    return fallback;
+  }
+
+  function widgetMeta(key, fallbackName, fallbackDesc){
+    return { name: fallbackName, desc: fallbackDesc };
+  }
+
+  function getWidgetName(key, def){
+    return wt(`widgets.${key}.name`, def?.name || key);
+  }
+
+  function getWidgetDesc(key, def){
+    return wt(`widgets.${key}.desc`, def?.desc || '');
+  }
 
   const PRO_ICON_POOL = [
     "/static/icons/FxRates.svg",
@@ -339,8 +359,8 @@ function renderMediaBias(root, settings){
       if (!data){
         const reason = (payload && payload.reason) ? String(payload.reason) : 'not_available';
         const msg = (reason === 'not_enough_sources' || reason === 'not_enough_bias_data')
-          ? 'Not enough data to estimate media bias for this story.'
-          : 'Bias data is not available yet.';
+          ? wt('widgets.media_bias.not_enough', 'Not enough data to estimate media bias for this story.')
+          : wt('widgets.media_bias.unavailable', 'Bias data is not available yet.');
         root.innerHTML = `<div class="muted" style="font-size:13px; line-height:1.35;">${escapeHtml(msg)}</div>`;
         return;
       }
@@ -357,7 +377,7 @@ function renderMediaBias(root, settings){
       const confLabel = conf ? conf.charAt(0).toUpperCase() + conf.slice(1) : '';
 
       const bar = `
-        <div class="mbBar" role="img" aria-label="Media bias distribution">
+        <div class="mbBar" role="img" aria-label="${escapeHtml(wt('widgets.media_bias.aria', 'Media bias distribution'))}">
           <div class="mbSeg mbLeft" style="width:${leftP}%;"></div>
           <div class="mbSeg mbCenter" style="width:${centerP}%;"></div>
           <div class="mbSeg mbRight" style="width:${rightP}%;"></div>
@@ -369,23 +389,23 @@ function renderMediaBias(root, settings){
         <div class="mbStats">
           <div class="mbStat">
             <span class="mbDot mbLeft"></span>
-            <span class="mbLabel"><b>Left</b> ${leftC} sources</span>
+            <span class="mbLabel"><b>${escapeHtml(wt("widgets.media_bias.left", "Left"))}</b> ${leftC} ${escapeHtml(wt("widgets.media_bias.sources", "sources"))}</span>
             <span class="mbPct">${leftP}%</span>
           </div>
           <div class="mbStat">
             <span class="mbDot mbCenter"></span>
-            <span class="mbLabel"><b>Center</b> ${centerC} sources</span>
+            <span class="mbLabel"><b>${escapeHtml(wt("widgets.media_bias.center", "Center"))}</b> ${centerC} ${escapeHtml(wt("widgets.media_bias.sources", "sources"))}</span>
             <span class="mbPct">${centerP}%</span>
           </div>
           <div class="mbStat">
             <span class="mbDot mbRight"></span>
-            <span class="mbLabel"><b>Right</b> ${rightC} sources</span>
+            <span class="mbLabel"><b>${escapeHtml(wt("widgets.media_bias.right", "Right"))}</b> ${rightC} ${escapeHtml(wt("widgets.media_bias.sources", "sources"))}</span>
             <span class="mbPct">${rightP}%</span>
           </div>
         </div>
       `;
 
-      const toggleBtn = `<button type="button" class="mbToggleBtn">Show sources</button>`;
+      const toggleBtn = `<button type="button" class="mbToggleBtn">${escapeHtml(wt("widgets.media_bias.show_sources", "Show sources"))}</button>`;
       const detailsWrap = `<div class="mbDetails" style="display:none;"></div>`;
 
       root.innerHTML = `
@@ -393,7 +413,7 @@ function renderMediaBias(root, settings){
           ${bar}
           ${stats}
           <div class="mbMeta">
-            ${confLabel ? `<span class="chip">Confidence: <b>${escapeHtml(confLabel)}</b></span>` : ''}
+            ${confLabel ? `<span class="chip">${escapeHtml(wt("widgets.media_bias.confidence", "Confidence"))}: <b>${escapeHtml(wt(`widgets.media_bias.conf_${conf}`, confLabel))}</b></span>` : ''}
           </div>
           <div class="mbActions">${toggleBtn}</div>
           ${detailsWrap}
@@ -419,15 +439,15 @@ function renderMediaBias(root, settings){
 
         return `
           <div class="mbGroup">
-            <div class="mbGroupTitle"><span class="mbDot mbLeft"></span>Left</div>
+            <div class="mbGroupTitle"><span class="mbDot mbLeft"></span>${escapeHtml(wt("widgets.media_bias.left", "Left"))}</div>
             ${leftList}
           </div>
           <div class="mbGroup">
-            <div class="mbGroupTitle"><span class="mbDot mbCenter"></span>Center</div>
+            <div class="mbGroupTitle"><span class="mbDot mbCenter"></span>${escapeHtml(wt("widgets.media_bias.center", "Center"))}</div>
             ${centerList}
           </div>
           <div class="mbGroup">
-            <div class="mbGroupTitle"><span class="mbDot mbRight"></span>Right</div>
+            <div class="mbGroupTitle"><span class="mbDot mbRight"></span>${escapeHtml(wt("widgets.media_bias.right", "Right"))}</div>
             ${rightList}
           </div>
         `;
@@ -437,7 +457,7 @@ function renderMediaBias(root, settings){
         btn.addEventListener('click', () => {
           const isOpen = details.style.display !== 'none';
           details.style.display = isOpen ? 'none' : 'block';
-          btn.textContent = isOpen ? 'Show sources' : 'Hide sources';
+          btn.textContent = isOpen ? wt('widgets.media_bias.show_sources', 'Show sources') : wt('widgets.media_bias.hide_sources', 'Hide sources');
           if (!isOpen && !details.dataset.ready){
             details.innerHTML = buildDetails();
             details.dataset.ready = '1';
@@ -452,38 +472,33 @@ function renderMediaBias(root, settings){
 
 const WIDGETS = {
     fx_rates: {
-      name: "FX Rates",
-      desc: "EUR rates for major currencies (customizable).",
+      ...widgetMeta("fx_rates", "FX Rates", "EUR rates for major currencies (customizable)."),
       defaults: { base: "EUR", symbols: "USD,GBP,PLN,UAH" },
       pro: true,
       render: renderFxRates,
       settingsUI: fxRatesSettingsUI,
     },
     crypto_prices: {
-      name: "Crypto",
-      desc: "BTC/ETH prices (customizable) via CoinGecko.",
+      ...widgetMeta("crypto_prices", "Crypto", "BTC/ETH prices (customizable) via CoinGecko."),
       defaults: { vs: "eur", coins: "bitcoin,ethereum" },
       pro: true,
       render: renderCrypto,
       settingsUI: cryptoSettingsUI,
     },
     headlines: {
-      name: "Top Headlines",
-      desc: "Quick peek at what’s currently in your feed.",
+      ...widgetMeta("headlines", "Top Headlines", "Quick peek at what’s currently in your feed."),
       defaults: { limit: 4 },
       render: renderHeadlines,
       settingsUI: headlinesSettingsUI,
     },
     tracking_stats: {
-      name: "Tracking Stats",
-      desc: "How many items you’re tracking + quick shortcuts.",
+      ...widgetMeta("tracking_stats", "Tracking Stats", "How many items you’re tracking + quick shortcuts."),
       defaults: {},
       render: renderTrackingStats,
       settingsUI: null,
     },
     media_bias: {
-      name: "Media Bias",
-      desc: "Left • Center • Right distribution across sources in the current story.",
+      ...widgetMeta("media_bias", "Media Bias", "Left • Center • Right distribution across sources in the current story."),
       defaults: {},
       pro: false,
       render: renderMediaBias,
@@ -491,8 +506,7 @@ const WIDGETS = {
     },
 
     market_clock: {
-      name: "GLOBAL CLOCK",
-      desc: "Choose cities and see local timezones.",
+      ...widgetMeta("market_clock", "GLOBAL CLOCK", "Choose cities and see local timezones."),
       // Show up to 8 cities (similar UX to FX Rates).
       defaults: { cities: "Europe/Berlin,Europe/London,America/New_York,Asia/Tokyo,Europe/Kyiv" },
       render: renderMarketClock,
@@ -503,32 +517,28 @@ const WIDGETS = {
     // PRO Widgets (Premium)
     // =========================
     pro_momentum: {
-      name: "Momentum Timeline",
-      desc: "Shows whether a topic is rising or cooling down.",
+      ...widgetMeta("pro_momentum", "Momentum Timeline", "Shows whether a topic is rising or cooling down."),
       defaults: { limit: 1 },
       pro: true,
       render: renderProMomentum,
       settingsUI: null,
     },
     pro_entities: {
-      name: "Entities",
-      desc: "People / countries / orgs trending right now.",
+      ...widgetMeta("pro_entities", "Entities", "People / countries / orgs trending right now."),
       defaults: { limit: 8 },
       pro: true,
       render: renderProEntities,
       settingsUI: null,
     },
     pro_related_coverage: {
-      name: "Related Coverage",
-      desc: "More articles about the same event — from other outlets.",
+      ...widgetMeta("pro_related_coverage", "Related Coverage", "More articles about the same event — from other outlets."),
       defaults: { limit: 6 },
       pro: true,
       render: renderProRelatedCoverage,
       settingsUI: relatedCoverageSettingsUI,
     },
     pro_recent_history: {
-      name: "Recent History",
-      desc: "Latest publications within this event cluster (24h / 3d / week).",
+      ...widgetMeta("pro_recent_history", "Recent History", "Latest publications within this event cluster (24h / 3d / week)."),
       defaults: { limit: 10, window: '3d' },
       pro: true,
       render: renderProRecentHistory,
@@ -536,16 +546,14 @@ const WIDGETS = {
     },
 // Video Report is FREE (server-side cached to save YouTube quota)
 pro_video_report: {
-  name: "Video Report",
-  desc: "Watch a relevant report for the currently opened story (embedded, no re-hosting).",
+  ...widgetMeta("pro_video_report", "Video Report", "Watch a relevant report for the currently opened story (embedded, no re-hosting)."),
   defaults: { max_results: 5 },
   pro: false,
   render: renderProVideoReport,
   settingsUI: videoReportSettingsUI,
 },
     pro_silence: {
-      name: "Silence Indicator",
-      desc: "Shows notable outlets/regions that are not covering this story.",
+      ...widgetMeta("pro_silence", "Silence Indicator", "Shows notable outlets/regions that are not covering this story."),
       defaults: { threshold: 4 },
       pro: true,
       disabled: true,
@@ -1617,7 +1625,7 @@ function saveLayout(){
     const body = mobileSheet.querySelector('#mwSheetBody');
     if (!(title instanceof HTMLElement) || !(actions instanceof HTMLElement) || !(body instanceof HTMLElement)) return;
 
-    title.textContent = def.name || 'Widget';
+    title.textContent = getWidgetName(w.type, def) || wt("widgets.add_widget", "Widget");
     actions.innerHTML = '';
 
     if (def.settingsUI){
@@ -1625,7 +1633,7 @@ function saveLayout(){
       cfg.type = 'button';
       cfg.className = 'iconBtn';
       cfg.textContent = '⚙';
-      cfg.setAttribute('aria-label', 'Configure');
+      cfg.setAttribute('aria-label', wt('widgets.configure', 'Configure'));
       cfg.addEventListener('click', (e) => {
         e.preventDefault(); e.stopPropagation();
         openSettings(side, widgetId);
@@ -1638,7 +1646,7 @@ function saveLayout(){
     close.type = 'button';
     close.className = 'iconBtn';
     close.textContent = '✕';
-    close.setAttribute('aria-label', 'Close');
+    close.setAttribute('aria-label', wt('ui.close', 'Close'));
     close.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); closeMobileSheet(); });
     actions.appendChild(close);
 
@@ -1647,7 +1655,7 @@ function saveLayout(){
     del.type = 'button';
     del.className = 'mwDeleteBtn';
     del.innerHTML = '<img class="mwDeleteIcon" alt="" src="/static/icons/Delete.png" />Delete';
-    del.setAttribute('aria-label', 'Delete widget');
+    del.setAttribute('aria-label', wt('widgets.delete_widget', 'Delete widget'));
     del.addEventListener('click', (e) => {
       e.preventDefault(); e.stopPropagation();
       if (!requireAuth('widgets')) return;
@@ -1663,11 +1671,11 @@ function saveLayout(){
     wrap.className = 'widgetCard';
     const innerBody = document.createElement('div');
     innerBody.className = 'widgetBody';
-    innerBody.textContent = 'Loading…';
+    innerBody.textContent = wt('ui.loading', 'Loading…');
     wrap.appendChild(innerBody);
     body.appendChild(wrap);
 
-    try { def.render(innerBody, w.settings, w); } catch { innerBody.textContent = 'Could not render.'; }
+    try { def.render(innerBody, w.settings, w); } catch { innerBody.textContent = wt('ui.try_again', 'Could not render.'); }
 
     mobileSheet.classList.add('isOpen');
     try { document.body.style.overflow = 'hidden'; } catch {}
@@ -1871,7 +1879,7 @@ document.addEventListener('checkne:currentStoryChanged', () => {
 
       const title = document.createElement("div");
       title.className = "widgetTitle";
-      title.textContent = def.name;
+      title.textContent = getWidgetName(w.type, def);
 
       if (def.pro){
         const pill = document.createElement('span');
@@ -2076,23 +2084,23 @@ document.addEventListener('checkne:currentStoryChanged', () => {
     footer.style.display = "none";
 
     if (state.modal.mode === "pick"){
-      title.textContent = "Add Widget";
+      title.textContent = wt("widgets.add_widget", "Add Widget");
       body.appendChild(renderPicker());
     } else if (state.modal.mode === "settings"){
-      title.textContent = "Widget settings";
+      title.textContent = wt("widgets.widget_settings", "Widget settings");
       const content = renderSettings();
       if (content) body.appendChild(content);
       footer.style.display = "flex";
       const btnCancel = document.createElement("button");
       btnCancel.className = "btnSoft";
       btnCancel.type = "button";
-      btnCancel.textContent = "Cancel";
+      btnCancel.textContent = wt("ui.cancel", "Cancel");
       btnCancel.setAttribute("data-widget-close", "1");
 
       const btnSave = document.createElement("button");
       btnSave.className = "btnBlack";
       btnSave.type = "button";
-      btnSave.textContent = "Save";
+      btnSave.textContent = wt("ui.save", "Save");
       btnSave.addEventListener("click", onSaveSettings);
 
       footer.appendChild(btnCancel);
@@ -2177,11 +2185,11 @@ function renderPicker(){
 
       const name = document.createElement("div");
       name.className = "widgetPickNameV2";
-      name.textContent = def.name;
+      name.textContent = getWidgetName(key, def);
 
       const desc = document.createElement("div");
       desc.className = "widgetPickDescV2";
-      desc.textContent = def.desc;
+      desc.textContent = getWidgetDesc(key, def);
 
       meta.appendChild(name);
       meta.appendChild(desc);
@@ -2206,8 +2214,8 @@ function renderPicker(){
     return section;
   };
 
-  wrap.appendChild(makeSection("FREE", freeKeys, false));
-  wrap.appendChild(makeSection("PRO+", proKeys, true));
+  wrap.appendChild(makeSection(wt("widgets.free_section", "FREE"), freeKeys, false));
+  wrap.appendChild(makeSection(wt("widgets.pro_section", "PRO+"), proKeys, true));
 
   if (!hasPro()){
     const ctaWrap = document.createElement("div");
@@ -2216,7 +2224,7 @@ function renderPicker(){
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "widgetGetProBtn";
-    btn.textContent = "Get Pro";
+    btn.textContent = wt("widgets.get_pro", "Get Pro");
     // "Get Pro" should take the user straight to checkout (Pro, monthly).
     btn.addEventListener("click", () => {
       try { closeModal(); } catch {}
@@ -2281,7 +2289,7 @@ function renderPicker(){
 
     const rows = root.querySelector("#fxRows");
     if (!rows) return;
-    rows.innerHTML = `<div class="muted" style="font-size:13px;">Loading…</div>`;
+    rows.innerHTML = `<div class="muted" style="font-size:13px;">${escapeHtml(wt("ui.loading", "Loading…"))}</div>`;
 
     // Prefer backend proxy (supports more base currencies like UAH).
     const proxyUrl = `/api/market/fx?base=${encodeURIComponent(base)}&symbols=${encodeURIComponent(symbols.join(','))}`;
@@ -2328,7 +2336,7 @@ function renderPicker(){
         rows.appendChild(row);
       });
     })().catch(() => {
-      rows.innerHTML = `<div class="muted" style="font-size:13px; margin-bottom:10px;">Couldn’t load rates.</div><button class="miniBtn" type="button">Retry</button>`;
+      rows.innerHTML = `<div class="muted" style="font-size:13px; margin-bottom:10px;">${escapeHtml(wt("widgets.fx_rates.load_error", "Couldn’t load rates."))}</div><button class="miniBtn" type="button">${escapeHtml(wt("ui.try_again", "Retry"))}</button>`;
       const btn = rows.querySelector('.miniBtn');
       if (btn) btn.addEventListener('click', () => renderFxRates(root, settings));
     });
@@ -2339,12 +2347,12 @@ function renderPicker(){
     const coins = (settings && settings.coins ? String(settings.coins) : "bitcoin,ethereum")
       .split(",").map(s => s.trim().toLowerCase()).filter(Boolean).slice(0, 6);
 
-    root.innerHTML = `<div class="muted" style="font-size:12px; margin-bottom:10px;">Currency: <b>${escapeHtml(vs.toUpperCase())}</b></div>
+    root.innerHTML = `<div class="muted" style="font-size:12px; margin-bottom:10px;">${escapeHtml(wt("widgets.crypto.currency", "Currency"))}: <b>${escapeHtml(vs.toUpperCase())}</b></div>
       <div id="cryptoRows" class="miniList"></div>`;
 
     const rows = root.querySelector("#cryptoRows");
     if (!rows) return;
-    rows.innerHTML = `<div class="muted" style="font-size:13px;">Loading…</div>`;
+    rows.innerHTML = `<div class="muted" style="font-size:13px;">${escapeHtml(wt("ui.loading", "Loading…"))}</div>`;
 
     // Prefer backend proxy (avoids CORS + rate-limit issues), fallback to direct API.
     const proxyUrl = `/api/market/crypto?vs=${encodeURIComponent(vs)}&coins=${encodeURIComponent(coins.join(','))}`;
@@ -2369,7 +2377,7 @@ function renderPicker(){
         rows.appendChild(row);
       });
     })().catch(() => {
-      rows.innerHTML = `<div class="muted" style="font-size:13px; margin-bottom:10px;">Couldn’t load crypto.</div><button class="miniBtn" type="button">Retry</button>`;
+      rows.innerHTML = `<div class="muted" style="font-size:13px; margin-bottom:10px;">${escapeHtml(wt("widgets.crypto.load_error", "Couldn’t load crypto."))}</div><button class="miniBtn" type="button">${escapeHtml(wt("ui.try_again", "Retry"))}</button>`;
       const btn = rows.querySelector('.miniBtn');
       if (btn) btn.addEventListener('click', () => renderCrypto(root, settings));
     });

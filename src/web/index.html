@@ -4913,8 +4913,8 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
 
         <div class="accountMenuDivider"></div>
 
-        <button id="menuProfile" type="button"><span>Profile</span><span id="menuPlanBadge" class="menuPlanBadge" style="display:none;">FREE</span></button>
-        <button id="menuPricing" type="button">Pricing</button>
+        <button id="menuProfile" type="button"><span data-i18n="profile.menu">Profile</span><span id="menuPlanBadge" class="menuPlanBadge" style="display:none;">FREE</span></button>
+        <button id="menuPricing" type="button" data-i18n="pricing.menu">Pricing</button>
         <button id="menuLogout" type="button">Log out</button>
       </div>
     </div>
@@ -5094,23 +5094,23 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
   </div>
   <aside id="rightSidebar" class="sidebar" aria-label="Right widgets"></aside>
 </div>
-<section id="profileSection" class="profilePage" aria-label="Account" style="display:none;">
+<section id="profileSection" class="profilePage" aria-label="Account" data-i18n-aria="profile.account_title" style="display:none;">
     <div class="profileHero">
-      <h2>Account</h2>
-      <p>Manage your profile and subscription.</p>
+      <h2 data-i18n="profile.account_title">Account</h2>
+      <p data-i18n="profile.account_sub">Manage your profile and subscription.</p>
     </div>
 
     <div class="profileGrid" role="list">
       <div class="profileCard" role="listitem">
-        <div class="profileCardTitle">Profile</div>
+        <div class="profileCardTitle" data-i18n="profile.card_profile">Profile</div>
         <div class="profileRows">
-          <div class="profileRow"><span class="profileKey">Name</span><span id="profileName" class="profileVal">—</span></div>
-          <div class="profileRow"><span class="profileKey">Email</span><span id="profileEmail" class="profileVal">—</span></div>
+          <div class="profileRow"><span class="profileKey" data-i18n="profile.name">Name</span><span id="profileName" class="profileVal">—</span></div>
+          <div class="profileRow"><span class="profileKey" data-i18n="profile.email">Email</span><span id="profileEmail" class="profileVal">—</span></div>
         </div>
       </div>
 
       <div class="profileCard" role="listitem">
-        <div class="profileCardTitle">Subscription</div>
+        <div class="profileCardTitle" data-i18n="profile.subscription">Subscription</div>
         <div class="profilePills">
           <span id="profilePlanPill" class="profilePill">Free</span>
           <span id="profileStatusPill" class="profilePill status">Active</span>
@@ -5118,16 +5118,16 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
         <div id="profileRenewText" class="profileMeta"></div>
 
         <div class="profileActions">
-          <button id="profileManageBtn" class="profileBtn primary" type="button">Manage plan</button>
-          <button id="profileCancelBtn" class="profileBtn ghost" type="button" style="display:none;">Cancel subscription</button>
-          <button id="profileResumeBtn" class="profileBtn ghost" type="button" style="display:none;">Resume subscription</button>
+          <button id="profileManageBtn" class="profileBtn primary" type="button" data-i18n="profile.manage_plan">Manage plan</button>
+          <button id="profileCancelBtn" class="profileBtn ghost" type="button" style="display:none;" data-i18n="profile.cancel_subscription">Cancel subscription</button>
+          <button id="profileResumeBtn" class="profileBtn ghost" type="button" style="display:none;" data-i18n="profile.resume_subscription">Resume subscription</button>
         </div>
 
         <div id="profileCancelHint" class="muted" style="margin-top:10px; display:none;"></div>
       </div>
     </div>
   </section>
-  <section id="pricingSection" class="pricingPage" aria-label="Pricing" style="display:none;">
+  <section id="pricingSection" class="pricingPage" aria-label="Pricing" data-i18n-aria="pricing.menu" style="display:none;">
     <div class="pricingHero">
       <h2 data-i18n="pricing.hero_title">Track credibility. Stay informed.</h2>
       <p data-i18n="pricing.hero_sub">Follow important news events and get updates when trust changes.</p>
@@ -5149,7 +5149,7 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
     <div class="pricingGrid" role="list">
       <div class="planCard" data-plan="free" role="listitem" tabindex="0">
         <div class="planHead">
-          <div class="planName">Free</div>
+          <div class="planName" data-i18n="pricing.plan_free">Free</div>
           <div class="planPrice planPriceBig" data-monthly="0.00" data-yearly="0.00">
   <span class="oldPrice"></span>
   <span class="newPrice">$0.00</span>
@@ -5158,11 +5158,11 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
         </div>
         <div class="planBody">
           <ul>
-            <li>Access to <b>200</b> trending news <br>stories per day</li>
-            <li>Up to <b>3</b> hot stories</li>
-            <li>Track <b>1</b> event at a time</li>
-            <li>Cannot be changed during the day</li>
-            <li>View current trust score</li>
+            <li><span data-i18n-html="pricing.feature_access_200">Access to <b>200</b> trending news <br>stories per day</span></li>
+            <li><span data-i18n-html="pricing.feature_hot_3">Up to <b>3</b> hot stories</span></li>
+            <li><span data-i18n-html="pricing.feature_track_1">Track <b>1</b> event at a time</span></li>
+            <li><span data-i18n="pricing.feature_cannot_change_day">Cannot be changed during the day</span></li>
+            <li><span data-i18n="pricing.feature_view_trust">View current trust score</span></li>
           </ul>
         </div>
       </div>
@@ -5170,7 +5170,7 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
       <div class="planCard popular" data-plan="pro" role="listitem" tabindex="0">
         <div class="planBadge" data-i18n="pricing.most_popular">Most popular</div>
         <div class="planHead">
-          <div class="planName">Pro</div>
+          <div class="planName" data-i18n="pricing.plan_pro">Pro</div>
           <div class="planPrice planPriceBig" data-monthly="4.99" data-yearly="49.99">
   <span class="oldPrice"></span>
   <span class="newPrice">$4.99</span>
@@ -5180,18 +5180,18 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
         </div>
         <div class="planBody">
           <ul>
-            <li>Access to <b>200</b> trending news <br>stories per day</li>
-            <li>Up to <b>3</b> hot stories</li>
-            <li>Track <b>1</b> event at a time</li>
-            <li>Cannot be changed during the day</li>
-            <li>View current trust score</li>
+            <li><span data-i18n-html="pricing.feature_access_200">Access to <b>200</b> trending news <br>stories per day</span></li>
+            <li><span data-i18n-html="pricing.feature_hot_3">Up to <b>3</b> hot stories</span></li>
+            <li><span data-i18n-html="pricing.feature_track_1">Track <b>1</b> event at a time</span></li>
+            <li><span data-i18n="pricing.feature_cannot_change_day">Cannot be changed during the day</span></li>
+            <li><span data-i18n="pricing.feature_view_trust">View current trust score</span></li>
           </ul>
         </div>
       </div>
 
       <div class="planCard" data-plan="analyst" role="listitem" tabindex="0">
         <div class="planHead">
-          <div class="planName">Analyst</div>
+          <div class="planName" data-i18n="pricing.plan_analyst">Analyst</div>
           <div class="planPrice planPriceBig" data-monthly="15.99" data-yearly="159.99">
   <span class="oldPrice"></span>
   <span class="newPrice">$15.99</span>
@@ -5200,21 +5200,21 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
         </div>
         <div class="planBody">
           <ul>
-            <li>Access to <b>200</b> trending news <br>stories per day</li>
-            <li>Up to <b>3</b> hot stories</li>
-            <li>Track <b>1</b> event at a time</li>
-            <li>Cannot be changed during the day</li>
-            <li>View current trust score</li>
+            <li><span data-i18n-html="pricing.feature_access_200">Access to <b>200</b> trending news <br>stories per day</span></li>
+            <li><span data-i18n-html="pricing.feature_hot_3">Up to <b>3</b> hot stories</span></li>
+            <li><span data-i18n-html="pricing.feature_track_1">Track <b>1</b> event at a time</span></li>
+            <li><span data-i18n="pricing.feature_cannot_change_day">Cannot be changed during the day</span></li>
+            <li><span data-i18n="pricing.feature_view_trust">View current trust score</span></li>
           </ul>
         </div>
       </div>
     </div>
 
     <div class="pricingCtaRow">
-      <button id="pricingMainCta" class="pricingMainBtn" type="button">Get Free</button>
+      <button id="pricingMainCta" class="pricingMainBtn" type="button" data-i18n="pricing.get_free">Get Free</button>
     </div>
 
-    <div class="pricingTrust">Trusted by journalists, analysts and researchers.</div>
+    <div class="pricingTrust" data-i18n="pricing.trusted_by">Trusted by journalists, analysts and researchers.</div>
 
     <div class="pricingCompareWrap">
 
@@ -5225,47 +5225,47 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
         <input class="planSel" type="radio" name="planSel" id="planSelPro">
         <input class="planSel" type="radio" name="planSel" id="planSelAnalyst">
 
-        <div class="planSwitch" role="tablist" aria-label="Select plan">
-          <label for="planSelFree" role="tab" aria-controls="planFree">Free</label>
-          <label for="planSelPro" role="tab" aria-controls="planPro">Pro</label>
-          <label for="planSelAnalyst" role="tab" aria-controls="planAnalyst">Analyst</label>
+        <div class="planSwitch" role="tablist" aria-label="Select plan" data-i18n-aria="pricing.select_plan">
+          <label for="planSelFree" role="tab" aria-controls="planFree" data-i18n="pricing.plan_free">Free</label>
+          <label for="planSelPro" role="tab" aria-controls="planPro" data-i18n="pricing.plan_pro">Pro</label>
+          <label for="planSelAnalyst" role="tab" aria-controls="planAnalyst" data-i18n="pricing.plan_analyst">Analyst</label>
         </div>
 
         <div class="onePlan onePlanFree" id="planFree">
-          <table class="pricingOne" aria-label="Free plan features">
+          <table class="pricingOne" aria-label="Free plan features" data-i18n-aria="pricing.free_features">
             <tbody>
-              <tr><th>Plan</th><td>Free</td></tr>
-              <tr><th>Track events</th><td>3</td></tr>
-              <tr><th>Trust score changes</th><td>✓</td></tr>
-              <tr><th>Email alerts</th><td>×</td></tr>
-              <tr><th>Update history</th><td>Limited</td></tr>
-              <tr><th>Export</th><td>Limited</td></tr>
+              <tr><th data-i18n="pricing.plan">Plan</th><td data-i18n="pricing.plan_free">Free</td></tr>
+              <tr><th data-i18n="pricing.track_events">Track events</th><td>3</td></tr>
+              <tr><th data-i18n="pricing.trust_score_changes">Trust score changes</th><td>✓</td></tr>
+              <tr><th data-i18n="pricing.email_alerts">Email alerts</th><td>×</td></tr>
+              <tr><th data-i18n="pricing.update_history">Update history</th><td data-i18n="pricing.limited">Limited</td></tr>
+              <tr><th data-i18n="pricing.export">Export</th><td data-i18n="pricing.limited">Limited</td></tr>
             </tbody>
           </table>
         </div>
 
         <div class="onePlan onePlanPro" id="planPro">
-          <table class="pricingOne" aria-label="Pro plan features">
+          <table class="pricingOne" aria-label="Pro plan features" data-i18n-aria="pricing.pro_features">
             <tbody>
-              <tr><th>Plan</th><td>Pro</td></tr>
-              <tr><th>Track events</th><td>20</td></tr>
-              <tr><th>Trust score changes</th><td>✓</td></tr>
-              <tr><th>Email alerts</th><td>✓</td></tr>
-              <tr><th>Update history</th><td>Full</td></tr>
-              <tr><th>Export</th><td>Limited</td></tr>
+              <tr><th data-i18n="pricing.plan">Plan</th><td data-i18n="pricing.plan_pro">Pro</td></tr>
+              <tr><th data-i18n="pricing.track_events">Track events</th><td>20</td></tr>
+              <tr><th data-i18n="pricing.trust_score_changes">Trust score changes</th><td>✓</td></tr>
+              <tr><th data-i18n="pricing.email_alerts">Email alerts</th><td>✓</td></tr>
+              <tr><th data-i18n="pricing.update_history">Update history</th><td data-i18n="pricing.full">Full</td></tr>
+              <tr><th data-i18n="pricing.export">Export</th><td data-i18n="pricing.limited">Limited</td></tr>
             </tbody>
           </table>
         </div>
 
         <div class="onePlan onePlanAnalyst" id="planAnalyst">
-          <table class="pricingOne" aria-label="Analyst plan features">
+          <table class="pricingOne" aria-label="Analyst plan features" data-i18n-aria="pricing.analyst_features">
             <tbody>
-              <tr><th>Plan</th><td>Analyst</td></tr>
-              <tr><th>Track events</th><td>Unlimited</td></tr>
-              <tr><th>Trust score changes</th><td>✓</td></tr>
-              <tr><th>Email alerts</th><td>✓</td></tr>
-              <tr><th>Update history</th><td>Full</td></tr>
-              <tr><th>Export</th><td>Full</td></tr>
+              <tr><th data-i18n="pricing.plan">Plan</th><td data-i18n="pricing.plan_analyst">Analyst</td></tr>
+              <tr><th data-i18n="pricing.track_events">Track events</th><td data-i18n="pricing.unlimited">Unlimited</td></tr>
+              <tr><th data-i18n="pricing.trust_score_changes">Trust score changes</th><td>✓</td></tr>
+              <tr><th data-i18n="pricing.email_alerts">Email alerts</th><td>✓</td></tr>
+              <tr><th data-i18n="pricing.update_history">Update history</th><td data-i18n="pricing.full">Full</td></tr>
+              <tr><th data-i18n="pricing.export">Export</th><td data-i18n="pricing.full">Full</td></tr>
             </tbody>
           </table>
         </div>
@@ -5273,45 +5273,45 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
 
       <!-- Desktop/tablet: full comparison table -->
       <div class="pricingCompareDesktop">
-        <table class="pricingTable" aria-label="Plan comparison">
+        <table class="pricingTable" aria-label="Plan comparison" data-i18n-aria="pricing.plan_comparison">
           <thead>
             <tr>
-              <th style="text-align:left;">Plan</th>
-              <th>Free</th>
-              <th>Pro</th>
-              <th>Analyst</th>
+              <th style="text-align:left;" data-i18n="pricing.plan">Plan</th>
+              <th data-i18n="pricing.plan_free">Free</th>
+              <th data-i18n="pricing.plan_pro">Pro</th>
+              <th data-i18n="pricing.plan_analyst">Analyst</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td>Track events</td>
+              <td data-i18n="pricing.track_events">Track events</td>
               <td>3</td>
               <td>20</td>
-              <td>Unlimited</td>
+              <td data-i18n="pricing.unlimited">Unlimited</td>
             </tr>
             <tr>
-              <td>Trust score changes</td>
+              <td data-i18n="pricing.trust_score_changes">Trust score changes</td>
               <td>✓</td>
               <td>✓</td>
               <td>✓</td>
             </tr>
             <tr>
-              <td>Email alerts</td>
+              <td data-i18n="pricing.email_alerts">Email alerts</td>
               <td>×</td>
               <td>✓</td>
               <td>✓</td>
             </tr>
             <tr>
-              <td>Update history</td>
-              <td>Limited</td>
-              <td>Full</td>
-              <td>Full</td>
+              <td data-i18n="pricing.update_history">Update history</td>
+              <td data-i18n="pricing.limited">Limited</td>
+              <td data-i18n="pricing.full">Full</td>
+              <td data-i18n="pricing.full">Full</td>
             </tr>
             <tr>
-              <td>Export</td>
-              <td>Limited</td>
-              <td>Limited</td>
-              <td>Full</td>
+              <td data-i18n="pricing.export">Export</td>
+              <td data-i18n="pricing.limited">Limited</td>
+              <td data-i18n="pricing.limited">Limited</td>
+              <td data-i18n="pricing.full">Full</td>
             </tr>
           </tbody>
         </table>
@@ -5558,9 +5558,9 @@ body.eventMapModalOpen{overflow:hidden;}
 <script src="/static/js/tracking.js?v=2026-02-24" defer></script>
 <script src="/static/js/auth.js?v=2026-02-24" defer></script>
   <script src="/static/js/interests.js?v=2026-03-01"></script>
-<script src="/static/js/pricing.js?v=2026-02-24" defer></script>
+<script src="/static/js/pricing.js?v=2026-03-08-relative-time" defer></script>
 <script src="/static/js/carousel.js?v=2026-02-24" defer></script>
-<script src="/static/js/feed.js?v=2026-03-06-eventmap" defer></script>
+<script src="/static/js/feed.js?v=2026-03-08-relative-time" defer></script>
 <script src="/static/js/news-map.js?v=2026-03-06-eventmap2" defer></script>
 <script src="/static/js/report.js?v=2026-03-01" defer></script>
 <script src="/static/js/widgets.js?v=2026-03-07-2" defer></script>
@@ -5649,8 +5649,8 @@ body.eventMapModalOpen{overflow:hidden;}
   <div class="backdrop" data-widget-close="1"></div>
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="widgetModalTitle">
     <div class="sheetHeader">
-      <div id="widgetModalTitle" class="sheetTitle">Add widget</div>
-      <button class="iconBtn" type="button" data-widget-close="1" aria-label="Close">✕</button>
+      <div id="widgetModalTitle" class="sheetTitle" data-i18n="widgets.add_widget">Add widget</div>
+      <button class="iconBtn" type="button" data-widget-close="1" aria-label="Close" data-i18n-aria="ui.close">✕</button>
     </div>
     <div id="widgetModalBody"></div>
     <div class="sheetFooter" id="widgetModalFooter" style="display:none;"></div>
@@ -5714,12 +5714,12 @@ body.eventMapModalOpen{overflow:hidden;}
   <div class="eventMapModal__backdrop" data-event-map-close="1"></div>
   <div class="eventMapModal__sheet" role="dialog" aria-modal="true" aria-labelledby="eventMapTitle">
     <div class="eventMapModal__top">
-      <div id="eventMapTitle" class="eventMapModal__title">Event map</div>
+      <div id="eventMapTitle" class="eventMapModal__title" data-i18n="map.event_map">Event map</div>
       <div class="eventMapModal__right">
         <button type="button" class="eventMapWindowBtn" data-map-window="24h">24h</button>
         <button type="button" class="eventMapWindowBtn isOn" data-map-window="3d">3d</button>
         <button type="button" class="eventMapWindowBtn" data-map-window="7d">7d</button>
-        <button type="button" class="eventMapCloseBtn" data-event-map-close="1">✕</button>
+        <button type="button" class="eventMapCloseBtn" data-event-map-close="1" title="Close" data-i18n-title="ui.close">✕</button>
       </div>
     </div>
     <div id="eventMapMeta">0 mapped stories · 0 locations</div>

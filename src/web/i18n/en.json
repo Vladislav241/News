@@ -61,7 +61,13 @@
     "continue_with_google": "Continue with Google",
     "continue_with_email": "Continue with email",
     "email_address": "Email address",
-    "drag_to_delete": "Drag to delete"
+    "drag_to_delete": "Drag to delete",
+    "source_differences": "Source differences",
+    "sources_label": "Sources",
+    "key_facts": "Key facts",
+    "uncertainties": "Uncertainties",
+    "event_map": "Event map",
+    "open_full_map": "Open full map"
   },
   "interests": {
     "general": "General",
@@ -140,10 +146,102 @@
   "card": {
     "source_diffs": "Source differences",
     "key_facts": "Key facts",
-    "uncertainties": "Uncertainties"
+    "uncertainties": "Uncertainties",
+    "outlet": "outlet",
+    "outlets": "outlets",
+    "source_prefix": "Source",
+    "sources_label": "Sources",
+    "diff_mark": "diff",
+    "no_related_image": "No related image available",
+    "mapped_location": "Mapped location",
+    "trending": "Trending"
   },
   "ui.event_map": "Event map",
   "ui.open_full_map": "Open full map",
   "ui.event_map_empty": "Location is not available for this event yet.",
-  "ui.event_map_hint": "See where recent stories happened directly on the map."
+  "ui.event_map_hint": "See where recent stories happened directly on the map.",
+  "time": {
+    "just_now": "just now",
+    "minutes_ago": "{minutes}m ago",
+    "hours_ago": "{hours}h ago",
+    "hours_minutes_ago": "{hours}h {minutes}m ago",
+    "days_ago": "{days}d ago",
+    "days_hours_ago": "{days}d {hours}h ago"
+  },
+  "map.locations": "locations",
+  "widgets": {
+    "fx_rates": {
+      "name": "FX Rates",
+      "desc": "EUR rates for major currencies (customizable).",
+      "load_error": "Couldn’t load rates."
+    },
+    "crypto_prices": {
+      "name": "Crypto",
+      "desc": "BTC/ETH prices (customizable) via CoinGecko."
+    },
+    "headlines": {
+      "name": "Top Headlines",
+      "desc": "Quick peek at what’s currently in your feed."
+    },
+    "tracking_stats": {
+      "name": "Tracking Stats",
+      "desc": "How many items you’re tracking + quick shortcuts."
+    },
+    "media_bias": {
+      "name": "Media Bias",
+      "desc": "Left • Center • Right distribution across sources in the current story.",
+      "left": "Left",
+      "center": "Center",
+      "right": "Right",
+      "sources": "sources",
+      "confidence": "Confidence",
+      "conf_high": "High",
+      "conf_medium": "Medium",
+      "conf_low": "Low",
+      "show_sources": "Show sources",
+      "hide_sources": "Hide sources",
+      "not_enough": "Not enough data to estimate media bias for this story.",
+      "unavailable": "Bias data is not available yet.",
+      "aria": "Media bias distribution"
+    },
+    "market_clock": {
+      "name": "GLOBAL CLOCK",
+      "desc": "Choose cities and see local timezones."
+    },
+    "pro_momentum": {
+      "name": "Momentum Timeline",
+      "desc": "Shows whether a topic is rising or cooling down."
+    },
+    "pro_entities": {
+      "name": "Entities",
+      "desc": "People / countries / orgs trending right now."
+    },
+    "pro_related_coverage": {
+      "name": "Related Coverage",
+      "desc": "More articles about the same event — from other outlets."
+    },
+    "pro_recent_history": {
+      "name": "Recent History",
+      "desc": "Latest publications within this event cluster (24h / 3d / week)."
+    },
+    "pro_video_report": {
+      "name": "Video Report",
+      "desc": "Watch a relevant report for the currently opened story (embedded, no re-hosting)."
+    },
+    "pro_silence": {
+      "name": "Silence Indicator",
+      "desc": "Shows notable outlets/regions that are not covering this story."
+    },
+    "crypto": {
+      "currency": "Currency",
+      "load_error": "Couldn’t load crypto."
+    },
+    "add_widget": "Add Widget",
+    "widget_settings": "Widget settings",
+    "free_section": "FREE",
+    "pro_section": "PRO+",
+    "get_pro": "Get Pro",
+    "configure": "Configure",
+    "delete_widget": "Delete widget"
+  }
 }
