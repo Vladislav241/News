@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import html
+import json
 import os
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import Optional
-from urllib.parse import urlparse
+from typing import Any, Optional
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import requests
 from fastapi import APIRouter, Depends, HTTPException
@@ -93,37 +94,209 @@ def _normalize_post_url(url: str, platform: str) -> str:
     return raw
 
 
+def _extract_strings(value: Any) -> list[str]:
+    out: list[str] = []
+    if value is None:
+        return out
+    if isinstance(value, str):
+        s = value.strip()
+        if s:
+            out.append(s)
+        return out
+    if isinstance(value, dict):
+        for v in value.values():
+            out.extend(_extract_strings(v))
+        return out
+    if isinstance(value, (list, tuple, set)):
+        for v in value:
+            out.extend(_extract_strings(v))
+        return out
+    try:
+        s = str(value).strip()
+        if s:
+            out.append(s)
+    except Exception:
+        pass
+    return out
+
+
+def _normalize_url_loose(url: str) -> str:
+    raw = (url or '').strip()
+    if not raw:
+        return ''
+    try:
+        parsed = urlparse(raw)
+    except Exception:
+        return raw.rstrip('/')
+    query = []
+    for k, v in parse_qsl(parsed.query, keep_blank_values=True):
+        if k.lower() in ('utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'):
+            continue
+        query.append((k, v))
+    return urlunparse((parsed.scheme.lower(), parsed.netloc.lower(), parsed.path.rstrip('/'), '', urlencode(query), '')).rstrip('/')
+
+
+def _share_needles(attempt: dict) -> list[str]:
+    article_url = _normalize_url_loose(str(attempt.get('article_url') or ''))
+    share_url = _normalize_url_loose(str(attempt.get('share_url') or ''))
+    token = str(attempt.get('share_token') or '').strip()
+    out: list[str] = []
+    for raw in (share_url, article_url):
+        if not raw:
+            continue
+        out.append(raw)
+        try:
+            p = urlparse(raw)
+            host_path = f"{p.netloc.lower()}{p.path}".rstrip('/')
+            if host_path:
+                out.append(host_path)
+            if p.path:
+                out.append(p.path.rstrip('/'))
+            if p.query:
+                out.append(f"{p.path}?{p.query}")
+        except Exception:
+            pass
+    if token:
+        out.append(token)
+    seen: set[str] = set()
+    needles: list[str] = []
+    for item in out:
+        s = (item or '').strip()
+        if len(s) < 4:
+            continue
+        key = s.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        needles.append(s)
+    return needles
+
+
+def _match_strings(strings: list[str], needles: list[str]) -> tuple[bool, str]:
+    for s in strings:
+        raw = html.unescape(s or '')
+        variants = [raw, raw.replace('\\/', '/')]
+        for variant in variants:
+            low = variant.lower()
+            for needle in needles:
+                n = needle.lower()
+                if n and n in low:
+                    if 'sref=' in n:
+                        return True, 'matched_full_share_url'
+                    if '/share/' in n:
+                        return True, 'matched_share_path'
+                    return True, 'matched_public_payload'
+    return False, 'share_link_not_found'
+
+
+def _fetch_text(url: str, headers: dict[str, str]) -> tuple[bool, str, str]:
+    try:
+        resp = requests.get(url, headers=headers, timeout=12, allow_redirects=True)
+    except Exception:
+        return False, '', 'fetch_failed'
+    if resp.status_code >= 400:
+        return False, '', f'http_{resp.status_code}'
+    body = html.unescape(resp.text or '')
+    if not body:
+        return False, '', 'empty_response'
+    return True, body, 'ok'
+
+
+def _extract_x_status_id(post_url: str) -> str:
+    m = re.search(r'/status/(\d+)', post_url)
+    return (m.group(1) if m else '').strip()
+
+
+def _verify_x_post(post_url: str, attempt: dict, headers: dict[str, str]) -> tuple[bool, str]:
+    needles = _share_needles(attempt)
+
+    fetch_urls: list[tuple[str, str]] = [(post_url, 'x_public_html')]
+    if 'x.com/' in post_url:
+        fetch_urls.append((post_url.replace('://x.com/', '://twitter.com/'), 'twitter_public_html'))
+    elif 'twitter.com/' in post_url:
+        fetch_urls.append((post_url.replace('://twitter.com/', '://x.com/'), 'x_public_html_alt'))
+
+    for url, label in fetch_urls:
+        ok, body, detail = _fetch_text(url, headers)
+        if ok:
+            matched, reason = _match_strings([body], needles)
+            if matched:
+                return True, f'{label}:{reason}'
+
+    status_id = _extract_x_status_id(post_url)
+    if status_id:
+        syndication_url = f'https://cdn.syndication.twimg.com/tweet-result?id={status_id}&lang=en'
+        ok, body, detail = _fetch_text(syndication_url, headers)
+        if ok:
+            try:
+                payload = json.loads(body)
+            except Exception:
+                payload = body
+            matched, reason = _match_strings(_extract_strings(payload), needles)
+            if matched:
+                return True, f'x_syndication:{reason}'
+
+        oembed_url = 'https://publish.twitter.com/oembed?omit_script=1&dnt=1&url=' + requests.utils.quote(post_url, safe='')
+        ok, body, detail = _fetch_text(oembed_url, headers)
+        if ok:
+            try:
+                payload = json.loads(body)
+            except Exception:
+                payload = body
+            matched, reason = _match_strings(_extract_strings(payload), needles)
+            if matched:
+                return True, f'x_oembed:{reason}'
+
+    return False, 'share_link_not_found'
+
+
+def _verify_threads_post(post_url: str, attempt: dict, headers: dict[str, str]) -> tuple[bool, str]:
+    needles = _share_needles(attempt)
+    ok, body, detail = _fetch_text(post_url, headers)
+    if ok:
+        matched, reason = _match_strings([body], needles)
+        if matched:
+            return True, f'threads_public_html:{reason}'
+
+    oembed_q = requests.utils.quote(post_url, safe='')
+    for token_name in ('THREADS_OEMBED_ACCESS_TOKEN', 'THREADS_APP_ACCESS_TOKEN', 'META_APP_ACCESS_TOKEN'):
+        token = (os.getenv(token_name) or '').strip()
+        if not token:
+            continue
+        oembed_url = f'https://graph.threads.net/oembed?url={oembed_q}&access_token={requests.utils.quote(token, safe="")}'
+        ok, body, detail = _fetch_text(oembed_url, headers)
+        if ok:
+            try:
+                payload = json.loads(body)
+            except Exception:
+                payload = body
+            matched, reason = _match_strings(_extract_strings(payload), needles)
+            if matched:
+                return True, f'threads_oembed:{reason}'
+
+    return False, 'share_link_not_found'
+
+
 def _verify_post_contains_share(post_url: str, attempt: dict) -> tuple[bool, str]:
     headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache",
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
     }
-    try:
-        resp = requests.get(post_url, headers=headers, timeout=12, allow_redirects=True)
-    except Exception:
-        return False, "fetch_failed"
-    if resp.status_code >= 400:
-        return False, f"http_{resp.status_code}"
-    body = html.unescape(resp.text or "")
-    if not body:
-        return False, "empty_response"
+    platform = str(attempt.get('platform') or '').strip().lower()
+    if platform == 'x':
+        return _verify_x_post(post_url, attempt, headers)
+    if platform == 'threads':
+        return _verify_threads_post(post_url, attempt, headers)
 
-    article_url = str(attempt.get("article_url") or "")
-    share_url = str(attempt.get("share_url") or "")
-    token = str(attempt.get("share_token") or "")
-    needles = [token, share_url, article_url]
-    for needle in needles:
-        if needle and needle in body:
-            return True, "matched_public_html"
-    decoded = body.replace("\\/", "/")
-    for needle in needles:
-        if needle and needle in decoded:
-            return True, "matched_decoded_html"
-    if token and re.search(re.escape(token), body, flags=re.I):
-        return True, "matched_token_regex"
-    return False, "share_link_not_found"
+    ok, body, detail = _fetch_text(post_url, headers)
+    if not ok:
+        return False, detail
+    matched, reason = _match_strings([body], _share_needles(attempt))
+    if matched:
+        return True, reason
+    return False, 'share_link_not_found'
 
 
 class StartShareIn(BaseModel):
