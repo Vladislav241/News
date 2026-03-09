@@ -199,15 +199,27 @@ def _build_email_html(
                             <!-- Divider line -->
                             <div style="margin:18px 0 18px;height:1px;background:#e8e8e8;"></div>
 
-                            <div style="margin-top:0;text-align:center;font-size:18px;color:#7a7a7;font-weight:300;">
+                            <div style="margin-top:0;text-align:center;font-size:18px;color:#7a7a7a;font-weight:300;">
                               Trust score
                             </div>
 
-                            <div style="margin-top:10px;text-align:center;">
-                              <span style="font-size:42px;line-height:1;font-weight:800;">{old_score}</span>
-                              {arrow_html}
-                              <span style="font-size:42px;line-height:1;font-weight:800;">{new_score}</span>
-                            </div>
+                           <table cellpadding="0" cellspacing="0" role="presentation" align="center" style="margin:10px auto 0;">
+                          <tr>
+                            <td align="right" valign="middle" style="font-size:42px;line-height:1;font-weight:800;padding-right:14px;">
+                              {old_score}
+                            </td>
+                            <td align="center" valign="middle" style="width:32px;">
+                              <img src="{_base_url()}/static/icons/Arrow.png"
+                                  width="32"
+                                  height="32"
+                                  alt="→"
+                                  style="display:block;border:0;outline:none;text-decoration:none;width:32px;height:32px;">
+                            </td>
+                            <td align="left" valign="middle" style="font-size:42px;line-height:1;font-weight:800;padding-left:14px;">
+                              {new_score}
+                            </td>
+                          </tr>
+                        </table>
 
                             <div style="margin-top:12px;text-align:center;font-size:18px;color:#7a7a7a;">
                               {outlets} outlets
