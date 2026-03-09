@@ -101,13 +101,6 @@ def _build_email_html(
     title_line = f'Trust score <span style="font-weight:300;">{direction}</span> for a tracked event'
 
     # Simple arrow glyph is the most compatible across email clients.
-    arrow_html = arrow_html = f'''
-  <img src="{_base_url()}/static/icons/Arrow.png"
-      width="32"
-      height="32"
-      style="display:inline-block;vertical-align:middle;margin:0 14px;border:0;"
-      alt="→">
-  '''
 
 
 
@@ -208,13 +201,12 @@ def _build_email_html(
                             <td align="right" valign="middle" style="font-size:42px;line-height:1;font-weight:800;padding-right:14px;">
                               {old_score}
                             </td>
-                            <td align="center" valign="middle" style="width:32px;">
-                              <img src="{_base_url()}/static/icons/Arrow.png"
-                                  width="32"
-                                  height="32"
-                                  alt="→"
-                                  style="display:block;border:0;outline:none;text-decoration:none;width:32px;height:32px;">
-                            </td>
+                            <td align="center" valign="middle" style="padding:0 18px;">
+                            <img src="{base}/static/icons/Arrow.png"
+                                width="40"
+                                alt="→"
+                                style="display:block;border:0;outline:none;text-decoration:none;width:40px;height:auto;">
+                          </td>
                             <td align="left" valign="middle" style="font-size:42px;line-height:1;font-weight:800;padding-left:14px;">
                               {new_score}
                             </td>
