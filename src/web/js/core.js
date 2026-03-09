@@ -244,10 +244,20 @@ function openShareModal(data) {
   const tweetText = encodeURIComponent(`Trust score • ${data.title || 'CHECKNE.'}`);
   const xUrl = `https://twitter.com/intent/tweet?url=${encodedUrl}&text=${tweetText}`;
 
-  toX.onclick = () => window.open(xUrl, '_blank', 'noopener,noreferrer');
+  toX.onclick = async () => {
+    if (typeof window.__sharePromoBeforeOpen === 'function') {
+      const handled = await window.__sharePromoBeforeOpen({ item: data, platform: 'x', defaultUrl: xUrl, defaultShareUrl: data.url });
+      if (handled) return;
+    }
+    window.open(xUrl, '_blank', 'noopener,noreferrer');
+  };
 
   // Threads doesn't provide a fully reliable web intent. Best UX: open Threads and copy the link.
   toThreads.onclick = async () => {
+    if (typeof window.__sharePromoBeforeOpen === 'function') {
+      const handled = await window.__sharePromoBeforeOpen({ item: data, platform: 'threads', defaultUrl: 'https://www.threads.net/', defaultShareUrl: data.url });
+      if (handled) return;
+    }
     await copyShareLink(data.url);
     window.open('https://www.threads.net/', '_blank', 'noopener,noreferrer');
   };

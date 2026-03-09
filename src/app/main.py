@@ -42,6 +42,7 @@ from .routers.unsubscribe import router as unsubscribe_router
 from .routers.report import router as report_router
 from .routers.market import router as market_router
 from .routers.widgets import router as widgets_router
+from .routers.promo import router as promo_router
 from .auth.deps import csrf_origin_check
 from .routers import debug
 from .guest_tracker import mark as mark_guest
@@ -130,6 +131,7 @@ app.include_router(billing_router)
 app.include_router(market_router)
 app.include_router(widgets_router)
 app.include_router(stats_router)
+app.include_router(promo_router)
 app.include_router(share_router)
 app.include_router(image_router)
 app.include_router(unsubscribe_router)

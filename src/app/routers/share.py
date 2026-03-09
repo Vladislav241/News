@@ -543,8 +543,9 @@ def share_page(cluster_id: int, request: Request):
 
     base = _base_url(request)
 
-    page_url = f"{base}/share/{int(cluster_id)}?v={v}"
-    app_url  = f"{base}/?open={int(cluster_id)}&shared=1"
+    sref = (request.query_params.get("sref") or "").strip()
+    page_url = f"{base}/share/{int(cluster_id)}?v={v}" + (f"&sref={sref}" if sref else "")
+    app_url  = f"{base}/?open={int(cluster_id)}&shared=1" + (f"&sref={sref}" if sref else "")
     img_url  = f"{base}/api/share-image/{int(cluster_id)}.png?v={v}"
 
     html = f"""<!doctype html>

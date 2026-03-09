@@ -603,6 +603,45 @@ class Database:
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_user_prefs_updated ON user_preferences(updated_at);")
 
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS share_promo_attempts (
+                    id BIGSERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    cluster_id BIGINT NOT NULL,
+                    platform TEXT NOT NULL,
+                    share_token TEXT NOT NULL UNIQUE,
+                    article_url TEXT NOT NULL,
+                    share_url TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'started',
+                    post_url TEXT,
+                    verify_detail TEXT,
+                    created_at TEXT NOT NULL,
+                    submitted_at TEXT,
+                    confirmed_at TEXT,
+                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+                    FOREIGN KEY(cluster_id) REFERENCES clusters(id) ON DELETE CASCADE
+                );
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_share_promo_user_status ON share_promo_attempts(user_id, status);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_share_promo_user_cluster ON share_promo_attempts(user_id, cluster_id);")
+
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS share_promo_rewards (
+                    user_id BIGINT PRIMARY KEY,
+                    plan TEXT NOT NULL DEFAULT 'pro',
+                    source TEXT NOT NULL DEFAULT 'share_campaign',
+                    starts_at TEXT NOT NULL,
+                    ends_at TEXT NOT NULL,
+                    granted_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+                );
+                """
+            )
+
             # Lightweight migration for older installs: add cancel_at_period_end if missing.
             try:
                 conn.execute(
@@ -683,10 +722,128 @@ class Database:
 
     def get_user_subscription(self, user_id: int) -> Optional[dict[str, Any]]:
         conn = self.connect()
-        return conn.execute(
+        row = conn.execute(
             "SELECT * FROM user_subscriptions WHERE user_id = ?",
             (int(user_id),),
         ).fetchone()
+
+        # Active promotional rewards (e.g. share campaign) should behave like a real Pro plan
+        # across all feature gates, but must not override a paid Pro/Analyst subscription.
+        now = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+        reward = conn.execute(
+            "SELECT * FROM share_promo_rewards WHERE user_id = ? AND ends_at > ?",
+            (int(user_id), now),
+        ).fetchone()
+
+        if row:
+            plan = str(row.get("plan") or "free").strip().lower()
+            if plan in ("pro", "analyst"):
+                return row
+            if reward:
+                out = dict(row)
+                out["plan"] = str(reward.get("plan") or "pro")
+                out["status"] = "active"
+                out["billing_interval"] = "promo"
+                out["current_period_end"] = reward.get("ends_at")
+                out["cancel_at_period_end"] = True
+                out["promo_source"] = reward.get("source") or "share_campaign"
+                return out
+            return row
+
+        if reward:
+            return {
+                "user_id": int(user_id),
+                "plan": str(reward.get("plan") or "pro"),
+                "status": "active",
+                "billing_interval": "promo",
+                "stripe_customer_id": None,
+                "stripe_subscription_id": None,
+                "current_period_end": reward.get("ends_at"),
+                "cancel_at_period_end": True,
+                "created_at": reward.get("granted_at"),
+                "updated_at": reward.get("updated_at"),
+                "promo_source": reward.get("source") or "share_campaign",
+            }
+        return None
+
+    def create_share_promo_attempt(self, user_id: int, cluster_id: int, platform: str, share_token: str, article_url: str, share_url: str) -> dict[str, Any]:
+        conn = self.connect()
+        now = _utc_now_iso()
+        row = conn.execute(
+            """
+            INSERT INTO share_promo_attempts
+            (user_id, cluster_id, platform, share_token, article_url, share_url, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, 'started', ?)
+            RETURNING *
+            """,
+            (int(user_id), int(cluster_id), str(platform), str(share_token), str(article_url), str(share_url), now),
+        ).fetchone()
+        conn.commit()
+        return dict(row)
+
+    def get_share_promo_attempt(self, attempt_id: int, user_id: int) -> Optional[dict[str, Any]]:
+        return self._fetchone(
+            "SELECT * FROM share_promo_attempts WHERE id = ? AND user_id = ?",
+            (int(attempt_id), int(user_id)),
+        )
+
+    def update_share_promo_attempt_submission(self, attempt_id: int, user_id: int, post_url: str, status: str, verify_detail: str, confirmed: bool = False) -> Optional[dict[str, Any]]:
+        conn = self.connect()
+        now = _utc_now_iso()
+        confirmed_at = now if confirmed else None
+        row = conn.execute(
+            """
+            UPDATE share_promo_attempts
+            SET post_url = ?, status = ?, verify_detail = ?, submitted_at = ?, confirmed_at = COALESCE(?, confirmed_at)
+            WHERE id = ? AND user_id = ?
+            RETURNING *
+            """,
+            (str(post_url), str(status), str(verify_detail or ''), now, confirmed_at, int(attempt_id), int(user_id)),
+        ).fetchone()
+        conn.commit()
+        return dict(row) if row else None
+
+    def get_share_promo_progress(self, user_id: int) -> dict[str, Any]:
+        uid = int(user_id)
+        counts = self._fetchone(
+            """
+            SELECT
+              COUNT(*) FILTER (WHERE status = 'confirmed') AS confirmed_attempts,
+              COUNT(DISTINCT CASE WHEN status = 'confirmed' THEN cluster_id END) AS confirmed_unique_clusters,
+              COUNT(*) FILTER (WHERE status IN ('started','submitted','rejected')) AS pending_attempts
+            FROM share_promo_attempts
+            WHERE user_id = ?
+            """,
+            (uid,),
+        ) or {}
+        now = _utc_now_iso()
+        reward = self._fetchone("SELECT * FROM share_promo_rewards WHERE user_id = ? AND ends_at > ?", (uid, now))
+        return {
+            "confirmed_attempts": int(counts.get("confirmed_attempts") or 0),
+            "confirmed_unique_clusters": int(counts.get("confirmed_unique_clusters") or 0),
+            "pending_attempts": int(counts.get("pending_attempts") or 0),
+            "reward": reward,
+        }
+
+    def grant_share_promo_reward(self, user_id: int, plan: str, starts_at: str, ends_at: str, source: str = 'share_campaign') -> dict[str, Any]:
+        conn = self.connect()
+        now = _utc_now_iso()
+        row = conn.execute(
+            """
+            INSERT INTO share_promo_rewards(user_id, plan, source, starts_at, ends_at, granted_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (user_id) DO UPDATE
+            SET plan = EXCLUDED.plan,
+                source = EXCLUDED.source,
+                starts_at = EXCLUDED.starts_at,
+                ends_at = EXCLUDED.ends_at,
+                updated_at = EXCLUDED.updated_at
+            RETURNING *
+            """,
+            (int(user_id), str(plan), str(source), str(starts_at), str(ends_at), now, now),
+        ).fetchone()
+        conn.commit()
+        return dict(row)
 
     def set_user_subscription(
         self,
