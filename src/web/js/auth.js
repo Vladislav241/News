@@ -43,9 +43,46 @@ function setAuthStep(step) {
   _showAuthError('authResetError', '');
 }
 
+function _lockAuthScroll() {
+  try {
+    if (document.body?.dataset?.authScrollLocked === '1') return;
+    const y = window.scrollY || window.pageYOffset || 0;
+    document.body.dataset.authScrollLocked = '1';
+    document.body.dataset.authScrollY = String(y);
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${y}px`;
+    document.body.style.left = '0';
+    document.body.style.right = '0';
+    document.body.style.width = '100%';
+    document.body.classList.add('ckModalOpen');
+  } catch {}
+}
+
+function _unlockAuthScroll() {
+  try {
+    const y = parseInt(document.body?.dataset?.authScrollY || '0', 10) || 0;
+    if (document.body) {
+      delete document.body.dataset.authScrollLocked;
+      delete document.body.dataset.authScrollY;
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.top = '';
+      document.body.style.left = '';
+      document.body.style.right = '';
+      document.body.style.width = '';
+      document.body.classList.remove('ckModalOpen');
+    }
+    if (document.documentElement) document.documentElement.style.overflow = '';
+    window.scrollTo(0, y);
+  } catch {}
+}
+
 function openAuthModal(reason = 'login') {
   const back = document.getElementById('authBackdrop');
   if (!back) return;
+  _lockAuthScroll();
   back.classList.add('isOpen');
   back.setAttribute('aria-hidden', 'false');
 
@@ -92,6 +129,7 @@ function closeAuthModal() {
   back.classList.remove('isOpen');
   back.setAttribute('aria-hidden', 'true');
   setAuthStep('choose');
+  _unlockAuthScroll();
 }
 
 function updateAccountPlanPill() {
@@ -314,6 +352,11 @@ function bindAuthModalUI() {
   if (closeBtn) closeBtn.onclick = closeAuthModal;
   back.addEventListener('click', (e) => {
     if (e.target === back) closeAuthModal();
+  });
+
+  window.addEventListener('keydown', (e) => {
+    const isOpen = back.classList.contains('isOpen');
+    if (isOpen && e.key === 'Escape') closeAuthModal();
   });
 
   const btnGoogle = document.getElementById('btnGoogle');
