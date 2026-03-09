@@ -203,9 +203,9 @@ def _build_email_html(
                             </td>
                             <td align="center" valign="middle" style="padding:0 18px;">
                             <img src="{base}/static/icons/Arrow.png"
-                                width="40"
-                                alt="→"
-                                style="display:block;border:0;outline:none;text-decoration:none;width:40px;height:auto;">
+                            width="120"
+                            alt="→"
+                            style="display:block;border:0;outline:none;text-decoration:none;width:120px;height:auto;">
                           </td>
                             <td align="left" valign="middle" style="font-size:42px;line-height:1;font-weight:800;padding-left:14px;">
                               {new_score}
