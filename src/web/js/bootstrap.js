@@ -424,6 +424,33 @@ function initSmoothDetails(){
     // Ignore clicks on interactive elements inside the summary (buttons/links etc.)
     if (sum.classList.contains('newsSummary')){
       if (e.target.closest('button, a, input, textarea, select, .trackToggle, .shareBtn, .iconBtn')) return;
+
+      // Guest-locked feed cards must NOT start the smooth <details> animation.
+      // On mobile that animation temporarily scroll-locks the page, so if we let it
+      // start and then open the auth modal afterwards, the page can remain jerky or
+      // appear frozen after closing the modal.
+      const lockedCard = detailsEl.closest && detailsEl.closest('[data-locked="1"]');
+      const isGuest = !(window.authState && window.authState.authenticated);
+      if (lockedCard && isGuest){
+        e.preventDefault();
+        e.stopPropagation();
+        try { detailsEl.open = false; } catch {}
+        try { detailsEl.dataset.animating = ''; } catch {}
+        try { detailsEl.style.height = ''; detailsEl.style.overflow = ''; } catch {}
+        try {
+          const body = detailsEl.querySelector('.newsOpenBody');
+          if (body){
+            body.style.height = '';
+            body.style.opacity = '';
+            body.style.transform = '';
+            body.style.transition = '';
+            body.style.overflow = '';
+          }
+        } catch {}
+        try { if (typeof window.openAuthModal === 'function') window.openAuthModal('paywall'); } catch {}
+        return;
+      }
+
       const body = detailsEl.querySelector('.newsOpenBody');
       if (!body) return;
       e.preventDefault();

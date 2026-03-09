@@ -10,6 +10,90 @@
 // Auth modal helpers
 // ----------------------------
 
+let __authScrollY = 0;
+let __authLocked = false;
+
+function lockAuthScroll() {
+  if (__authLocked) return;
+  const docEl = document.documentElement;
+  const body = document.body;
+  if (!docEl || !body) return;
+
+  __authScrollY = Math.max(window.scrollY || 0, window.pageYOffset || 0, docEl.scrollTop || 0, body.scrollTop || 0);
+  __authLocked = true;
+
+  body.dataset.authPrevPosition = body.style.position || '';
+  body.dataset.authPrevTop = body.style.top || '';
+  body.dataset.authPrevLeft = body.style.left || '';
+  body.dataset.authPrevRight = body.style.right || '';
+  body.dataset.authPrevWidth = body.style.width || '';
+  body.dataset.authPrevOverflow = body.style.overflow || '';
+  body.dataset.authPrevTouchAction = body.style.touchAction || '';
+  body.dataset.authPrevOverscroll = body.style.overscrollBehavior || '';
+  docEl.dataset.authPrevOverflow = docEl.style.overflow || '';
+  docEl.dataset.authPrevOverscroll = docEl.style.overscrollBehavior || '';
+
+  docEl.style.overflow = 'hidden';
+  docEl.style.overscrollBehavior = 'none';
+  body.style.position = 'fixed';
+  body.style.top = `-${__authScrollY}px`;
+  body.style.left = '0';
+  body.style.right = '0';
+  body.style.width = '100%';
+  body.style.overflow = 'hidden';
+  body.style.touchAction = 'none';
+  body.style.overscrollBehavior = 'none';
+}
+
+function unlockAuthScroll() {
+  const docEl = document.documentElement;
+  const body = document.body;
+  if (!docEl || !body) return;
+
+  const y = __authScrollY || 0;
+  __authLocked = false;
+
+  body.style.position = body.dataset.authPrevPosition || '';
+  body.style.top = body.dataset.authPrevTop || '';
+  body.style.left = body.dataset.authPrevLeft || '';
+  body.style.right = body.dataset.authPrevRight || '';
+  body.style.width = body.dataset.authPrevWidth || '';
+  body.style.overflow = body.dataset.authPrevOverflow || '';
+  body.style.touchAction = body.dataset.authPrevTouchAction || '';
+  body.style.overscrollBehavior = body.dataset.authPrevOverscroll || '';
+  docEl.style.overflow = docEl.dataset.authPrevOverflow || '';
+  docEl.style.overscrollBehavior = docEl.dataset.authPrevOverscroll || '';
+
+  delete body.dataset.authPrevPosition;
+  delete body.dataset.authPrevTop;
+  delete body.dataset.authPrevLeft;
+  delete body.dataset.authPrevRight;
+  delete body.dataset.authPrevWidth;
+  delete body.dataset.authPrevOverflow;
+  delete body.dataset.authPrevTouchAction;
+  delete body.dataset.authPrevOverscroll;
+  delete docEl.dataset.authPrevOverflow;
+  delete docEl.dataset.authPrevOverscroll;
+
+  requestAnimationFrame(() => {
+    window.scrollTo(0, y);
+    setTimeout(() => window.scrollTo(0, y), 0);
+  });
+}
+
+function authModalIsOpen() {
+  const back = document.getElementById('authBackdrop');
+  return !!(back && back.classList.contains('isOpen'));
+}
+
+function authScrollGuard(e) {
+  if (!authModalIsOpen()) return;
+  const modal = document.querySelector('#authBackdrop .authModalInner');
+  const t = e.target;
+  if (modal && t instanceof Element && modal.contains(t)) return;
+  try { e.preventDefault(); } catch (_) {}
+}
+
 function _showAuthError(elId, msg, asHtml = false) {
   const el = document.getElementById(elId);
   if (!el) return;
@@ -43,48 +127,12 @@ function setAuthStep(step) {
   _showAuthError('authResetError', '');
 }
 
-function _lockAuthScroll() {
-  try {
-    if (document.body?.dataset?.authScrollLocked === '1') return;
-    const y = window.scrollY || window.pageYOffset || 0;
-    document.body.dataset.authScrollLocked = '1';
-    document.body.dataset.authScrollY = String(y);
-    document.documentElement.style.overflow = 'hidden';
-    document.body.style.overflow = 'hidden';
-    document.body.style.position = 'fixed';
-    document.body.style.top = `-${y}px`;
-    document.body.style.left = '0';
-    document.body.style.right = '0';
-    document.body.style.width = '100%';
-    document.body.classList.add('ckModalOpen');
-  } catch {}
-}
-
-function _unlockAuthScroll() {
-  try {
-    const y = parseInt(document.body?.dataset?.authScrollY || '0', 10) || 0;
-    if (document.body) {
-      delete document.body.dataset.authScrollLocked;
-      delete document.body.dataset.authScrollY;
-      document.body.style.overflow = '';
-      document.body.style.position = '';
-      document.body.style.top = '';
-      document.body.style.left = '';
-      document.body.style.right = '';
-      document.body.style.width = '';
-      document.body.classList.remove('ckModalOpen');
-    }
-    if (document.documentElement) document.documentElement.style.overflow = '';
-    window.scrollTo(0, y);
-  } catch {}
-}
-
 function openAuthModal(reason = 'login') {
   const back = document.getElementById('authBackdrop');
   if (!back) return;
-  _lockAuthScroll();
   back.classList.add('isOpen');
   back.setAttribute('aria-hidden', 'false');
+  lockAuthScroll();
 
   // Default step
   setAuthStep('choose');
@@ -129,7 +177,7 @@ function closeAuthModal() {
   back.classList.remove('isOpen');
   back.setAttribute('aria-hidden', 'true');
   setAuthStep('choose');
-  _unlockAuthScroll();
+  unlockAuthScroll();
 }
 
 function updateAccountPlanPill() {
@@ -348,15 +396,15 @@ function bindAuthModalUI() {
   const back = document.getElementById('authBackdrop');
   if (!back) return;
 
+  back.addEventListener('touchmove', authScrollGuard, { passive: false });
+  back.addEventListener('wheel', authScrollGuard, { passive: false });
+  window.addEventListener('pageshow', () => { if (!authModalIsOpen()) unlockAuthScroll(); });
+  document.addEventListener('visibilitychange', () => { if (!authModalIsOpen()) unlockAuthScroll(); });
+
   const closeBtn = document.getElementById('authClose');
   if (closeBtn) closeBtn.onclick = closeAuthModal;
   back.addEventListener('click', (e) => {
     if (e.target === back) closeAuthModal();
-  });
-
-  window.addEventListener('keydown', (e) => {
-    const isOpen = back.classList.contains('isOpen');
-    if (isOpen && e.key === 'Escape') closeAuthModal();
   });
 
   const btnGoogle = document.getElementById('btnGoogle');
