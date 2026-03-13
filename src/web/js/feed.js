@@ -19,89 +19,6 @@ let __feedAutoPaused = false;
 let __feedAutoExpandLatch = false;
 const FEED_AUTO_BATCH_SIZE = 10;
 
-const TRACKING_FOCUS_KEY = 'checkne_tracking_focus_v1';
-
-function _readTrackingFocusRequest(){
-  try {
-    const raw = sessionStorage.getItem(TRACKING_FOCUS_KEY);
-    if (!raw) return null;
-    const data = JSON.parse(raw);
-    const cid = Number(data?.cluster_id);
-    if (!Number.isFinite(cid)) return null;
-    return {
-      cluster_id: cid,
-      scroll_to_graph: data?.scroll_to_graph !== false,
-      open_card: data?.open_card !== false,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function _writeTrackingFocusRequest(clusterId, opts = {}){
-  try {
-    const cid = Number(clusterId);
-    if (!Number.isFinite(cid)) return;
-    sessionStorage.setItem(TRACKING_FOCUS_KEY, JSON.stringify({
-      cluster_id: cid,
-      scroll_to_graph: opts?.scroll_to_graph !== false,
-      open_card: opts?.open_card !== false,
-      ts: Date.now(),
-    }));
-  } catch {}
-}
-
-function _clearTrackingFocusRequest(){
-  try { sessionStorage.removeItem(TRACKING_FOCUS_KEY); } catch {}
-}
-
-function focusTrackingCluster(clusterId, opts = {}){
-  const cid = Number(clusterId);
-  if (!Number.isFinite(cid)) return false;
-
-  const card = document.querySelector(`.newsCard[data-id="${CSS.escape(String(cid))}"]`);
-  if (!card) return false;
-
-  const detailsEl = card.querySelector('details.newsDetails');
-  if (opts?.open_card !== false && detailsEl && !detailsEl.open) {
-    detailsEl.open = true;
-    try { detailsEl.dispatchEvent(new Event('toggle')); } catch {}
-  }
-
-  try { window.__currentClusterId = cid; } catch {}
-  try { document.dispatchEvent(new CustomEvent('checkne:currentClusterChanged', { detail: { cluster_id: cid } })); } catch {}
-
-  const target = (opts?.scroll_to_graph === false)
-    ? card
-    : (card.querySelector(`.trustHistoryWrap[data-trust-cid="${CSS.escape(String(cid))}"]`) || card);
-
-  const scrollNow = () => {
-    try { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch {}
-  };
-  scrollNow();
-  setTimeout(scrollNow, 220);
-  return true;
-}
-
-function applyPendingTrackingFocus(attempt = 0){
-  const req = _readTrackingFocusRequest();
-  if (!req) return;
-
-  const ok = focusTrackingCluster(req.cluster_id, req);
-  if (ok) {
-    _clearTrackingFocusRequest();
-    return;
-  }
-
-  if (attempt >= 12) return;
-  setTimeout(() => applyPendingTrackingFocus(attempt + 1), 140);
-}
-
-try {
-  window.__queueTrackingFocus = _writeTrackingFocusRequest;
-  window.__focusTrackingCluster = focusTrackingCluster;
-} catch {}
-
 function buildSourceReaderUrl(rawUrl, title, source) {
   const safeUrl = String(rawUrl || '').trim();
   if (!safeUrl) return '#';
@@ -131,6 +48,48 @@ function getItemId(it) {
   const id = it?.cluster_id ?? it?.event_id;
   return id == null ? '' : String(id);
 }
+
+
+function focusNewsCardById(cardId, opts = {}) {
+  const id = String(cardId || '').trim();
+  if (!id) return false;
+  const maxAttempts = Number.isFinite(Number(opts.maxAttempts)) ? Number(opts.maxAttempts) : 24;
+  const delayMs = Number.isFinite(Number(opts.delayMs)) ? Number(opts.delayMs) : 120;
+  const shouldOpen = opts.open !== false;
+  const scrollBlock = String(opts.block || 'center');
+
+  let attempts = 0;
+  const run = () => {
+    const card = document.querySelector(`.newsCard[data-id="${id}"]`);
+    if (!card) {
+      if (attempts++ >= maxAttempts) return;
+      setTimeout(run, delayMs);
+      return;
+    }
+
+    const details = card.querySelector('details.newsDetails');
+    if (details && shouldOpen && !details.open) {
+      try { details.open = true; } catch {}
+    }
+
+    try {
+      card.scrollIntoView({ behavior: 'smooth', block: scrollBlock, inline: 'nearest' });
+    } catch {
+      try { card.scrollIntoView(); } catch {}
+    }
+
+    card.classList.remove('newsCardFocusPulse');
+    void card.offsetWidth;
+    card.classList.add('newsCardFocusPulse');
+    setTimeout(() => {
+      try { card.classList.remove('newsCardFocusPulse'); } catch {}
+    }, 1800);
+  };
+
+  run();
+  return true;
+}
+try { window.focusNewsCardById = focusNewsCardById; } catch {}
 
 function countRenderedNewsCards() {
   const cards = qs('cards');
@@ -1265,15 +1224,11 @@ async function fetchFeed(opts) {
 
   const interests = encodeURIComponent((state.interests || []).join(","));
   const rawSearchQ = (state.q || "").trim();
-  // 🔥 topics keep their own UI selection state. When the user selects the whole visible trend universe,
-  // that should behave like "no extra trend restriction" without visually clearing the chips.
-  const topicSelection = Array.isArray(state.topicQs) ? state.topicQs.slice() : [];
-  const effectiveTopicArr = (typeof window.checkneGetEffectiveTopicQueries === 'function')
-    ? window.checkneGetEffectiveTopicQueries(topicSelection)
-    : topicSelection;
-  const rawTopicQ = (effectiveTopicArr.length ? effectiveTopicArr.join(" ") : "").trim();
-  // Keep legacy string in sync with the raw selection state, not the effective filter state.
-  state.topicQ = topicSelection.join(" ");
+  // 🔥 topics can be multi-selected. We build a query string from them without touching the Search input.
+  const topicArr = Array.isArray(state.topicQs) ? state.topicQs : [];
+  const rawTopicQ = (topicArr.length ? topicArr.join(" ") : (state.topicQ || "")).trim();
+  // Keep `topicQ` in sync for older code paths.
+  state.topicQ = rawTopicQ;
   // Effective query: Search box has priority. TopicQ is used by 🔥 chips and must not touch the Search input.
   const rawQ = rawSearchQ || rawTopicQ;
   const q = encodeURIComponent(rawQ);
@@ -1295,8 +1250,7 @@ async function fetchFeed(opts) {
       (q ? `&q=${q}` : "");
 
 
-  const topicSelectionKey = topicSelection.map((x) => String(x || '').trim().toLowerCase()).filter(Boolean).join('|');
-  const feedKey = `${state.country}|${(state.interests || []).join(",")}|q=${rawSearchQ}|topicSel=${topicSelectionKey}|topic=${rawTopicQ}|${state.trendClusterId || ""}`;
+  const feedKey = `${state.country}|${(state.interests || []).join(",")}|q=${rawSearchQ}|topic=${rawTopicQ}|${state.trendClusterId || ""}`;
 
   const keyChanged = (typeof currentFeedKey === "string") && (currentFeedKey !== feedKey);
   const shouldReset = forceReset || !currentFeedKey || keyChanged;
@@ -1400,8 +1354,6 @@ async function fetchFavorites(opts = {}) {
 
     // Hydrate trust history charts (server-side) for newly rendered cards
     if (!opts.quiet || opts.reset) hydrateTrustHistorySections();
-
-    applyPendingTrackingFocus();
 
     setStatus(items.length ? '' : 'Tracking is empty. Tap ★ on a news card to add.');
     updateCounts();
@@ -1662,8 +1614,25 @@ function ensureVisualSearchModal(){
         </div>
       </div>
     </div>
+  </div>
+  <div id="visualSearchResultModal" class="visualResultModal" aria-hidden="true">
+    <div class="visualResultModal__backdrop" data-visual-result-close="1"></div>
+    <div class="visualResultModal__dialog" role="dialog" aria-modal="true" aria-labelledby="visualResultModalTitle">
+      <div class="visualResultModal__header">
+        <div>
+          <div class="visualResultModal__eyebrow">Visual search</div>
+          <div id="visualResultModalTitle" class="visualResultModal__title">News found</div>
+          <div id="visualResultModalSub" class="visualResultModal__sub">We found the closest match and up to 5 related stories.</div>
+        </div>
+        <button id="visualResultClose" class="visualResultModal__close" type="button" aria-label="Close results">✕</button>
+      </div>
+      <div class="visualResultModal__body">
+        <div id="visualResultSummary" class="visualResultSummary"></div>
+        <div id="visualResultList" class="visualResultList"></div>
+      </div>
+    </div>
   </div>`;
-  document.body.appendChild(host.firstElementChild);
+  Array.from(host.children).forEach((node) => document.body.appendChild(node));
 }
 ensureVisualSearchModal();
 
@@ -1679,6 +1648,11 @@ const visualRunBtnEl = qs("visualSearchRunBtn");
 const visualCloseBtnEl = qs("visualSearchClose");
 const visualStatusEl = qs("visualSearchModalStatus");
 const visualFileNameEl = qs("visualSearchFileName");
+const visualResultModalEl = qs("visualSearchResultModal");
+const visualResultCloseBtnEl = qs("visualResultClose");
+const visualResultSummaryEl = qs("visualResultSummary");
+const visualResultSubEl = qs("visualResultModalSub");
+const visualResultListEl = qs("visualResultList");
 let visualSelectedFile = null;
 let visualPreviewUrl = "";
 let visualPreviewReaderToken = 0;
@@ -1832,6 +1806,98 @@ function closeVisualModal(){
   resetVisualModalState();
 }
 
+function closeVisualResultModal(){
+  if (!visualResultModalEl) return;
+  visualResultModalEl.classList.remove('isOpen');
+  visualResultModalEl.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('visualSearchLock');
+}
+
+function openVisualResultModal(items, meta = {}){
+  if (!visualResultModalEl || !visualResultListEl || !visualResultSummaryEl) return;
+  const list = Array.isArray(items) ? items.slice(0, 5) : [];
+  const query = String(meta.query || '').trim();
+  const count = Number.isFinite(Number(meta.count)) ? Number(meta.count) : list.length;
+  const top = list[0] || null;
+
+  if (visualResultSubEl) {
+    visualResultSubEl.textContent = query
+      ? `We found a strong match for “${query}” and up to 5 related stories in your feed.`
+      : 'We found the closest match and up to 5 related stories in your feed.';
+  }
+
+  const getItemImage = (item) => {
+    try {
+      return String(getNewsImage(item, 'thumb') || getNewsImage(item, 'card') || '').trim();
+    } catch {
+      return '';
+    }
+  };
+
+  const renderThumb = (item, cls = '') => {
+    const url = escapeHtml(getItemImage(item));
+    const title = escapeHtml(String(item?.title || 'Story'));
+    if (url) {
+      return `<div class="visualResultThumb ${cls}"><img src="${url}" alt="" loading="lazy" onerror="this.closest('.visualResultThumb')?.setAttribute('data-image-state','empty'); this.remove();" /></div>`;
+    }
+    return `<div class="visualResultThumb ${cls}" data-image-state="empty" aria-hidden="true"><div class="visualResultThumb__ph">No image</div></div>`;
+  };
+
+  if (top) {
+    const topTitle = escapeHtml(String(top.title || 'Story found'));
+    const topSource = escapeHtml(String(top.source || top.outlet || 'Related coverage'));
+    visualResultSummaryEl.innerHTML = `
+      <div class="visualResultSummary__grid">
+        ${renderThumb(top, 'visualResultSummary__thumb')}
+        <div class="visualResultSummary__content">
+          <div class="visualResultSummary__label">News found</div>
+          <div class="visualResultSummary__title">${topTitle}</div>
+          <div class="visualResultSummary__meta">${topSource} · ${Math.max(1, count)} result${Math.max(1, count) === 1 ? '' : 's'}</div>
+        </div>
+      </div>
+    `;
+  } else {
+    visualResultSummaryEl.innerHTML = `
+      <div class="visualResultSummary__label">News found</div>
+      <div class="visualResultSummary__title">Story found</div>
+      <div class="visualResultSummary__meta">${Math.max(1, count)} result${Math.max(1, count) === 1 ? '' : 's'}</div>
+    `;
+  }
+
+  visualResultListEl.innerHTML = list.map((item, idx) => {
+    const id = escapeHtml(getItemId(item));
+    const title = escapeHtml(String(item?.title || 'Untitled story'));
+    const source = escapeHtml(String(item?.source || item?.outlet || item?.topic || 'Related'));
+    const topic = escapeHtml(String(item?.topic || 'general'));
+    const score = Number(item?.score ?? item?.credibility_score ?? item?.credibility ?? 0) || 0;
+    return `
+      <button class="visualResultItem ${idx === 0 ? 'isPrimary' : ''}" type="button" data-visual-result-id="${id}">
+        ${renderThumb(item)}
+        <div class="visualResultItem__content">
+          <div class="visualResultItem__topline">
+            <div class="visualResultItem__rank">${idx === 0 ? 'Top match' : `Similar ${idx}`}</div>
+            <div class="visualResultItem__score">${score}</div>
+          </div>
+          <div class="visualResultItem__title">${title}</div>
+          <div class="visualResultItem__meta">${source} · ${topic}</div>
+        </div>
+      </button>`;
+  }).join('');
+
+  visualResultModalEl.classList.add('isOpen');
+  visualResultModalEl.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('visualSearchLock');
+}
+
+function closeUploadAndShowVisualResults(items, meta = {}){
+  if (visualModalEl) {
+    visualModalEl.classList.remove('isOpen');
+    visualModalEl.setAttribute('aria-hidden', 'true');
+  }
+  resetVisualModalState();
+  openVisualResultModal(items, meta);
+}
+
 async function pickVisualClipboardImage(){
   try {
     if (!navigator.clipboard || !navigator.clipboard.read) {
@@ -1864,7 +1930,10 @@ function attachVisualFile(file){
 }
 
 if (visualBtnEl && visualInputEl) {
-  visualBtnEl.onclick = () => openVisualModal();
+  visualBtnEl.onclick = () => {
+    closeVisualResultModal();
+    openVisualModal();
+  };
   visualInputEl.addEventListener('change', async () => {
     const file = visualInputEl.files && visualInputEl.files[0] ? visualInputEl.files[0] : null;
     attachVisualFile(file);
@@ -1878,6 +1947,20 @@ if (visualPasteBtnEl) visualPasteBtnEl.onclick = () => pickVisualClipboardImage(
 if (visualModalEl) {
   visualModalEl.addEventListener('click', (e) => {
     if (e.target && e.target.closest('[data-visual-close="1"]')) closeVisualModal();
+  });
+}
+if (visualResultCloseBtnEl) visualResultCloseBtnEl.onclick = () => closeVisualResultModal();
+if (visualResultModalEl) {
+  visualResultModalEl.addEventListener('click', (e) => {
+    if (e.target && e.target.closest('[data-visual-result-close="1"]')) {
+      closeVisualResultModal();
+      return;
+    }
+    const btn = e.target && e.target.closest('[data-visual-result-id]');
+    if (!btn) return;
+    const cardId = btn.getAttribute('data-visual-result-id') || '';
+    closeVisualResultModal();
+    focusNewsCardById(cardId, { open: true, block: 'center', maxAttempts: 28, delayMs: 120 });
   });
 }
 if (visualDropzoneEl) {
@@ -1897,12 +1980,16 @@ if (visualDropzoneEl) {
   });
 }
 document.addEventListener('keydown', (e) => {
-  if (!visualModalEl || !visualModalEl.classList.contains('isOpen')) return;
+  const uploadOpen = !!(visualModalEl && visualModalEl.classList.contains('isOpen'));
+  const resultOpen = !!(visualResultModalEl && visualResultModalEl.classList.contains('isOpen'));
+  if (!uploadOpen && !resultOpen) return;
   if (e.key === 'Escape') {
     e.preventDefault();
-    closeVisualModal();
+    if (resultOpen) closeVisualResultModal();
+    else closeVisualModal();
+    return;
   }
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'v' && !visualSelectedFile) {
+  if (uploadOpen && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'v' && !visualSelectedFile) {
     setVisualStatus(t('ui.visual_search_paste_tip', 'Paste an image from your clipboard.'));
   }
 });
@@ -2010,7 +2097,11 @@ async function runVisualSearch(file){
     setVisualStatus(statusMessage || t('ui.visual_search_success', 'Done. Matching stories are now shown in your feed.'));
 
     clearVisualInputValue();
-    setTimeout(() => closeVisualModal(), 220);
+    setTimeout(() => closeUploadAndShowVisualResults(items, {
+      query: extractedQuery,
+      count: items.length,
+      matchType,
+    }), 220);
   } catch (e) {
     console.error(e);
     const msg = `${t('ui.visual_search_error', 'Could not analyze this image.')} ${e?.message || ''}`.trim();
