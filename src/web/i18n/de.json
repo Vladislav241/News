@@ -60,7 +60,19 @@
     "key_facts": "Wichtige Fakten",
     "uncertainties": "Unsicherheiten",
     "event_map": "Ereigniskarte",
-    "open_full_map": "Vollständige Karte öffnen"
+    "open_full_map": "Vollständige Karte öffnen",
+    "visual_search_loading": "Bild wird analysiert und nach passenden News gesucht...",
+    "visual_search_error": "Dieses Bild konnte nicht analysiert werden.",
+    "visual_search_done": "Passende News gefunden für: {query}",
+    "visual_search_bad_type": "Bitte lade eine Bilddatei hoch.",
+    "visual_search_too_large": "Das Bild ist zu groß. Maximal 8 MB.",
+    "visual_search_step_reading": "Text aus dem Screenshot wird gelesen...",
+    "visual_search_result_exact": "Exakter Treffer gefunden",
+    "visual_search_result_strong": "Starke Treffer gefunden",
+    "visual_search_result_related": "Ähnliche Treffer gefunden",
+    "visual_search_result_fallback": "Fallback-Treffer angezeigt",
+    "visual_search_pick_image": "Wähle ein Bild aus, um die Suche zu starten.",
+    "visual_search_success": "Fertig. Passende News werden jetzt im Feed angezeigt."
   },
   "interests": {
     "general": "Allgemein",

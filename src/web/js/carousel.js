@@ -566,7 +566,10 @@ function renderEvidenceLine(label, ev) {
   const url = ev.url || "";
   if (!name && !title) return "";
   if (url) {
-    return `<div class="evLine"><span class="evTag">${escapeHtml(label)}:</span> <b>${name}</b> — <a href="${url}" target="_blank" rel="noopener noreferrer">${title || url}</a></div>`;
+    const safeHref = (typeof buildSourceReaderUrl === 'function')
+      ? buildSourceReaderUrl(url, ev.title || url, ev.source_name || ev.name || 'unknown')
+      : url;
+    return `<div class="evLine"><span class="evTag">${escapeHtml(label)}:</span> <b>${name}</b> — <a href="${safeHref}" target="_blank" rel="noopener noreferrer">${title || escapeHtml(url)}</a></div>`;
   }
   return `<div class="evLine"><span class="evTag">${escapeHtml(label)}:</span> <b>${name}</b> — ${title}</div>`;
 }

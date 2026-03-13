@@ -11,6 +11,20 @@
 let feedRenderedOrder = []; // array of string ids in DOM order (top -> bottom)
 let feedRenderedSet = new Set();
 let lastFeedSignature = ""; // used to decide when we can do an incremental update
+let __feedAutoExpandTimer = null;
+let __feedAutoExpandBusy = false;
+let __feedAutoExpandObserver = null;
+let __feedVisibleLimit = (typeof FEED_PAGE_SIZE !== 'undefined' ? FEED_PAGE_SIZE : 10);
+let __feedAutoPaused = false;
+let __feedAutoExpandLatch = false;
+const FEED_AUTO_BATCH_SIZE = 10;
+
+function buildSourceReaderUrl(rawUrl, title, source) {
+  const safeUrl = String(rawUrl || '').trim();
+  if (!safeUrl) return '#';
+  return `/api/source/go?url=${encodeURIComponent(safeUrl)}&title=${encodeURIComponent(String(title || safeUrl))}&source=${encodeURIComponent(String(source || 'unknown'))}`;
+}
+
 
 
 function setImgFallback(imgEl) {
@@ -116,12 +130,15 @@ function createCardElement(item, ctx, seen, idx) {
   const sourcesHtml = (item.sources || [])
     .slice(0, 30)
     .map((s) => {
-      const url = s.url || '#';
-      const src = escapeHtml(s.source_name || 'unknown');
-      const t = escapeHtml(s.title || '');
+      const rawUrl = String(s.url || '').trim();
+      const srcName = String(s.source_name || 'unknown').trim();
+      const src = escapeHtml(srcName || 'unknown');
+      const titleRaw = String(s.title || '').trim();
+      const t = escapeHtml(titleRaw);
       const pub = s.published_at ? new Date(s.published_at).toLocaleString() : '';
       const mark = diffSourceSet.has(s.source_name) ? ` <span class="srcMark">diff</span>` : '';
-      return `<div class="sourceRow">• <b>${src}</b>${mark} — <a href="${url}" target="_blank" rel="noopener noreferrer">${t || url}</a> <span class="muted">${escapeHtml(pub)}</span></div>`;
+      const openHref = buildSourceReaderUrl(rawUrl, titleRaw || rawUrl, srcName || 'unknown');
+      return `<div class="sourceRow">• <b>${src}</b>${mark} — <a href="${openHref}" target="_blank" rel="noopener noreferrer">${t || escapeHtml(rawUrl || '#')}</a> <span class="muted">${escapeHtml(pub)}</span></div>`;
     })
     .join('');
 
@@ -710,7 +727,7 @@ function renderCards(items, opts) {
   }
 
   if (state.mode === 'feed' && !feedExpanded && filtered.length > FEED_PAGE_SIZE) {
-    visible = visible.slice(0, FEED_PAGE_SIZE);
+    visible = visible.slice(0, getFeedVisibleLimit(filtered.length));
   }
 
   if (filtered.length === 0) {
@@ -763,50 +780,17 @@ if (incremental && state.mode === 'feed' && newFeedEls.length) {
 // Load more UI (feed only)
   if (state.mode === 'feed' && filtered.length > FEED_PAGE_SIZE) {
     const total = filtered.length;
-    const hiddenCountNow = Math.max(0, total - FEED_PAGE_SIZE);
+    const hiddenCountNow = Math.max(0, total - getFeedVisibleLimit(total));
 
-    const wrap = document.createElement('div');
-    wrap.className = 'loadMoreWrap';
-    wrap.id = 'loadMoreWrap';
+    const wrap = createLoadMoreLoader({
+      totalCount: total,
+      hiddenCount: hiddenCountNow,
+    });
 
-    const hint = document.createElement('div');
-    hint.className = 'loadMoreHint';
-   hint.textContent = feedExpanded
-  ? t("ui.feed.shown").replace("{count}", total)
-  : t("ui.feed.hidden").replace("{count}", hiddenCountNow);
-
-
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'loadMoreBtn';
-
-    if (feedExpanded) {
-      btn.textContent = t("ui.feed.hide");
-
-      btn.onclick = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setFeedExpanded(false);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      };
-    } else {
-      btn.textContent = t("ui.feed.show_more")
-  .replace("{count}", hiddenCountNow);
-
-      btn.onclick = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (!authState?.authenticated) {
-          openAuthModal('show_more');
-          return;
-        }
-        setFeedExpanded(true);
-      };
-    }
-
-    wrap.appendChild(hint);
-    wrap.appendChild(btn);
     cards.appendChild(wrap);
+    bindFeedAutoExpandObserver(feedExpanded ? null : wrap);
+  } else {
+    bindFeedAutoExpandObserver(null);
   }
   // Notify side widgets (best-effort)
   try { document.dispatchEvent(new CustomEvent("checkne:feedRendered")); } catch {}
@@ -814,59 +798,142 @@ if (incremental && state.mode === 'feed' && newFeedEls.length) {
 }
 
 
-// Build or update the "load more" block at the bottom of the feed.
+function resetFeedAutoLoadState() {
+  __feedVisibleLimit = (typeof FEED_PAGE_SIZE !== 'undefined' ? FEED_PAGE_SIZE : 10);
+  __feedAutoPaused = false;
+  __feedAutoExpandLatch = false;
+  clearFeedAutoExpandTimer();
+  resetLoadMoreLoaderState();
+}
+
+function getFeedVisibleLimit(totalCount) {
+  const pageSize = (typeof FEED_PAGE_SIZE !== 'undefined' ? FEED_PAGE_SIZE : 10);
+  const total = Math.max(0, Number(totalCount || 0));
+  if (feedExpanded) return total;
+  __feedVisibleLimit = Math.max(pageSize, Number(__feedVisibleLimit || pageSize));
+  return Math.min(total, __feedVisibleLimit);
+}
+
+function revealNextFeedBatch(totalCount) {
+  const total = Math.max(0, Number(totalCount || 0));
+  const pageSize = (typeof FEED_PAGE_SIZE !== 'undefined' ? FEED_PAGE_SIZE : 10);
+  __feedVisibleLimit = Math.max(pageSize, Number(__feedVisibleLimit || pageSize));
+  const nextLimit = Math.min(total, __feedVisibleLimit + FEED_AUTO_BATCH_SIZE);
+  const reachedEnd = nextLimit >= total;
+  __feedVisibleLimit = nextLimit;
+  __feedAutoExpandLatch = true;
+  if (reachedEnd) {
+    setFeedExpanded(true);
+    return;
+  }
+  renderCards(Array.isArray(lastFeedItems) ? lastFeedItems : [], { incremental: false });
+}
+
+// Build or update the animated load-more block at the bottom of the feed.
+function createLoadMoreLoader(opts) {
+  const totalCount = Number(opts?.totalCount || 0);
+  const hiddenCount = Math.max(0, Number(opts?.hiddenCount || 0));
+  const isPaused = !!__feedAutoPaused;
+  const isAuthed = !!authState?.authenticated;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'loadMoreWrap';
+  wrap.id = 'loadMoreWrap';
+  if (isPaused) wrap.classList.add('is-paused');
+
+  const hint = document.createElement('div');
+  hint.className = 'loadMoreHint';
+  hint.textContent = feedExpanded || hiddenCount <= 0
+    ? t("ui.feed.shown", "Showing {count} news").replace("{count}", totalCount)
+    : t("ui.feed.hidden", "Hidden {count} news").replace("{count}", hiddenCount);
+  wrap.appendChild(hint);
+
+  if (!feedExpanded) {
+    if (isPaused && isAuthed) {
+      const actions = document.createElement('div');
+      actions.className = 'loadMoreActions';
+
+      const resumeBtn = document.createElement('button');
+      resumeBtn.type = 'button';
+      resumeBtn.className = 'loadMorePauseBtn isPrimary';
+      resumeBtn.textContent = 'Resume auto-load';
+      resumeBtn.addEventListener('click', () => {
+        __feedAutoPaused = false;
+        __feedAutoExpandLatch = false;
+        clearFeedAutoExpandTimer();
+        renderCards(Array.isArray(lastFeedItems) ? lastFeedItems : [], { incremental: false });
+      });
+      actions.appendChild(resumeBtn);
+      wrap.appendChild(actions);
+    } else {
+      const loader = document.createElement('div');
+      loader.className = 'loadMoreLoader';
+      loader.innerHTML = `
+        <span class="loadMoreSpinner" aria-hidden="true"></span>
+        <span class="loadMoreText">Loading more stories</span>
+        <span class="loadMoreDots" aria-hidden="true"><i></i><i></i><i></i></span>
+      `;
+      wrap.appendChild(loader);
+
+      const authNote = document.createElement('div');
+      authNote.className = 'loadMoreSubtle';
+      authNote.textContent = isAuthed
+        ? 'Keep scrolling — 10 more stories will open automatically.'
+        : 'Sign in to unlock the rest of the feed.';
+      wrap.appendChild(authNote);
+
+      if (isAuthed) {
+        const actions = document.createElement('div');
+        actions.className = 'loadMoreActions';
+
+        const pauseBtn = document.createElement('button');
+        pauseBtn.type = 'button';
+        pauseBtn.className = 'loadMorePauseBtn';
+        pauseBtn.textContent = 'Pause auto-load';
+        pauseBtn.addEventListener('click', () => {
+          __feedAutoPaused = true;
+          __feedAutoExpandLatch = false;
+          clearFeedAutoExpandTimer();
+          resetLoadMoreLoaderState();
+          renderCards(Array.isArray(lastFeedItems) ? lastFeedItems : [], { incremental: false });
+        });
+        actions.appendChild(pauseBtn);
+        wrap.appendChild(actions);
+      }
+    }
+  } else {
+    const done = document.createElement('div');
+    done.className = 'loadMoreDone';
+    done.textContent = t("ui.feed.shown", "Showing {count} news").replace("{count}", totalCount);
+    wrap.appendChild(done);
+  }
+
+  return wrap;
+}
+
 function updateLoadMoreBlock(totalCount) {
   const cards = qs('cards');
   if (!cards) return;
   const existing = document.getElementById('loadMoreWrap');
   if (existing) existing.remove();
 
-  if (state.mode !== 'feed') return;
-  if (!(totalCount > FEED_PAGE_SIZE)) return;
-
-  const hiddenCountNow = Math.max(0, totalCount - FEED_PAGE_SIZE);
-
-  const wrap = document.createElement('div');
-  wrap.className = 'loadMoreWrap';
-  wrap.id = 'loadMoreWrap';
-
-  const hint = document.createElement('div');
-  hint.className = 'loadMoreHint';
-  hint.textContent = feedExpanded
-    ? t("ui.feed.shown","Showing {count} news").replace("{count}", totalCount)
-    : t("ui.feed.hidden","Hidden {count} news").replace("{count}", hiddenCountNow);
-
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'loadMoreBtn';
-
-  if (feedExpanded) {
-    btn.textContent = t("ui.feed.hide");
-
-    btn.onclick = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setFeedExpanded(false);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    };
-  } else {
-    btn.textContent = t("ui.feed.show_more")
-  .replace("{count}", hiddenCountNow);
-
-    btn.onclick = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (!authState?.authenticated) {
-        openAuthModal('show_more');
-        return;
-      }
-      setFeedExpanded(true);
-    };
+  if (state.mode !== 'feed') {
+    bindFeedAutoExpandObserver(null);
+    return;
+  }
+  if (!(totalCount > FEED_PAGE_SIZE)) {
+    bindFeedAutoExpandObserver(null);
+    return;
   }
 
-  wrap.appendChild(hint);
-  wrap.appendChild(btn);
+  const hiddenCountNow = Math.max(0, totalCount - getFeedVisibleLimit(totalCount));
+  const wrap = createLoadMoreLoader({
+    totalCount,
+    hiddenCount: hiddenCountNow,
+  });
+
   cards.appendChild(wrap);
+  bindFeedAutoExpandObserver(feedExpanded ? null : wrap);
 }
 
 // Incremental update for feed: prepend new cards without re-rendering the entire list.
@@ -902,7 +969,7 @@ function incrementalUpdateFeed(sortedItems, opts) {
   }
 
   if (state.mode === 'feed' && !feedExpanded && filtered.length > FEED_PAGE_SIZE) {
-    visible = visible.slice(0, FEED_PAGE_SIZE);
+    visible = visible.slice(0, getFeedVisibleLimit(filtered.length));
   }
 
   const seen = loadSeenState();
@@ -940,13 +1007,165 @@ function incrementalUpdateFeed(sortedItems, opts) {
 
   // Keep the collapsed feed size stable.
   if (state.mode === 'feed' && !feedExpanded) {
-    while (countRenderedNewsCards() > FEED_PAGE_SIZE) {
+    while (countRenderedNewsCards() > getFeedVisibleLimit(filtered.length)) {
       removeLastRenderedCard();
     }
   }
 
   updateLoadMoreBlock(filtered.length);
 }
+
+
+function clearFeedAutoExpandTimer() {
+  if (__feedAutoExpandTimer) {
+    window.clearTimeout(__feedAutoExpandTimer);
+    __feedAutoExpandTimer = null;
+  }
+}
+
+function getFeedAutoExpandThresholdPx() {
+  const viewportH = window.innerHeight || document.documentElement?.clientHeight || 0;
+  // Trigger a bit earlier on phones so users do not have to scroll through the full footer.
+  // Examples: phone ≈ 220-260px, desktop ≈ 280-360px.
+  return Math.max(160, Math.min(360, Math.round(viewportH * 0.32)));
+}
+
+function isUserPinnedToFeedBottom() {
+  const doc = document.documentElement;
+  const body = document.body;
+  const scrollTop = Math.max(window.pageYOffset || 0, doc?.scrollTop || 0, body?.scrollTop || 0);
+  const viewportH = window.innerHeight || doc?.clientHeight || 0;
+  const fullH = Math.max(
+    body?.scrollHeight || 0,
+    doc?.scrollHeight || 0,
+    body?.offsetHeight || 0,
+    doc?.offsetHeight || 0,
+    body?.clientHeight || 0,
+    doc?.clientHeight || 0,
+  );
+  const threshold = getFeedAutoExpandThresholdPx();
+  return (scrollTop + viewportH) >= (fullH - threshold);
+}
+
+function isLoadMoreZoneVisible() {
+  const wrap = document.getElementById('loadMoreWrap');
+  if (!wrap) return false;
+  const rect = wrap.getBoundingClientRect();
+  const viewportH = window.innerHeight || document.documentElement?.clientHeight || 0;
+  const topGate = Math.max(0, viewportH * 0.18);
+  const bottomGate = viewportH + Math.min(120, viewportH * 0.08);
+  return rect.top <= bottomGate && rect.bottom >= topGate;
+}
+
+function setLoadMoreLoaderState(stateName) {
+  const wrap = document.getElementById('loadMoreWrap');
+  if (!wrap) return;
+  wrap.classList.remove('is-armed', 'is-loading', 'is-done');
+  if (stateName) wrap.classList.add(`is-${stateName}`);
+}
+
+function resetLoadMoreLoaderState() {
+  const wrap = document.getElementById('loadMoreWrap');
+  if (!wrap) return;
+  wrap.classList.remove('is-armed', 'is-loading', 'is-done');
+}
+
+function triggerFeedAutoExpand() {
+  clearFeedAutoExpandTimer();
+  if (__feedAutoExpandBusy || state.mode !== 'feed' || feedExpanded || !authState?.authenticated || __feedAutoPaused || __feedAutoExpandLatch) return;
+  if (!isUserPinnedToFeedBottom()) {
+    resetLoadMoreLoaderState();
+    return;
+  }
+  const wrap = document.getElementById('loadMoreWrap');
+  if (!wrap) return;
+  const totalCards = Array.isArray(lastFeedItems) ? lastFeedItems.filter((it) => {
+    const q = (state.q || '').trim();
+    return (isUrlQuery(q) ? true : itemMatchesSearch(it, q)) && itemPassesFilters(it);
+  }).length : 0;
+  if (getFeedVisibleLimit(totalCards) >= totalCards) return;
+  __feedAutoExpandBusy = true;
+  setLoadMoreLoaderState('loading');
+  window.setTimeout(() => {
+    revealNextFeedBatch(totalCards);
+    setLoadMoreLoaderState('done');
+    window.setTimeout(() => { __feedAutoExpandBusy = false; }, 450);
+  }, 900);
+}
+
+function scheduleFeedAutoExpand() {
+  clearFeedAutoExpandTimer();
+  if (state.mode !== 'feed' || feedExpanded || __feedAutoPaused || __feedAutoExpandLatch) return;
+  const wrap = document.getElementById('loadMoreWrap');
+  if (!wrap) return;
+  if (!isUserPinnedToFeedBottom()) {
+    resetLoadMoreLoaderState();
+    return;
+  }
+  if (!authState?.authenticated) {
+    setLoadMoreLoaderState('armed');
+    return;
+  }
+  setLoadMoreLoaderState('loading');
+  __feedAutoExpandTimer = window.setTimeout(() => {
+    __feedAutoExpandTimer = null;
+    triggerFeedAutoExpand();
+  }, 900);
+}
+
+function bindFeedAutoExpandObserver(targetEl) {
+  clearFeedAutoExpandTimer();
+  if (__feedAutoExpandObserver) {
+    try { __feedAutoExpandObserver.disconnect(); } catch {}
+    __feedAutoExpandObserver = null;
+  }
+  if (!targetEl || feedExpanded || state.mode !== 'feed') return;
+
+  if ('IntersectionObserver' in window) {
+    __feedAutoExpandObserver = new IntersectionObserver((entries) => {
+      const entry = entries && entries[0];
+      if (!entry) return;
+      if (entry.isIntersecting && isUserPinnedToFeedBottom()) scheduleFeedAutoExpand();
+      else {
+        __feedAutoExpandLatch = false;
+        clearFeedAutoExpandTimer();
+        resetLoadMoreLoaderState();
+      }
+    }, {
+      root: null,
+      // Start a little earlier than the absolute end, especially on mobile.
+      rootMargin: `0px 0px ${Math.round(getFeedAutoExpandThresholdPx() * 0.45)}px 0px`,
+      threshold: 0.15,
+    });
+    try { __feedAutoExpandObserver.observe(targetEl); } catch {}
+    return;
+  }
+
+  const rect = targetEl.getBoundingClientRect();
+  const viewportH = window.innerHeight || document.documentElement.clientHeight || 0;
+  if (rect.top <= (viewportH + getFeedAutoExpandThresholdPx() * 0.25) && isUserPinnedToFeedBottom()) scheduleFeedAutoExpand();
+}
+
+window.addEventListener('scroll', () => {
+  const wrap = document.getElementById('loadMoreWrap');
+  if (!wrap || feedExpanded || state.mode !== 'feed') return;
+  if (isLoadMoreZoneVisible() && isUserPinnedToFeedBottom()) scheduleFeedAutoExpand();
+  else {
+    __feedAutoExpandLatch = false;
+    clearFeedAutoExpandTimer();
+    resetLoadMoreLoaderState();
+  }
+}, { passive: true });
+window.addEventListener('resize', () => {
+  const wrap = document.getElementById('loadMoreWrap');
+  if (!wrap || feedExpanded || state.mode !== 'feed') return;
+  if (isLoadMoreZoneVisible() && isUserPinnedToFeedBottom()) scheduleFeedAutoExpand();
+  else {
+    __feedAutoExpandLatch = false;
+    clearFeedAutoExpandTimer();
+    resetLoadMoreLoaderState();
+  }
+}, { passive: true });
 
 function getFeedLimitForCurrentPlan() {
   const plan = String((typeof billingState !== 'undefined' && billingState && billingState.plan) ? billingState.plan : 'free').toLowerCase();
@@ -1243,7 +1462,9 @@ function bindUI() {
     // setLanguage() also persists + refetches
     await setLanguage(qs("language").value, { persist: false, refetch: true });
 
-    setFeedExpanded(false);
+    resetFeedAutoLoadState();
+    resetFeedAutoLoadState();
+  setFeedExpanded(false);
     savePrefs();
     if (state.mode === "feed") await fetchFeed();
     else await fetchFavorites();
@@ -1263,7 +1484,9 @@ function bindUI() {
   async function applySearch({ reset } = { reset: true }){
     if (!searchEl) return;
     state.q = String(searchEl.value || "");
+    state.visualSearch = null;
     savePrefs();
+    resetFeedAutoLoadState();
     setFeedExpanded(false);
     if (state.mode === "feed") await fetchFeed({ reset: !!reset });
     else await fetchFavorites();
@@ -1275,27 +1498,450 @@ function bindUI() {
   }
 
   if (btnSearch) btnSearch.onclick = () => applySearch({ reset: true });
-
-  if (searchEl){
-    // live typing (debounced)
-    searchEl.addEventListener("input", scheduleSearch, { passive: true });
-    // paste should apply quickly
-    searchEl.addEventListener("paste", () => setTimeout(() => applySearch({ reset: true }), 0));
-    // Enter applies instantly
-    searchEl.addEventListener("keydown", (e) => {
-      if (e.key === "Enter"){
+  if (searchEl) {
+    searchEl.addEventListener('input', () => scheduleSearch());
+    searchEl.addEventListener('change', () => applySearch({ reset: true }));
+    searchEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
         e.preventDefault();
-        if (__searchT) clearTimeout(__searchT);
         applySearch({ reset: true });
-        searchEl.blur();
-      }
-      if (e.key === "Escape"){
-        searchEl.blur();
       }
     });
   }
 
 
+function ensureVisualSearchModal(){
+  if (document.getElementById('visualSearchModal')) return;
+  const host = document.createElement('div');
+  host.innerHTML = `
+  <div id="visualSearchModal" class="visualSearchModal" aria-hidden="true">
+    <div class="visualSearchModal__backdrop" data-visual-close="1"></div>
+    <div class="visualSearchModal__dialog" role="dialog" aria-modal="true" aria-labelledby="visualSearchModalTitle">
+      <div class="visualSearchModal__header">
+        <div>
+          <div class="visualSearchModal__eyebrow">Visual search</div>
+          <div id="visualSearchModalTitle" class="visualSearchModal__title">Find related news from a screenshot</div>
+          <div class="visualSearchModal__sub">Upload a screenshot, drag and drop an image, or paste it from your clipboard. We will analyze the text and show matching stories in your feed.</div>
+        </div>
+        <button id="visualSearchClose" class="visualSearchModal__close" type="button" aria-label="Close visual search">✕</button>
+      </div>
+      <div class="visualSearchModal__body">
+        <div id="visualSearchDropzone" class="visualSearchDropzone" data-processing="0">
+          <div class="visualSearchDropzone__empty">
+            <div class="visualSearchDropzone__icon" aria-hidden="true"></div>
+            <div class="visualSearchDropzone__title">Drop your screenshot here</div>
+            <div class="visualSearchDropzone__hint">Works with screenshots of headlines, cards, articles and posts. Better crops usually give better matches.</div>
+            <div class="visualSearchDropzone__actions">
+              <button id="visualSearchChooseBtn" class="visualSearchPrimaryBtn" type="button">Choose image</button>
+              <button id="visualSearchPasteBtn" class="visualSearchGhostBtn" type="button">Paste image</button>
+            </div>
+            <div class="visualSearchDropzone__paste">You can also press Ctrl/Cmd + V</div>
+          </div>
+          <div class="visualSearchDropzone__previewWrap">
+            <img id="visualSearchPreview" class="visualSearchPreviewImg" alt="Selected image preview" />
+            <div class="visualSearchPreviewMeta">
+              <div class="visualSearchPreviewName">
+                <div class="visualSearchPreviewLabel">Selected file</div>
+                <div id="visualSearchFileName" class="visualSearchPreviewFile">—</div>
+              </div>
+              <div class="visualSearchPreviewActions">
+                <button id="visualSearchReplaceBtn" class="visualSearchSecondaryBtn" type="button">Replace image</button>
+                <button id="visualSearchRunBtn" class="visualSearchPrimaryBtn" type="button" disabled>Analyze & find news</button>
+              </div>
+            </div>
+          </div>
+          <div class="visualSearchProcessing" aria-hidden="true">
+            <div class="visualSearchProcessing__card">
+              <div class="visualSearchProcessing__top">
+                <div class="visualSearchSpinner" aria-hidden="true"></div>
+                <div>
+                  <div class="visualSearchProcessing__title">Analyzing your screenshot</div>
+                  <div class="visualSearchProcessing__sub">Extracting text, understanding the topic and looking for related stories in your feed.</div>
+                </div>
+              </div>
+              <div class="visualSearchProcessing__steps">
+                <div class="visualSearchProcessing__step">Read image</div>
+                <div class="visualSearchProcessing__step">Understand topic</div>
+                <div class="visualSearchProcessing__step">Match stories</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="visualSearchModal__footer">
+          <div id="visualSearchModalStatus" class="visualSearchModal__status"></div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(host.firstElementChild);
+}
+ensureVisualSearchModal();
+
+const visualInputEl = qs("visualSearchInput");
+const visualBtnEl = qs("btnVisualSearch");
+const visualModalEl = qs("visualSearchModal");
+const visualDropzoneEl = qs("visualSearchDropzone");
+const visualPreviewEl = qs("visualSearchPreview");
+const visualChooseBtnEl = qs("visualSearchChooseBtn");
+const visualPasteBtnEl = qs("visualSearchPasteBtn");
+const visualReplaceBtnEl = qs("visualSearchReplaceBtn");
+const visualRunBtnEl = qs("visualSearchRunBtn");
+const visualCloseBtnEl = qs("visualSearchClose");
+const visualStatusEl = qs("visualSearchModalStatus");
+const visualFileNameEl = qs("visualSearchFileName");
+let visualSelectedFile = null;
+let visualPreviewUrl = "";
+let visualPreviewReaderToken = 0;
+let visualProcessingStepsTimer = null;
+const visualAllowedTypes = new Set(['image/png', 'image/jpeg', 'image/jpg', 'image/webp']);
+
+function setVisualStatus(msg = ""){
+  if (visualStatusEl) visualStatusEl.textContent = String(msg || "");
+}
+
+function setVisualProcessingStep(index = 0){
+  const steps = Array.from(document.querySelectorAll('.visualSearchProcessing__step'));
+  steps.forEach((el, i) => el.classList.toggle('isActive', i <= index));
+}
+
+function startVisualProcessingAnimation(){
+  stopVisualProcessingAnimation();
+  let step = 0;
+  setVisualProcessingStep(step);
+  visualProcessingStepsTimer = setInterval(() => {
+    step = (step + 1) % 3;
+    setVisualProcessingStep(step);
+  }, 900);
+}
+
+function stopVisualProcessingAnimation(){
+  if (visualProcessingStepsTimer) {
+    clearInterval(visualProcessingStepsTimer);
+    visualProcessingStepsTimer = null;
+  }
+  setVisualProcessingStep(0);
+}
+
+function revokeVisualPreview(){
+  visualPreviewReaderToken += 1;
+  if (visualPreviewUrl) {
+    try { URL.revokeObjectURL(visualPreviewUrl); } catch {}
+    visualPreviewUrl = "";
+  }
+}
+
+function loadVisualPreviewWithFileReader(file, token){
+  try {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (!visualPreviewEl || token !== visualPreviewReaderToken) return;
+      const dataUrl = String(reader.result || '');
+      if (!dataUrl) return;
+      visualPreviewEl.src = dataUrl;
+      setVisualStatus('');
+    };
+    reader.onerror = () => {
+      if (token !== visualPreviewReaderToken) return;
+      setVisualStatus('Could not show the image preview, but search will still work.');
+    };
+    reader.readAsDataURL(file);
+  } catch {
+    setVisualStatus('Could not show the image preview, but search will still work.');
+  }
+}
+
+function clearVisualInputValue(){
+  try { if (visualInputEl) visualInputEl.value = ''; } catch {}
+}
+
+function validateVisualFile(file){
+  if (!file) return { ok:false, message: t('ui.visual_search_pick_image', 'Choose an image to start searching.') };
+  const type = String(file.type || '').toLowerCase();
+  if (!visualAllowedTypes.has(type)) {
+    return { ok:false, message: t('ui.visual_search_bad_type', 'Please upload PNG, JPG, JPEG or WEBP.') };
+  }
+  if ((file.size || 0) > 8 * 1024 * 1024) {
+    return { ok:false, message: t('ui.visual_search_too_large', 'Image is too large. Max 8 MB.') };
+  }
+  return { ok:true, message:'' };
+}
+
+function resetVisualModalState(){
+  clearVisualInputValue();
+  renderVisualPreview(null);
+  setVisualStatus('');
+}
+
+function renderVisualPreview(file){
+  visualSelectedFile = file || null;
+  if (!visualDropzoneEl) return;
+  if (!file) {
+    visualDropzoneEl.classList.remove('hasImage');
+    visualDropzoneEl.dataset.processing = "0";
+    revokeVisualPreview();
+    if (visualPreviewEl) {
+      visualPreviewEl.removeAttribute('src');
+      visualPreviewEl.style.visibility = 'hidden';
+      visualPreviewEl.onload = null;
+      visualPreviewEl.onerror = null;
+    }
+    if (visualFileNameEl) visualFileNameEl.textContent = '—';
+    if (visualRunBtnEl) visualRunBtnEl.disabled = true;
+    return;
+  }
+  const validation = validateVisualFile(file);
+  if (!validation.ok) {
+    setVisualStatus(validation.message);
+    visualSelectedFile = null;
+    if (visualRunBtnEl) visualRunBtnEl.disabled = true;
+    return;
+  }
+  visualDropzoneEl.classList.add('hasImage');
+  revokeVisualPreview();
+  const token = visualPreviewReaderToken;
+  if (visualPreviewEl) {
+    visualPreviewEl.style.visibility = 'hidden';
+    visualPreviewEl.onload = () => {
+      if (token !== visualPreviewReaderToken) return;
+      visualPreviewEl.style.visibility = 'visible';
+      setVisualStatus('');
+    };
+    visualPreviewEl.onerror = () => {
+      if (token !== visualPreviewReaderToken) return;
+      loadVisualPreviewWithFileReader(file, token);
+    };
+  }
+  let usedObjectUrl = false;
+  try {
+    visualPreviewUrl = URL.createObjectURL(file);
+    usedObjectUrl = !!visualPreviewUrl;
+    if (visualPreviewEl && visualPreviewUrl) visualPreviewEl.src = visualPreviewUrl;
+  } catch {}
+  if (!usedObjectUrl) loadVisualPreviewWithFileReader(file, token);
+  if (visualFileNameEl) {
+    const kb = Math.max(1, Math.round((file.size || 0) / 1024));
+    visualFileNameEl.textContent = `${file.name || 'image'} · ${kb} KB`;
+  }
+  if (visualRunBtnEl) visualRunBtnEl.disabled = false;
+}
+
+function openVisualModal(){
+  if (!visualModalEl) return;
+  visualModalEl.classList.add('isOpen');
+  visualModalEl.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('visualSearchLock');
+  setVisualStatus('');
+}
+
+function closeVisualModal(){
+  if (!visualModalEl) return;
+  if (visualDropzoneEl && visualDropzoneEl.dataset.processing === '1') return;
+  visualModalEl.classList.remove('isOpen');
+  visualModalEl.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('visualSearchLock');
+  resetVisualModalState();
+}
+
+async function pickVisualClipboardImage(){
+  try {
+    if (!navigator.clipboard || !navigator.clipboard.read) {
+      throw new Error(t('ui.visual_search_clipboard_unavailable', 'Clipboard paste is not supported in this browser.'));
+    }
+    const items = await navigator.clipboard.read();
+    for (const item of items) {
+      const type = (item.types || []).find((tp) => String(tp || '').startsWith('image/'));
+      if (!type) continue;
+      const blob = await item.getType(type);
+      const ext = String(type.split('/')[1] || 'png').replace(/[^a-z0-9]/gi, '') || 'png';
+      const file = new File([blob], `clipboard-image.${ext}`, { type });
+      clearVisualInputValue();
+      renderVisualPreview(file);
+      setVisualStatus('');
+      return;
+    }
+    throw new Error(t('ui.visual_search_clipboard_empty', 'No image found in clipboard.'));
+  } catch (e) {
+    const msg = e?.message || t('ui.visual_search_clipboard_error', 'Could not read image from clipboard.');
+    setVisualStatus(msg);
+  }
+}
+
+function attachVisualFile(file){
+  if (!file) return;
+  clearVisualInputValue();
+  renderVisualPreview(file);
+  if (visualSelectedFile) setVisualStatus('');
+}
+
+if (visualBtnEl && visualInputEl) {
+  visualBtnEl.onclick = () => openVisualModal();
+  visualInputEl.addEventListener('change', async () => {
+    const file = visualInputEl.files && visualInputEl.files[0] ? visualInputEl.files[0] : null;
+    attachVisualFile(file);
+  });
+}
+if (visualChooseBtnEl) visualChooseBtnEl.onclick = () => { try { visualInputEl.click(); } catch {} };
+if (visualReplaceBtnEl) visualReplaceBtnEl.onclick = () => { try { visualInputEl.click(); } catch {} };
+if (visualRunBtnEl) visualRunBtnEl.onclick = () => { runVisualSearch(visualSelectedFile); };
+if (visualCloseBtnEl) visualCloseBtnEl.onclick = () => closeVisualModal();
+if (visualPasteBtnEl) visualPasteBtnEl.onclick = () => pickVisualClipboardImage();
+if (visualModalEl) {
+  visualModalEl.addEventListener('click', (e) => {
+    if (e.target && e.target.closest('[data-visual-close="1"]')) closeVisualModal();
+  });
+}
+if (visualDropzoneEl) {
+  ['dragenter', 'dragover'].forEach((evt) => visualDropzoneEl.addEventListener(evt, (e) => {
+    e.preventDefault();
+    visualDropzoneEl.classList.add('isHover');
+  }));
+  ['dragleave', 'dragend', 'drop'].forEach((evt) => visualDropzoneEl.addEventListener(evt, (e) => {
+    e.preventDefault();
+    if (evt !== 'drop') visualDropzoneEl.classList.remove('isHover');
+  }));
+  visualDropzoneEl.addEventListener('drop', (e) => {
+    visualDropzoneEl.classList.remove('isHover');
+    const dt = e.dataTransfer;
+    const file = dt && dt.files && dt.files[0] ? dt.files[0] : null;
+    if (file) attachVisualFile(file);
+  });
+}
+document.addEventListener('keydown', (e) => {
+  if (!visualModalEl || !visualModalEl.classList.contains('isOpen')) return;
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    closeVisualModal();
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'v' && !visualSelectedFile) {
+    setVisualStatus(t('ui.visual_search_paste_tip', 'Paste an image from your clipboard.'));
+  }
+});
+document.addEventListener('paste', (e) => {
+  if (!visualModalEl || !visualModalEl.classList.contains('isOpen')) return;
+  const items = Array.from(e.clipboardData?.items || []);
+  const imgItem = items.find((it) => String(it.type || '').startsWith('image/'));
+  if (!imgItem) return;
+  const file = imgItem.getAsFile ? imgItem.getAsFile() : null;
+  if (!file) return;
+  e.preventDefault();
+  attachVisualFile(file);
+});
+
+async function runVisualSearch(file){
+  const validation = validateVisualFile(file);
+  if (!validation.ok) {
+    setVisualStatus(validation.message);
+    return;
+  }
+
+  state.visualSearch = { active: true, filename: String(file.name || 'image') };
+  setFeedExpanded(false);
+  setStatus(t('ui.visual_search_loading', 'Analyzing image and looking for related news...'));
+  setVisualStatus(t('ui.visual_search_step_reading', 'Reading text from screenshot...'));
+
+  const fd = new FormData();
+  fd.append('image', file);
+  fd.append('ui_lang', String(state.language || 'en'));
+  fd.append('country', String(state.country || 'world'));
+  fd.append('language', 'all');
+  fd.append('interests', (state.interests || []).join(','));
+  fd.append('limit', String(getFeedLimitForCurrentPlan()));
+
+  let btn = qs('btnVisualSearch');
+  let input = qs('visualSearchInput');
+  try {
+    if (btn) {
+      btn.disabled = true;
+      btn.dataset.loading = '1';
+    }
+    if (visualDropzoneEl) visualDropzoneEl.dataset.processing = '1';
+    if (visualRunBtnEl) visualRunBtnEl.disabled = true;
+    if (visualChooseBtnEl) visualChooseBtnEl.disabled = true;
+    if (visualReplaceBtnEl) visualReplaceBtnEl.disabled = true;
+    if (visualPasteBtnEl) visualPasteBtnEl.disabled = true;
+    startVisualProcessingAnimation();
+  } catch {}
+
+  try {
+    const res = await fetch(`${API_BASE}/api/news/visual-search`, {
+      method: 'POST',
+      body: fd,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(String(data?.detail || `HTTP ${res.status}`));
+
+    const items = Array.isArray(data?.items) ? data.items : [];
+    const extractedQuery = String(data?.query_used || data?.query || '').trim();
+    const matchType = String(data?.match_type || 'related');
+    const statusMessage = String(data?.message || '').trim();
+
+    state.visualSearch = {
+      active: true,
+      filename: String(file.name || 'image'),
+      query: extractedQuery,
+      matchType,
+      count: items.length,
+    };
+    savePrefs();
+
+    try { window.__checkneFeedItems = items; } catch {}
+    try { document.dispatchEvent(new CustomEvent('checkne:feedItemsUpdated', { detail: { items } })); } catch {}
+
+    lastFeedItems = items;
+    const newIds = updateSeenStateFromItems(items);
+    currentFeedKey = `visual|${state.country}|${(state.interests || []).join(',')}|${Date.now()}`;
+
+    renderCards(items, {
+      nowTs: Date.now(),
+      newIds,
+      suppressNewBadges: !hasInitialFeedLoaded,
+      incremental: false,
+      animate: false,
+    });
+    updateTopStoriesCarousel(items);
+    hasInitialFeedLoaded = true;
+
+    const lastUpdatedEl = qs('lastUpdated');
+    if (lastUpdatedEl) {
+      const prefix = matchType === 'exact'
+        ? t('ui.visual_search_result_exact', 'Exact match found')
+        : matchType === 'high_confidence'
+          ? t('ui.visual_search_result_strong', 'Strong matches found')
+          : matchType === 'fallback'
+            ? t('ui.visual_search_result_fallback', 'Fallback matches shown')
+            : t('ui.visual_search_result_related', 'Related matches found');
+      lastUpdatedEl.textContent = `${prefix} · ${items.length}`;
+    }
+
+    const statusText = extractedQuery
+      ? t('ui.visual_search_done', 'Found related news for: {query}').replace('{query}', extractedQuery)
+      : t('ui.visual_search_done_generic', 'Found related news from your image.');
+    setStatus(statusMessage || statusText);
+    setVisualStatus(statusMessage || t('ui.visual_search_success', 'Done. Matching stories are now shown in your feed.'));
+
+    clearVisualInputValue();
+    setTimeout(() => closeVisualModal(), 220);
+  } catch (e) {
+    console.error(e);
+    const msg = `${t('ui.visual_search_error', 'Could not analyze this image.')} ${e?.message || ''}`.trim();
+    setStatus(msg);
+    setVisualStatus(msg);
+  } finally {
+    stopVisualProcessingAnimation();
+    try {
+      if (btn) {
+        btn.disabled = false;
+        btn.dataset.loading = '0';
+      }
+      clearVisualInputValue();
+      if (visualDropzoneEl) visualDropzoneEl.dataset.processing = '0';
+      if (visualRunBtnEl) visualRunBtnEl.disabled = !visualSelectedFile;
+      if (visualChooseBtnEl) visualChooseBtnEl.disabled = false;
+      if (visualReplaceBtnEl) visualReplaceBtnEl.disabled = false;
+      if (visualPasteBtnEl) visualPasteBtnEl.disabled = false;
+    } catch {}
+  }
+}
 
   // filters init
   syncFiltersStateToUI();

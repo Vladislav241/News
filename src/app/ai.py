@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import base64
 import logging
 import os
 import re
@@ -299,3 +300,112 @@ def summarize_cluster(
     except Exception:
         logger.exception("AI summary failed")
         return None, None, "failed", None
+
+
+
+def extract_visual_search_signal(
+    image_bytes: bytes,
+    mime_type: str = "image/png",
+    ui_lang: str = "en",
+    model: str = "gpt-4.1-mini",
+) -> dict[str, Any]:
+    """
+    Extract OCR-like text + a concise search query from an uploaded screenshot/news image.
+
+    Returns:
+      {
+        "query": "...",
+        "text": "...",
+        "language": "en",
+        "confidence": 0.0-1.0,
+      }
+
+    Raises RuntimeError when OPENAI_API_KEY is not configured or parsing fails.
+    """
+    api_key = (os.getenv("OPENAI_API_KEY") or "").strip()
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY is not configured")
+
+    try:
+        from openai import OpenAI
+    except Exception as e:
+        raise RuntimeError("openai package is not available") from e
+
+    if not image_bytes:
+        raise RuntimeError("Empty image payload")
+
+    lang_n = _norm_lang(ui_lang or "en")
+    out_lang = _LANG_LABELS.get(lang_n, "English")
+
+    b64 = base64.b64encode(image_bytes).decode("ascii")
+    data_url = f"data:{mime_type or 'image/png'};base64,{b64}"
+
+    prompt = (
+        "You analyze screenshots of news headlines/articles/posts in ANY language.\n"
+        f"Return STRICT JSON only. Write the `query` in {out_lang} when possible, but keep unique names, places, numbers, acronyms and quoted phrases exactly as in the image.\n"
+        "Goal: produce a high-recall query for finding the same or very similar news in a feed, even when the feed headline is paraphrased.\n"
+        "Rules:\n"
+        "- Prefer the MAIN event from the screenshot, not side details.\n"
+        "- Keep the key entities exactly: countries, leaders, cities, companies, casualty numbers, dates, quoted labels, military operation names.\n"
+        "- Ignore UI chrome, timestamps, buttons, ads, emoji, usernames unless essential.\n"
+        "- The query should be 6 to 18 words and optimized for retrieval, not for readability.\n"
+        "- If the screenshot shows a headline plus subheadline, merge them into one stronger search query.\n"
+        "- If the screenshot contains article paragraphs instead of a headline, derive the query from the strongest event sentence and the key entities.\n"
+        "- Prefer exact distinctive names and phrases over generic verbs like says, touts, reacts, after, ahead.\n"
+        "- If there are multiple readable variants of the headline, choose the one with the highest information density.\n"
+        "- `text` should be a compact OCR-style extraction of the strongest readable lines and paragraph snippets (max 900 chars).\n"
+        "- `language` should be the dominant language code if obvious, else 'unknown'.\n"
+        "- `confidence` is 0..1.\n"
+        "Schema:\n"
+        "{\"query\":\"...\",\"text\":\"...\",\"language\":\"en\",\"confidence\":0.82}"
+    )
+
+    client = OpenAI(api_key=api_key)
+    try:
+        resp = client.chat.completions.create(
+            model=model,
+            temperature=0.1,
+            max_tokens=280,
+            messages=[
+                {"role": "system", "content": "Return only valid JSON. No markdown."},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": data_url}},
+                    ],
+                },
+            ],
+        )
+    except Exception as e:
+        raise RuntimeError(f"Vision extraction failed: {e}") from e
+
+    raw = ""
+    try:
+        raw = (resp.choices[0].message.content or "").strip()
+    except Exception:
+        raw = ""
+
+    obj = _parse_json(raw or "")
+    if not obj:
+        raise RuntimeError("Could not parse visual-search JSON output")
+
+    query = str(obj.get("query") or "").strip()
+    text = str(obj.get("text") or "").strip()
+    language = str(obj.get("language") or "unknown").strip().lower() or "unknown"
+    try:
+        confidence = float(obj.get("confidence") or 0.0)
+    except Exception:
+        confidence = 0.0
+
+    if not query and text:
+        query = text[:160].strip()
+    if not query:
+        raise RuntimeError("No usable query extracted from image")
+
+    return {
+        "query": query[:120],
+        "text": text[:900],
+        "language": language[:16],
+        "confidence": max(0.0, min(1.0, confidence)),
+    }

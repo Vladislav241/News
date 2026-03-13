@@ -54,7 +54,14 @@
     "continue_with_google": "Продолжить через Google",
     "continue_with_email": "Продолжить через email",
     "email_address": "Email адрес",
-    "drag_to_delete": "Перетащить для удаления"
+    "drag_to_delete": "Перетащить для удаления",
+    "visual_search_step_reading": "Считываю текст со скриншота...",
+    "visual_search_result_exact": "Найдено точное совпадение",
+    "visual_search_result_strong": "Найдены сильные совпадения",
+    "visual_search_result_related": "Найдены похожие совпадения",
+    "visual_search_result_fallback": "Показаны fallback-результаты",
+    "visual_search_pick_image": "Выберите изображение, чтобы начать поиск.",
+    "visual_search_success": "Готово. Подходящие новости уже показаны в ленте."
   },
   "interests": {
     "general": "Общее",

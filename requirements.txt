@@ -18,3 +18,4 @@ Pillow==10.4.0
 resend
 psycopg2-binary==2.9.9
 discord.py==2.4.0
+python-multipart==0.0.20

@@ -61,7 +61,19 @@
     "continue_with_google": "Continue with Google",
     "continue_with_email": "Continue with email",
     "email_address": "Email address",
-    "drag_to_delete": "Drag to delete"
+    "drag_to_delete": "Drag to delete",
+    "visual_search_loading": "Аналізую зображення та шукаю схожі новини...",
+    "visual_search_error": "Не вдалося проаналізувати це зображення.",
+    "visual_search_done": "Знайдено схожі новини для: {query}",
+    "visual_search_bad_type": "Завантаж, будь ласка, файл зображення.",
+    "visual_search_too_large": "Зображення завелике. Максимум 8 МБ.",
+    "visual_search_step_reading": "Зчитую текст зі скріншота...",
+    "visual_search_result_exact": "Знайдено точний збіг",
+    "visual_search_result_strong": "Знайдено сильні збіги",
+    "visual_search_result_related": "Знайдено пов’язані збіги",
+    "visual_search_result_fallback": "Показано fallback-результати",
+    "visual_search_pick_image": "Оберіть зображення, щоб почати пошук.",
+    "visual_search_success": "Готово. Відповідні новини показано у вашій стрічці."
   },
   "interests": {
     "general": "General",

@@ -426,7 +426,7 @@ function renderMediaBias(root, settings){
       function renderSourceList(list){
         const items = (list || []).map((x) => {
           const dom = escapeHtml(String(x.domain || ''));
-          const nm = (x.names && x.names.length) ? escapeHtml(String(x.names[0] || dom)) : dom;
+          const nm = escapeHtml(String(x.name || ((x.names && x.names[0]) ? x.names[0] : dom) || dom));
           return `<li><span class="mbSrcName">${nm}</span><span class="mbSrcDomain">${dom}</span></li>`;
         }).join('');
         return `<ul class="mbSrcList">${items || '<li class="muted">—</li>'}</ul>`;

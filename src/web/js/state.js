@@ -73,6 +73,7 @@ let state = {
   language: "en",
   mode: "feed",
   q: "",
+  visualSearch: null,
   // "Trending" (🔥) chips should filter the feed like interests,
   // but must NOT write into the Search input.
   // We keep this separate from `q` so the Search UI stays untouched.

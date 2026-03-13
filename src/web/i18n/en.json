@@ -67,7 +67,19 @@
     "key_facts": "Key facts",
     "uncertainties": "Uncertainties",
     "event_map": "Event map",
-    "open_full_map": "Open full map"
+    "open_full_map": "Open full map",
+    "visual_search_loading": "Analyzing image and looking for related news...",
+    "visual_search_error": "Could not analyze this image.",
+    "visual_search_done": "Found related news for: {query}",
+    "visual_search_bad_type": "Please upload an image file.",
+    "visual_search_too_large": "Image is too large. Max 8 MB.",
+    "visual_search_step_reading": "Reading text from screenshot...",
+    "visual_search_result_exact": "Exact match found",
+    "visual_search_result_strong": "Strong matches found",
+    "visual_search_result_related": "Related matches found",
+    "visual_search_result_fallback": "Fallback matches shown",
+    "visual_search_pick_image": "Choose an image to start searching.",
+    "visual_search_success": "Done. Matching stories are now shown in your feed."
   },
   "interests": {
     "general": "General",

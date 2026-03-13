@@ -42,8 +42,9 @@ def _ttl_seconds() -> int:
 def media_bias_widget(cluster_id: int):
     """
     Cluster-level Media Bias widget:
-    - counts sources in cluster by bias (left/center/right)
-    - returns cached result keyed by cluster_id + cluster_updated_at
+    - counts visible outlets in cluster by bias (left/center/right)
+    - keeps all outlet names visible in the details panel
+    - uses a cache keyed by cluster_id + cluster_updated_at
     Never throws 500 (best-effort fallbacks).
     """
     try:
@@ -61,49 +62,61 @@ def media_bias_widget(cluster_id: int):
         updated_at = ""
         cache_key = _cluster_cache_key(cid, "")
 
-    # Cache hit
     try:
         hit = db.get_media_bias_cache(cache_key)
-        if hit and hit.get("payload_json"):
-            obj = json.loads(hit["payload_json"]) if isinstance(hit["payload_json"], str) else hit["payload_json"]
+        if hit:
+            obj = json.loads(hit) if isinstance(hit, str) else hit
             if isinstance(obj, dict):
                 obj["cache"] = "hit"
                 return {"ok": True, "cluster_id": cid, "data": obj.get("data"), "reason": obj.get("reason")}
     except Exception:
         pass
 
-    # Compute
     try:
         sources = db.get_cluster_sources(cid) or []
     except Exception:
         sources = []
 
-    # Extract domains and keep display names
-    domains: list[str] = []
-    domain_to_names: dict[str, set[str]] = {}
-    domain_to_titles: dict[str, list[str]] = {}
+    outlet_rows: list[dict[str, Any]] = []
+    seen_outlets: set[tuple[str, str]] = set()
     for s in sources:
         try:
             url = (s.get("url") or "").strip()
-            d = normalize_domain(url)
-            if not d:
+            domain = normalize_domain(url)
+            if not domain:
                 continue
-            domains.append(d)
-            domain_to_names.setdefault(d, set()).add((s.get("source_name") or d).strip() or d)
+            source_name = (s.get("source_name") or domain).strip() or domain
+            outlet_key = (source_name.casefold(), domain)
+            if outlet_key in seen_outlets:
+                continue
+            seen_outlets.add(outlet_key)
             title = (s.get("title") or "").strip()
-            if title:
-                domain_to_titles.setdefault(d, []).append(title)
+            outlet_rows.append({
+                "name": source_name,
+                "domain": domain,
+                "titles": [title] if title else [],
+            })
         except Exception:
             continue
 
-    unique_domains = sorted(set(domains))
-    if len(unique_domains) < 2:
+    if len(outlet_rows) < 2:
         payload = {"data": None, "reason": "not_enough_sources"}
         try:
-            db.set_media_bias_cache(cache_key, cid, str(updated_at), _safe_json(payload), ttl_seconds=_ttl_seconds())
+            db.set_media_bias_cache(cache_key, cid, _safe_json(payload), ttl_seconds=_ttl_seconds())
         except Exception:
             pass
         return {"ok": True, "cluster_id": cid, "data": None, "reason": "not_enough_sources"}
+
+    domain_titles: dict[str, list[str]] = {}
+    for row in outlet_rows:
+        domain_titles.setdefault(row["domain"], []).extend(row.get("titles") or [])
+
+    domain_bias: dict[str, tuple[str, float, str]] = {}
+    for domain, titles in domain_titles.items():
+        try:
+            domain_bias[domain] = resolve_bias(domain, sample_titles=(titles or [])[:6])
+        except Exception:
+            domain_bias[domain] = ("unknown", 0.0, "unknown")
 
     buckets: dict[str, dict[str, Any]] = {
         "left": {"count": 0, "sources": []},
@@ -111,21 +124,17 @@ def media_bias_widget(cluster_id: int):
         "right": {"count": 0, "sources": []},
         "unknown": {"count": 0, "sources": []},
     }
-
     conf_sum = 0.0
     conf_n = 0
 
-    for d in unique_domains:
-        titles = (domain_to_titles.get(d) or [])[:6]
-        bias, conf, src = resolve_bias(d, sample_titles=titles)
+    for row in outlet_rows:
+        bias, conf, src = domain_bias.get(row["domain"], ("unknown", 0.0, "unknown"))
         if bias not in buckets:
             bias = "unknown"
         buckets[bias]["count"] += 1
-        # use pretty names if we have them
-        names = sorted(domain_to_names.get(d) or {d})
         buckets[bias]["sources"].append({
-            "domain": d,
-            "names": names,
+            "domain": row["domain"],
+            "name": row["name"],
             "confidence": conf,
             "source": src,
         })
@@ -133,12 +142,14 @@ def media_bias_widget(cluster_id: int):
             conf_sum += float(conf or 0.0)
             conf_n += 1
 
-    known_total = buckets["left"]["count"] + buckets["center"]["count"] + buckets["right"]["count"]
+    for key in buckets:
+        buckets[key]["sources"].sort(key=lambda x: (str(x.get("name") or "").casefold(), str(x.get("domain") or "").casefold()))
 
+    known_total = buckets["left"]["count"] + buckets["center"]["count"] + buckets["right"]["count"]
     if known_total < 2:
         payload = {"data": None, "reason": "not_enough_bias_data"}
         try:
-            db.set_media_bias_cache(cache_key, cid, str(updated_at), _safe_json(payload), ttl_seconds=_ttl_seconds())
+            db.set_media_bias_cache(cache_key, cid, _safe_json(payload), ttl_seconds=_ttl_seconds())
         except Exception:
             pass
         return {"ok": True, "cluster_id": cid, "data": None, "reason": "not_enough_bias_data"}
@@ -181,10 +192,9 @@ def media_bias_widget(cluster_id: int):
     data["confidence"] = conf_label
 
     payload = {"data": data, "reason": None}
-
     try:
-        db.set_media_bias_cache(cache_key, cid, str(updated_at), _safe_json(payload), ttl_seconds=_ttl_seconds())
+        db.set_media_bias_cache(cache_key, cid, _safe_json(payload), ttl_seconds=_ttl_seconds())
     except Exception:
         pass
-
     return {"ok": True, "cluster_id": cid, "data": data}
+

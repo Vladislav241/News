@@ -10,7 +10,8 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional, Dict
 
-from fastapi import APIRouter, HTTPException, Request, Depends, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Request, Depends, BackgroundTasks, File, UploadFile
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 
 from ..db import db
@@ -18,6 +19,7 @@ from ..auth.deps import get_current_user_optional, require_user
 from ..ingest import run_ingest_cycle, backfill_article_images, _should_refresh_summary
 from ..scoring import compute_importance, compute_credibility
 from ..translate import translate_feed_items
+from ..ai import extract_visual_search_signal
 
 import threading
 import asyncio
@@ -1528,6 +1530,508 @@ async def news_similar(
     return {"status": "ok", "query_title": q_title, "count": len(filtered), "items": filtered}
 
 
+
+def _normalize_visual_text(s: str) -> str:
+    s = html.unescape(str(s or "").lower())
+    s = re.sub(r"https?://\S+", " ", s)
+    s = re.sub(r"[^\w\s-]", " ", s, flags=re.UNICODE)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def _visual_tokens(s: str) -> list[str]:
+    toks = []
+    for tok in re.split(r"[^\w-]+", _normalize_visual_text(s)):
+        tok = tok.strip("-_")
+        if len(tok) < 3:
+            continue
+        if tok.isdigit() and len(tok) < 4:
+            continue
+        toks.append(tok)
+    out = []
+    seen = set()
+    for tok in toks:
+        if tok in seen:
+            continue
+        seen.add(tok)
+        out.append(tok)
+    return out
+
+
+def _char_ngrams(s: str, n: int = 3) -> set[str]:
+    t = _normalize_visual_text(s).replace(" ", "")
+    if len(t) <= n:
+        return {t} if t else set()
+    return {t[i:i+n] for i in range(0, len(t)-n+1)}
+
+
+def _jaccard(a: set[str], b: set[str]) -> float:
+    if not a or not b:
+        return 0.0
+    inter = len(a & b)
+    if inter <= 0:
+        return 0.0
+    union = len(a | b)
+    return float(inter) / float(max(1, union))
+
+
+def _visual_doc_text(item: dict[str, Any]) -> str:
+    parts = [
+        str(item.get("title") or ""),
+        str(item.get("summary") or ""),
+        str(item.get("primary_source") or ""),
+    ]
+    for s in (item.get("sources") or []):
+        parts.append(str(s.get("title") or ""))
+        parts.append(str(s.get("source_name") or ""))
+        parts.append(str(s.get("description") or ""))
+    return " ".join(p for p in parts if p).strip()
+
+
+def _clip_visual_query_text(text: str, max_words: int = 14, max_chars: int = 140) -> str:
+    s = re.sub(r"\s+", " ", str(text or "").strip())
+    if not s:
+        return ""
+    words = s.split()
+    if len(words) > max_words:
+        s = " ".join(words[:max_words]).strip()
+    if len(s) > max_chars:
+        s = s[:max_chars].rsplit(" ", 1)[0].strip() or s[:max_chars].strip()
+    return s
+
+
+def _visual_named_entities(text: str, max_items: int = 10) -> list[str]:
+    raw = re.findall(r"\b[A-Z][A-Za-z]{2,}(?:\s+[A-Z][A-Za-z]{2,}){0,2}\b|\b[A-Z]{2,}\b", str(text or ""))
+    out: list[str] = []
+    seen: set[str] = set()
+    stop = {"The", "This", "That", "And", "But", "For", "With", "From", "Into", "Over", "After", "Before", "Wednesday", "Tuesday", "Thursday", "Friday"}
+    for item in raw:
+        item = re.sub(r"\s+", " ", item).strip(" ,.;:-—–|•")
+        if not item or item in stop:
+            continue
+        key = item.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(item)
+        if len(out) >= max_items:
+            break
+    return out
+
+
+def _visual_phrase_candidates(ocr_text: str) -> list[str]:
+    parts = [
+        re.sub(r"\s+", " ", part).strip(" -–—|•,.;:'\"")
+        for part in re.split(r"[\n\r]+|(?<=[.!?])\s+", ocr_text or "")
+        if part and part.strip()
+    ]
+    out: list[str] = []
+    seen: set[str] = set()
+    for part in parts:
+        words = part.split()
+        if len(words) < 5:
+            continue
+        windows: list[str] = []
+        if len(words) <= 18:
+            windows.append(part)
+        else:
+            windows.append(" ".join(words[:18]))
+            mid = max(0, min(len(words) - 10, len(words) // 2 - 5))
+            windows.append(" ".join(words[mid:mid + 10]))
+            windows.append(" ".join(words[-12:]))
+        for cand in windows:
+            cand = _clip_visual_query_text(cand, max_words=18, max_chars=180)
+            if not cand:
+                continue
+            key = cand.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(cand)
+            if len(out) >= 12:
+                return out
+    return out
+
+
+def _visual_query_candidates(query_text: str, ocr_text: str) -> list[str]:
+    candidates: list[str] = []
+
+    def add(value: str, *, max_words: int = 18, max_chars: int = 180) -> None:
+        value = _clip_visual_query_text(value, max_words=max_words, max_chars=max_chars)
+        if not value:
+            return
+        if len(_visual_tokens(value)) < 3 and len(value.split()) < 3:
+            return
+        if value not in candidates:
+            candidates.append(value)
+
+    add(query_text, max_words=14, max_chars=140)
+    add(ocr_text, max_words=22, max_chars=220)
+
+    lines = [
+        re.sub(r"\s+", " ", line).strip(" -–—|•")
+        for line in re.split(r"[\n\r]+", ocr_text or "")
+        if line.strip()
+    ]
+    if not lines and ocr_text:
+        lines = [part.strip() for part in re.split(r"(?<=[.!?])\s+", ocr_text) if part.strip()]
+
+    headline_like: list[str] = []
+    for line in lines:
+        words = line.split()
+        if 4 <= len(words) <= 22:
+            headline_like.append(line)
+        elif len(words) > 22:
+            headline_like.append(" ".join(words[:22]))
+
+    for line in headline_like[:10]:
+        add(line, max_words=18, max_chars=180)
+        words = line.split()
+        if len(words) >= 8:
+            add(" ".join(words[:12]), max_words=12, max_chars=120)
+
+    for phrase in _visual_phrase_candidates(ocr_text)[:12]:
+        add(phrase, max_words=18, max_chars=180)
+
+    entities = _visual_named_entities(ocr_text)
+    if entities:
+        add(" ".join(entities[:4]), max_words=10, max_chars=120)
+        add(" ".join(entities[:6]), max_words=14, max_chars=140)
+
+    if ocr_text:
+        toks = _visual_tokens(ocr_text)[:18]
+        if toks:
+            add(" ".join(toks[:8]), max_words=8, max_chars=100)
+            add(" ".join(toks[:12]), max_words=12, max_chars=140)
+
+    return candidates or [_clip_visual_query_text(query_text or ocr_text)]
+
+
+def _choose_best_visual_query(query_text: str, ocr_text: str, docs: list[str]) -> str:
+    candidates = [c for c in _visual_query_candidates(query_text, ocr_text) if c]
+    if not candidates:
+        return _clip_visual_query_text(query_text or ocr_text)
+    if not docs:
+        return candidates[0]
+
+    try:
+        vec = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5), max_features=12000)
+        X = vec.fit_transform(candidates + docs)
+        cand_X = X[:len(candidates)]
+        doc_X = X[len(candidates):]
+        sims = cosine_similarity(cand_X, doc_X)
+    except Exception:
+        sims = None
+
+    best = candidates[0]
+    best_score = -1.0
+    docs_joined = "\n".join(docs[:200])
+    docs_norm = _normalize_visual_text(docs_joined)
+    docs_tokens = set(_visual_tokens(docs_joined))
+
+    for idx, cand in enumerate(candidates):
+        cand_norm = _normalize_visual_text(cand)
+        cand_tokens = set(_visual_tokens(cand))
+        token_overlap = (len(cand_tokens & docs_tokens) / max(1, len(cand_tokens))) if cand_tokens else 0.0
+        substring_bonus = 0.25 if cand_norm and cand_norm in docs_norm else 0.0
+        char_bonus = _jaccard(_char_ngrams(cand, 3), _char_ngrams(docs_joined, 3)) * 0.25
+        tfidf_bonus = float(sims[idx].max()) if sims is not None and len(docs) else 0.0
+        short_bonus = max(0.0, 0.08 - max(0, len(cand.split()) - 10) * 0.01)
+        score = tfidf_bonus + token_overlap * 0.45 + substring_bonus + char_bonus + short_bonus
+        if score > best_score:
+            best_score = score
+            best = cand
+
+    return _clip_visual_query_text(best)
+
+
+def _score_visual_match(query_text: str, ocr_text: str, item: dict[str, Any], tfidf_sim: float) -> float:
+    doc = _visual_doc_text(item)
+    q_norm = _normalize_visual_text(query_text)
+    ocr_norm = _normalize_visual_text(ocr_text)
+    doc_norm = _normalize_visual_text(doc)
+
+    q_tokens = set(_visual_tokens(query_text))
+    ocr_tokens = set(_visual_tokens(ocr_text))
+    source_title_tokens = set()
+    source_desc_tokens = set()
+    for s in (item.get("sources") or []):
+        source_title_tokens.update(_visual_tokens(str(s.get("title") or "")))
+        source_desc_tokens.update(_visual_tokens(str(s.get("description") or "")))
+
+    all_tokens: list[str] = []
+    seen = set()
+    for tok in list(q_tokens) + list(ocr_tokens):
+        if tok in seen:
+            continue
+        seen.add(tok)
+        all_tokens.append(tok)
+
+    title_l = _normalize_visual_text(str(item.get("title") or ""))
+    summary_l = _normalize_visual_text(str(item.get("summary") or ""))
+    source_titles = [_normalize_visual_text(str(s.get("title") or "")) for s in (item.get("sources") or [])]
+    source_descs = [_normalize_visual_text(str(s.get("description") or "")) for s in (item.get("sources") or [])]
+    source_names = [_normalize_visual_text(str(s.get("source_name") or "")) for s in (item.get("sources") or [])]
+
+    score = float(tfidf_sim or 0.0) * 0.65
+
+    if q_norm and q_norm in doc_norm:
+        score += 0.45
+    if ocr_norm and ocr_norm in doc_norm:
+        score += 0.38
+
+    query_parts = [p for p in q_norm.split() if len(p) >= 4]
+    if len(query_parts) >= 2:
+        hit_ratio = sum(1 for p in query_parts if p in doc_norm) / max(1, len(query_parts))
+        score += min(0.22, hit_ratio * 0.28)
+
+    strong_hits = 0
+    medium_hits = 0
+    weak_hits = 0
+    for tok in all_tokens:
+        if tok in title_l or any(tok in st for st in source_titles):
+            strong_hits += 1
+            continue
+        if tok in summary_l or tok in source_title_tokens or any(tok in sd for sd in source_descs):
+            medium_hits += 1
+            continue
+        if tok in source_desc_tokens or any(tok in sn for sn in source_names):
+            weak_hits += 1
+
+    if all_tokens:
+        token_coverage = (strong_hits + medium_hits * 0.8 + weak_hits * 0.35) / max(1.0, len(all_tokens))
+        score += min(0.28, token_coverage * 0.34)
+
+    entity_hits = 0
+    entities = _visual_named_entities(ocr_text, max_items=12)
+    for ent in entities:
+        ent_n = _normalize_visual_text(ent)
+        if ent_n and ent_n in doc_norm:
+            entity_hits += 1
+    if entities:
+        score += min(0.18, (entity_hits / max(1, len(entities))) * 0.24)
+
+    q_char = _char_ngrams(query_text, 3)
+    doc_char = _char_ngrams(doc, 3)
+    score += min(0.14, _jaccard(q_char, doc_char) * 0.38)
+
+    ocr_char = _char_ngrams(ocr_text, 3)
+    if ocr_char:
+        score += min(0.20, _jaccard(ocr_char, doc_char) * 0.50)
+
+    long_phrase_hits = 0.0
+    for phrase in _visual_phrase_candidates(ocr_text)[:8]:
+        phrase_n = _normalize_visual_text(phrase)
+        phrase_tokens = _visual_tokens(phrase)
+        if not phrase_n or not phrase_tokens:
+            continue
+        if phrase_n in doc_norm:
+            long_phrase_hits += 1.0
+        elif sum(1 for tok in phrase_tokens if tok in doc_norm) >= max(3, int(len(phrase_tokens) * 0.6)):
+            long_phrase_hits += 0.5
+    score += min(0.18, long_phrase_hits * 0.05)
+
+    try:
+        sources_count = int(item.get("sources_count") or 0)
+    except Exception:
+        sources_count = 0
+    if strong_hits >= 2:
+        score += 0.05
+    if medium_hits >= 3:
+        score += 0.04
+    if sources_count >= 3:
+        score += 0.015
+
+    latest = str(item.get("latest_published_at") or "")
+    try:
+        dt = datetime.fromisoformat(latest.replace("Z", "+00:00")) if latest else None
+    except Exception:
+        dt = None
+    if dt is not None:
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        age_hours = max(0.0, (datetime.now(timezone.utc) - dt).total_seconds() / 3600.0)
+        if age_hours <= 48:
+            score += 0.03
+        elif age_hours <= 168:
+            score += 0.015
+
+    return round(score, 6)
+
+
+@router.post("/api/news/visual-search")
+async def news_visual_search(
+    background_tasks: BackgroundTasks,
+    image: UploadFile = File(...),
+    user=Depends(get_current_user_optional),
+    ui_lang: str = "en",
+    interests: str = "",
+    country: str = "world",
+    language: str = "all",
+    limit: int = 60,
+) -> dict[str, Any]:
+    """Find relevant feed items from an uploaded screenshot/news image."""
+    db.ensure_schema()
+
+    if image is None:
+        raise HTTPException(status_code=400, detail="Image file is required")
+
+    filename = (image.filename or "image").strip()
+    content_type = (image.content_type or "application/octet-stream").strip().lower()
+
+    allowed_types = {
+        "image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif", "image/heic", "image/heif"
+    }
+    if content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Unsupported image format")
+
+    try:
+        raw = await image.read()
+    except Exception:
+        raw = b""
+
+    if not raw:
+        raise HTTPException(status_code=400, detail="Uploaded image is empty")
+    if len(raw) > 8 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Image is too large (max 8 MB)")
+
+    try:
+        signal = extract_visual_search_signal(
+            image_bytes=raw,
+            mime_type=content_type,
+            ui_lang=ui_lang,
+            model=(os.getenv("OPENAI_VISUAL_SEARCH_MODEL", "").strip() or os.getenv("OPENAI_MODEL", "gpt-4.1-mini")),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Could not analyze image: {e}")
+
+    query_text = str(signal.get("query") or "").strip()
+    ocr_text = str(signal.get("text") or "").strip()
+
+    interests_list = [x.strip().lower() for x in (interests or "").split(",") if x.strip()]
+    country = (country or "world").strip().lower()
+    language = (language or "all").strip().lower()
+    limit_n = max(1, min(200, int(limit or 60)))
+    ui_lang = (ui_lang or "en").strip().lower()
+
+    # Start with the user's current feed scope, then widen if needed.
+    candidate_sets: list[list[dict[str, Any]]] = []
+    try:
+        candidate_sets.append(db.query_clusters(
+            interests=interests_list,
+            country=country,
+            language=language,
+            since_iso=(datetime.now(timezone.utc) - timedelta(days=30)).isoformat(),
+            limit=500,
+        ))
+    except Exception:
+        candidate_sets.append([])
+
+    try:
+        candidate_sets.append(db.query_clusters(
+            interests=[],
+            country=country if country != "world" else "",
+            language="all",
+            since_iso=(datetime.now(timezone.utc) - timedelta(days=30)).isoformat(),
+            limit=500,
+        ))
+    except Exception:
+        candidate_sets.append([])
+
+    try:
+        candidate_sets.append(db.query_clusters(
+            interests=[],
+            country="",
+            language="all",
+            since_iso=(datetime.now(timezone.utc) - timedelta(days=45)).isoformat(),
+            limit=650,
+        ))
+    except Exception:
+        candidate_sets.append([])
+
+    dedup_rows: list[dict[str, Any]] = []
+    seen_ids: set[int] = set()
+    for group in candidate_sets:
+        for row in (group or []):
+            try:
+                cid = int(row.get("id") or 0)
+            except Exception:
+                cid = 0
+            if cid <= 0 or cid in seen_ids:
+                continue
+            seen_ids.add(cid)
+            dedup_rows.append(row)
+            if len(dedup_rows) >= 700:
+                break
+        if len(dedup_rows) >= 700:
+            break
+
+    _queue_missing_summaries(dedup_rows[:12], background_tasks, max_jobs=4)
+
+    is_guest = user is None
+    decorated: list[dict[str, Any]] = []
+    for idx, c in enumerate(dedup_rows):
+        if (not is_guest) or idx < 3:
+            decorated.append(_decorate_cluster_row(c, include_sources=True))
+        else:
+            decorated.append(_redact_item_for_guest(_decorate_cluster_row(c, include_sources=False)))
+
+    def _doc_text(it: dict[str, Any]) -> str:
+        return _visual_doc_text(it)
+
+    docs = [_doc_text(it) for it in decorated]
+    best_query_text = _choose_best_visual_query(query_text=query_text, ocr_text=ocr_text, docs=docs)
+    combined_query = " | ".join(x for x in [best_query_text, ocr_text] if x).strip()
+
+    try:
+        vec = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5), max_features=12000)
+        X = vec.fit_transform([combined_query] + docs)
+        sims = cosine_similarity(X[0:1], X[1:]).ravel()
+    except Exception:
+        sims = [0.0 for _ in docs]
+
+    scored: list[tuple[float, dict[str, Any]]] = []
+    for it, sim in zip(decorated, sims):
+        score = _score_visual_match(query_text=best_query_text or query_text, ocr_text=ocr_text, item=it, tfidf_sim=float(sim or 0.0))
+        if country and country != "world" and str(it.get("country") or "").strip().lower() == country:
+            score += 0.015
+        it["similarity"] = round(score, 4)
+        scored.append((score, it))
+
+    scored.sort(
+        key=lambda x: (
+            x[0],
+            int((x[1].get("credibility_score") or 0)),
+            int((x[1].get("sources_count") or 0)),
+            str(x[1].get("latest_published_at") or ""),
+        ),
+        reverse=True,
+    )
+
+    filtered = [it for score, it in scored if score >= 0.09]
+    if len(filtered) < 8:
+        filtered = [it for _, it in scored[: min(24, len(scored))]]
+
+    filtered = filtered[:limit_n]
+
+    if ui_lang:
+        try:
+            filtered = await translate_feed_items(filtered, ui_lang=ui_lang)
+        except Exception:
+            pass
+
+    return {
+        "status": "ok",
+        "count": len(filtered),
+        "items": filtered,
+        "query": best_query_text or query_text,
+        "search_text": combined_query,
+        "ocr_text": ocr_text,
+        "ocr_language": signal.get("language") or "unknown",
+        "ocr_confidence": signal.get("confidence") or 0.0,
+        "filename": filename,
+    }
+
 @router.get("/api/news/by_ids")
 async def news_by_ids(
     ids: str,
@@ -2077,3 +2581,279 @@ def news_video(
 
     limit = max(1, min(int(max_results or 5), 10))
     return get_video_report(q_raw=q_raw, lang=lang, cluster_id=cid_norm, max_results=limit)
+
+def _source_allowed_url(raw_url: str) -> str:
+    url = str(raw_url or '').strip()
+    if not url:
+        raise HTTPException(status_code=400, detail='Missing url')
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in {'http', 'https'} or not parsed.netloc:
+        raise HTTPException(status_code=400, detail='Invalid url')
+    return url
+
+
+def _source_browser_headers(url: str) -> dict[str, str]:
+    parsed = urllib.parse.urlparse(url)
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    return {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+        'Upgrade-Insecure-Requests': '1',
+        'Referer': origin + '/',
+    }
+
+
+def _clean_source_text(value: str) -> str:
+    return ' '.join(str(value or '').replace(' ', ' ').split()).strip()
+
+
+def _extract_ld_json_article_data(soup: BeautifulSoup, final_url: str) -> dict[str, Any]:
+    best: dict[str, Any] = {}
+    scripts = soup.find_all('script', attrs={'type': 'application/ld+json'})
+    for script in scripts:
+        raw = script.string or script.get_text(' ', strip=True) or ''
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            payload = json.loads(raw)
+        except Exception:
+            continue
+        queue = payload if isinstance(payload, list) else [payload]
+        while queue:
+            item = queue.pop(0)
+            if isinstance(item, list):
+                queue.extend(item)
+                continue
+            if not isinstance(item, dict):
+                continue
+            if '@graph' in item and isinstance(item.get('@graph'), list):
+                queue.extend(item.get('@graph') or [])
+            raw_type = item.get('@type')
+            types = raw_type if isinstance(raw_type, list) else [raw_type]
+            norm_types = {str(t).lower() for t in types if t}
+            if not norm_types.intersection({'newsarticle', 'article', 'reportage', 'analysisnewsarticle'}):
+                continue
+            article_body = _clean_source_text(item.get('articleBody') or '')
+            title = _clean_source_text(item.get('headline') or item.get('name') or '')
+            desc = _clean_source_text(item.get('description') or '')
+            image = ''
+            image_val = item.get('image')
+            if isinstance(image_val, str):
+                image = image_val.strip()
+            elif isinstance(image_val, list) and image_val:
+                image = str(image_val[0] or '').strip()
+            elif isinstance(image_val, dict):
+                image = str(image_val.get('url') or image_val.get('@id') or '').strip()
+            if image:
+                image = urllib.parse.urljoin(final_url, image)
+            if len(article_body) > len(best.get('articleBody') or ''):
+                best = {
+                    'title': title,
+                    'description': desc,
+                    'image': image,
+                    'articleBody': article_body,
+                }
+    return best
+
+
+def _extract_readable_article(html_text: str, final_url: str) -> dict[str, Any]:
+    soup = BeautifulSoup(html_text or '', 'html.parser')
+
+    title = ''
+    if soup.title and soup.title.text:
+        title = _clean_source_text(soup.title.text)
+    og_title = soup.find('meta', attrs={'property': 'og:title'})
+    if og_title and og_title.get('content'):
+        title = _clean_source_text(og_title.get('content')) or title
+
+    desc = ''
+    for attrs in ({'name': 'description'}, {'property': 'og:description'}):
+        tag = soup.find('meta', attrs=attrs)
+        if tag and tag.get('content'):
+            desc = _clean_source_text(tag.get('content'))
+            if desc:
+                break
+
+    image = ''
+    og_img = soup.find('meta', attrs={'property': 'og:image'})
+    if og_img and og_img.get('content'):
+        image = urllib.parse.urljoin(final_url, _clean_source_text(og_img.get('content')))
+
+    ld_article = _extract_ld_json_article_data(soup, final_url)
+    if ld_article.get('title') and not title:
+        title = ld_article.get('title') or title
+    if ld_article.get('description') and not desc:
+        desc = ld_article.get('description') or desc
+    if ld_article.get('image') and not image:
+        image = ld_article.get('image') or image
+
+    containers = []
+    for selector in [
+        'article', 'main', '[role="main"]',
+        '[itemprop="articleBody"]', '[data-testid="article-body"]',
+        '.article-content', '.entry-content', '.post-content', '.story-body',
+        '.article__content', '.article-content__content-group', '.article-body',
+        '.article-body__content', '.story-content', '.content__article-body',
+        '.a-content', '.c-entry-content', '.node__content', '.body-copy'
+    ]:
+        try:
+            found = soup.select(selector)
+            if found:
+                containers.extend(found)
+        except Exception:
+            pass
+    if not containers:
+        containers = [soup.body or soup]
+
+    paras: list[str] = []
+    seen: set[str] = set()
+    for container in containers:
+        for p in container.find_all(['p', 'h2', 'h3', 'blockquote'], limit=180):
+            txt = _clean_source_text(p.get_text(' ', strip=True))
+            if len(txt) < 40:
+                continue
+            low = txt.lower()
+            if low in seen:
+                continue
+            if low.startswith('copyright ') or 'all rights reserved' in low:
+                continue
+            seen.add(low)
+            paras.append(txt)
+        if len(paras) >= 24:
+            break
+
+    if len(' '.join(paras)) < 500:
+        body_text = _clean_source_text(ld_article.get('articleBody') or '')
+        if len(body_text) >= 280:
+            chunks = re.split(r'(?<=[.!?])\s+(?=[A-Z"“])', body_text)
+            paras = [chunk.strip() for chunk in chunks if len(chunk.strip()) >= 40][:18] or [body_text[:2000]]
+
+    lowered = (html_text or '').lower()
+    block_indicators = [
+        'access to this page has been denied',
+        'access to this page has been blocked',
+        'please enable javascript',
+        'enable javascript to continue',
+        'captcha',
+        'verify you are human',
+        'just a moment...',
+        'cloudflare',
+        'bot verification',
+    ]
+    is_blocked = any(x in lowered for x in block_indicators)
+
+    total_chars = len(' '.join(paras))
+    quality = 'reader'
+    if is_blocked or total_chars < 280:
+        quality = 'redirect'
+    elif total_chars < 700:
+        quality = 'thin'
+
+    return {
+        'title': title,
+        'description': desc,
+        'image': image,
+        'paragraphs': paras[:18],
+        'is_blocked': is_blocked,
+        'quality': quality,
+        'total_chars': total_chars,
+    }
+
+
+def _render_source_reader_page(source: str, title: str, original_url: str, final_url: str, article: dict[str, Any], note: str = '') -> str:
+    safe_source = html.escape(source or 'Source')
+    safe_title = html.escape((article.get('title') or title or original_url or 'Open source').strip())
+    safe_original = html.escape(original_url)
+    safe_final = html.escape(final_url or original_url)
+    safe_note = html.escape(note) if note else ''
+    desc = html.escape(article.get('description') or '')
+    image = html.escape(article.get('image') or '')
+    paras = ''.join(f'<p>{html.escape(p)}</p>' for p in (article.get('paragraphs') or []))
+    if not paras:
+        paras = '<p>We could not extract a clean readable copy for this source right now, but the original link is preserved below.</p>'
+    image_html = ''
+    if image:
+        image_html = (
+            '<img src="' + image + '" alt="" '
+            'style="width:100%;max-height:320px;object-fit:cover;border-radius:18px;'
+            'border:1px solid rgba(15,23,42,.08);margin:0 0 18px 0;" />'
+        )
+    note_html = f'<div style="margin-top:14px;color:#64748b;font-size:14px;line-height:1.5;">{safe_note}</div>' if safe_note else ''
+    desc_html = f'<div style="font-size:18px;line-height:1.6;color:#334155;margin:0 0 18px;">{desc}</div>' if desc else ''
+    return f'''<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>{safe_title}</title>
+<style>
+body{{margin:0;background:#f3f4f6;color:#0f172a;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;}}
+.wrap{{max-width:920px;margin:32px auto;padding:0 18px;}}
+.card{{background:#fff;border:1px solid rgba(15,23,42,.08);border-radius:28px;box-shadow:0 16px 48px rgba(15,23,42,.08);padding:24px;}}
+.kicker{{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;background:#eef2ff;border:1px solid rgba(59,130,246,.14);font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#334155;}}
+h1{{margin:14px 0 10px;font-size:clamp(30px,4vw,54px);line-height:1.02;letter-spacing:-.04em;}}
+.meta{{font-size:14px;color:#64748b;word-break:break-all;}}
+.actions{{display:flex;gap:12px;flex-wrap:wrap;margin:18px 0 20px;}}
+.btn{{display:inline-flex;align-items:center;justify-content:center;height:46px;padding:0 18px;border-radius:999px;border:1px solid rgba(15,23,42,.12);font-weight:800;text-decoration:none;}}
+.btn.primary{{background:#0f172a;color:#fff;border-color:#0f172a;}}
+.content{{font-size:18px;line-height:1.72;color:#1e293b;}}
+.content p{{margin:0 0 16px;}}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="kicker">{safe_source}</div>
+      <h1>{safe_title}</h1>
+      <div class="meta">{safe_final}</div>
+      <div class="actions">
+        <a class="btn primary" href="{safe_original}" target="_blank" rel="noopener noreferrer">Open original site</a>
+      </div>
+      {image_html}
+      {desc_html}
+      <div class="content">{paras}</div>
+      {note_html}
+    </div>
+  </div>
+</body>
+</html>'''
+
+
+@router.get('/api/source/go')
+def source_go(url: str, title: str = '', source: str = ''):
+    safe_url = _source_allowed_url(url)
+    source_name = (source or urllib.parse.urlparse(safe_url).netloc or 'Source').strip()
+    title_text = (title or '').strip()
+
+    try:
+        with requests.Session() as sess:
+            resp = sess.get(safe_url, headers=_source_browser_headers(safe_url), timeout=12, allow_redirects=True)
+            final_url = str(resp.url or safe_url)
+            content_type = str(resp.headers.get('content-type') or '').lower()
+            if resp.status_code >= 400 or 'text/html' not in content_type:
+                raise RuntimeError(f'upstream status {resp.status_code}')
+            article = _extract_readable_article(resp.text, final_url)
+            quality = str(article.get('quality') or 'redirect').strip().lower()
+            if quality == 'redirect':
+                return RedirectResponse(url=final_url or safe_url, status_code=307)
+            note = ''
+            if quality == 'thin':
+                note = 'This source only exposed a partial readable copy, so CHECKNE opened the best safe extraction available instead of showing a blank page.'
+            return HTMLResponse(_render_source_reader_page(source_name, title_text, safe_url, final_url, article, note=note))
+    except Exception:
+        return RedirectResponse(url=safe_url, status_code=307)
+
+
+@router.get('/api/source/open')
+def source_open(url: str, title: str = '', source: str = ''):
+    safe_url = _source_allowed_url(url)
+    go_url = (
+        '/api/source/go?url=' + urllib.parse.quote(safe_url, safe='') +
+        '&title=' + urllib.parse.quote(title or '', safe='') +
+        '&source=' + urllib.parse.quote(source or '', safe='')
+    )
+    return RedirectResponse(url=go_url, status_code=307)
