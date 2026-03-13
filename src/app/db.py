@@ -13,6 +13,28 @@ from psycopg2 import IntegrityError
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
+CORE_INTERESTS = ("business", "technology", "politics", "science", "sports", "health")
+
+def _normalize_interest_selection(interests: list[str] | None) -> list[str]:
+    seen: set[str] = set()
+    normalized: list[str] = []
+    for raw in (interests or []):
+        v = str(raw or "").strip().lower()
+        if not v or v in seen:
+            continue
+        seen.add(v)
+        normalized.append(v)
+
+    core = [v for v in normalized if v in CORE_INTERESTS]
+    if not core:
+        return ["general"]
+    return core
+
+def _is_broad_interest_selection(interests: list[str] | None) -> bool:
+    normalized = [v for v in _normalize_interest_selection(interests) if v != "general"]
+    return not normalized or all(v in normalized for v in CORE_INTERESTS)
+
+
 from .models import AppConfig
 from .sources import normalize_source_key
 
@@ -2026,7 +2048,7 @@ class Database:
         since_iso: Optional[str],
         limit: int = 120,
     ) -> list[dict[str, Any]]:
-        interests_norm = [i.strip().lower() for i in interests if i.strip()]
+        interests_norm = _normalize_interest_selection(interests)
         country = (country or "").strip().lower()
         language = (language or "all").strip().lower()
 
@@ -2166,8 +2188,9 @@ class Database:
             return "general"
 
         if interests_norm:
-            # If "general" is selected, treat it as a broad feed (no topic filtering).
-            if "general" in interests_norm:
+            # Broad mode = no topic restriction. This is true for explicit General
+            # and also for the natural union of all core interests.
+            if _is_broad_interest_selection(interests_norm):
                 return rows
 
             filtered: list[dict[str, Any]] = []

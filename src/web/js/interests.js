@@ -21,6 +21,90 @@ const TRENDING_ICON_SRC = "/static/icons/new.svg";
 let __trendingCache = { key: "", ts: 0, items: [] };
 
 // Helpers
+
+const CORE_INTERESTS = ["business", "technology", "politics", "science", "sports", "health"];
+let __renderedTrendUniverse = [];
+
+function __normalizeInterestList(list){
+  const uniq = [];
+  const seen = new Set();
+  for (const raw of (Array.isArray(list) ? list : [])){
+    const v = String(raw || '').trim().toLowerCase();
+    if (!v || seen.has(v)) continue;
+    seen.add(v);
+    uniq.push(v);
+  }
+
+  const core = uniq.filter((x) => CORE_INTERESTS.includes(x));
+  if (core.length === 0) return ['general'];
+  return core;
+}
+
+function __isBroadInterestSelection(list){
+  const normalized = __normalizeInterestList(list).filter((x) => x !== 'general');
+  return normalized.length === 0 || CORE_INTERESTS.every((x) => normalized.includes(x));
+}
+
+function __getEffectiveInterestParams(){
+  const normalized = __normalizeInterestList(state?.interests || ['general']);
+  return __isBroadInterestSelection(normalized) ? ['general'] : normalized;
+}
+
+function __dedupeTopicSelection(list){
+  const uniq = [];
+  const seen = new Set();
+  for (const raw of (Array.isArray(list) ? list : [])){
+    const v = String(raw || '').trim();
+    if (!v) continue;
+    const k = v.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    uniq.push(v);
+  }
+  return uniq;
+}
+
+function __getTopicUniverseKeys(){
+  return new Set(
+    (Array.isArray(__renderedTrendUniverse) ? __renderedTrendUniverse : [])
+      .map((x) => String(x || '').trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
+function __topicSelectionCoversUniverse(list){
+  const universeKeys = __getTopicUniverseKeys();
+  if (!universeKeys.size) return false;
+
+  const activeKeys = new Set(
+    __dedupeTopicSelection(list)
+      .map((x) => String(x || '').trim().toLowerCase())
+      .filter(Boolean)
+  );
+
+  if (activeKeys.size < universeKeys.size) return false;
+  for (const k of universeKeys){
+    if (!activeKeys.has(k)) return false;
+  }
+  return true;
+}
+
+function __getEffectiveTopicList(list){
+  const selected = __dedupeTopicSelection(Array.isArray(list) ? list : __getTopicList());
+  return __topicSelectionCoversUniverse(selected) ? [] : selected;
+}
+
+function __pruneTopicSelectionToUniverse(list){
+  const selected = __dedupeTopicSelection(list);
+  const universeKeys = __getTopicUniverseKeys();
+  if (!universeKeys.size) return selected;
+  return selected.filter((x) => universeKeys.has(String(x || '').trim().toLowerCase()));
+}
+
+window.checkneNormalizeInterests = __normalizeInterestList;
+window.checkneIsBroadInterestSelection = __isBroadInterestSelection;
+window.checkneGetEffectiveInterestParams = __getEffectiveInterestParams;
+window.checkneGetEffectiveTopicQueries = __getEffectiveTopicList;
 function __normTopicKey(s){
   s = String(s || "").trim().toLowerCase();
   // strip possessives before removing apostrophes (israel's -> israel)
@@ -49,18 +133,9 @@ function __getTopicList(){
 }
 
 function __setTopicList(list){
-  const uniq = [];
-  const seen = new Set();
-  for (const x of (list || [])){
-    const v = String(x || "").trim();
-    if (!v) continue;
-    const k = v.toLowerCase();
-    if (seen.has(k)) continue;
-    seen.add(k);
-    uniq.push(v);
-  }
+  const uniq = __dedupeTopicSelection(list);
   state.topicQs = uniq;
-  state.topicQ = uniq.join(" "); // back-compat
+  state.topicQ = uniq.join(" "); // back-compat raw selection for older code paths/UI
 }
 
 function __makeTrendChip(label, q){
@@ -122,7 +197,7 @@ async function loadTrendingInterests({ force } = { force: false }){
   const key = [
     (state.country || "world").toLowerCase(),
     "all",
-    (state.interests || []).slice().sort().join(","),
+    (__getEffectiveInterestParams() || ["general"]).slice().sort().join(","),
     (state.language || "en").toLowerCase(), // ui lang
   ].join("|");
 
@@ -136,7 +211,7 @@ async function loadTrendingInterests({ force } = { force: false }){
   params.set("ui_lang", (state.language || "en"));
   params.set("country", (state.country || "world"));
   params.set("language", "all");
-  params.set("interests", (state.interests || ["general"]).join(","));
+  params.set("interests", (__getEffectiveInterestParams() || ["general"]).join(","));
   params.set("limit", String(TRENDING_LIMIT));
 
   try {
@@ -163,6 +238,7 @@ function renderTrendingChips(items){
   // Build a stable, de-duplicated list
   const seen = new Set();
   const cleaned = [];
+  __renderedTrendUniverse = [];
 
   for (const it of (items || [])){
     const labelRaw = (it?.label || it?.title || it?.full_title || "").trim();
@@ -187,8 +263,12 @@ function renderTrendingChips(items){
     if (label.length > 22) label = label.slice(0, 22).trim();
 
     cleaned.push({ label, q });
+    __renderedTrendUniverse.push(String(q || "").trim());
     if (cleaned.length >= TRENDING_LIMIT) break;
   }
+
+  const prunedTopics = __pruneTopicSelectionToUniverse(__getTopicList());
+  __setTopicList(prunedTopics);
 
   if (!cleaned.length) return;
 
@@ -212,25 +292,24 @@ function renderTrendingChips(items){
 
       __applyTopicQuery(list);
 
-      // visual active state
-      try {
-        const cur = new Set(__getTopicList().map((x)=>String(x).toLowerCase()));
-        Array.from(tagsEl.querySelectorAll(".tag.trend")).forEach((n) => {
-          const qq = String(n.dataset.q || '').trim().toLowerCase();
-          if (qq && cur.has(qq)) n.classList.add('on');
-          else n.classList.remove('on');
-        });
-      } catch {}
+      try { __syncTrendActiveState(tagsEl); } catch {}
     };
-
-    // mark as active on render
-    try {
-      const cur = new Set(__getTopicList().map((x)=>String(x).toLowerCase()));
-      if (cur.has(String(t.q || "").trim().toLowerCase())) el.classList.add('on');
-    } catch {}
 
     tagsEl.appendChild(el);
   }
+
+  try { __syncTrendActiveState(tagsEl); } catch {}
+}
+
+function __syncTrendActiveState(tagsEl){
+  const host = tagsEl || qs("tags");
+  if (!host) return;
+  const cur = new Set(__getTopicList().map((x)=>String(x).toLowerCase()));
+  Array.from(host.querySelectorAll(".tag.trend")).forEach((n) => {
+    const qq = String(n.dataset.q || '').trim().toLowerCase();
+    if (qq && cur.has(qq)) n.classList.add('on');
+    else n.classList.remove('on');
+  });
 }
 
 // PUBLIC: called from other modules
@@ -253,12 +332,17 @@ function renderTags() {
         openAuthModal('interests');
         return;
       }
-      if (state.interests.includes(tag)) {
-        state.interests = state.interests.filter((x) => x !== tag);
-        if (state.interests.length === 0) state.interests = ["general"];
+      const cur = __normalizeInterestList(state.interests || ['general']);
+      if (tag === 'general') {
+        state.interests = ['general'];
+      } else if (cur.includes(tag)) {
+        state.interests = __normalizeInterestList(cur.filter((x) => x !== tag));
       } else {
-        state.interests = [...new Set([...(state.interests || []), tag])];
+        state.interests = __normalizeInterestList([...cur.filter((x) => x !== 'general'), tag]);
       }
+
+      // Main interest changes define a new topic universe, so clear sub-topic filters.
+      __setTopicList([]);
       try { savePrefs(); } catch {}
       renderTags();
       if (state.mode === "feed") await fetchFeed({ reset: true });

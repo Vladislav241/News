@@ -14,7 +14,7 @@ from fastapi import APIRouter, HTTPException, Request, Depends, BackgroundTasks,
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 
-from ..db import db
+from ..db import db, _normalize_interest_selection
 from ..auth.deps import get_current_user_optional, require_user
 from ..ingest import run_ingest_cycle, backfill_article_images, _should_refresh_summary
 from ..scoring import compute_importance, compute_credibility
@@ -991,9 +991,7 @@ def get_preferences(user=Depends(get_current_user_optional)) -> dict:
             interests = []
     except Exception:
         interests = []
-    interests = [str(x).strip().lower() for x in interests if str(x).strip()]
-    if not interests:
-        interests = defaults["interests"]
+    interests = _normalize_interest_selection(interests)
 
     ui = _safe_json_load(row.get("ui_json"))
     prefs = {
@@ -1009,10 +1007,7 @@ def get_preferences(user=Depends(get_current_user_optional)) -> dict:
 @router.post("/api/preferences")
 def save_preferences(p: Preferences, user=Depends(require_user)) -> dict:
     db.ensure_schema()
-    interests = [str(x).strip().lower() for x in (p.interests or []) if str(x).strip()]
-    if not interests:
-        interests = ["general"]
-    interests = sorted(set(interests))
+    interests = _normalize_interest_selection(p.interests or [])
 
     country = (p.country or "world").strip().lower() or "world"
     language = (p.language or "en").strip().lower() or "en"

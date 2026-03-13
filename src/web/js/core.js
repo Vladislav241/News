@@ -127,6 +127,46 @@ function openCardInDOM(clusterId) {
   return __checkneOpenCardElement(card);
 }
 
+async function ensureTrackedAndOpenInTracking(clusterId) {
+  const cid = Number(clusterId);
+  if (!Number.isFinite(cid) || cid <= 0) return false;
+
+  if (!authState?.authenticated) {
+    openAuthModal('tracking');
+    return false;
+  }
+
+  try {
+    if (typeof isFav === 'function' && typeof toggleFav === 'function' && !isFav(cid)) {
+      toggleFav(cid);
+      if (typeof syncFavoritesToServer === 'function') {
+        try { await syncFavoritesToServer(); } catch {}
+      }
+    }
+  } catch {}
+
+  try { localStorage.setItem('checkne_pending_tracking_open', String(cid)); } catch {}
+  try { window.__pendingTrackingOpenClusterId = cid; } catch {}
+
+  try {
+    if (typeof window.__navigate === 'function') {
+      window.__navigate('/tracking');
+      return true;
+    }
+  } catch {}
+
+  try {
+    if (typeof setMode === 'function') {
+      await setMode('fav');
+      return true;
+    }
+  } catch {}
+
+  return false;
+}
+
+window.ensureTrackedAndOpenInTracking = ensureTrackedAndOpenInTracking;
+
 async function ensureItemInFeedAndOpen(clusterId) {
   // 1) If already rendered -> open
   if (openCardInDOM(clusterId)) return true;
@@ -311,6 +351,27 @@ const DEFAULT_INTERESTS = [
   "sports",
   "health",
 ];
+
+function normalizeInterestSelection(list) {
+  const allowed = new Set((DEFAULT_INTERESTS || []).map((x) => String(x || '').trim().toLowerCase()).filter(Boolean));
+  const raw = Array.isArray(list) ? list : [];
+  const uniq = [];
+  const seen = new Set();
+
+  for (const value of raw) {
+    const v = String(value || '').trim().toLowerCase();
+    if (!v || !allowed.has(v) || seen.has(v)) continue;
+    seen.add(v);
+    uniq.push(v);
+  }
+
+  const specifics = uniq.filter((x) => x !== 'general');
+  if (specifics.length) return specifics;
+  return ['general'];
+}
+
+window.normalizeInterestSelection = normalizeInterestSelection;
+
 
 const STORAGE_KEY = "news_prefs_v1";
 const FAV_KEY = "news_favs_v1";

@@ -258,6 +258,42 @@ async function fetchJsonCached(url, ttlMs = 5 * 60 * 1000) {
     try { card.dispatchEvent(new MouseEvent('click', { bubbles: true })); } catch {}
   }
 
+  async function openClusterInTracking(cid){
+    const clusterId = Number(cid);
+    if (!Number.isFinite(clusterId)) return;
+    if (!isAuthed()) return requireAuth('tracking');
+
+    try {
+      if (typeof window.__queueTrackingFocus === 'function') {
+        window.__queueTrackingFocus(clusterId, { open_card: true, scroll_to_graph: true });
+      } else {
+        try {
+          sessionStorage.setItem('checkne_tracking_focus_v1', JSON.stringify({
+            cluster_id: clusterId,
+            open_card: true,
+            scroll_to_graph: true,
+            ts: Date.now(),
+          }));
+        } catch {}
+      }
+
+      if (typeof isFav === 'function' && !isFav(clusterId)) {
+        const current = (typeof getFavIds === 'function' && Array.isArray(getFavIds())) ? getFavIds() : [];
+        const next = [clusterId, ...current.filter(x => Number(x) !== clusterId)];
+        if (typeof setFavIds === 'function') setFavIds(next);
+        if (typeof syncFavoritesToServer === 'function') await syncFavoritesToServer();
+      }
+    } catch {}
+
+    try {
+      if (typeof window.__navigate === 'function') {
+        window.__navigate('/tracking');
+      } else {
+        location.href = '/tracking';
+      }
+    } catch {}
+  }
+
   function setSearchTerm(term){
     const t = String(term || '').trim();
     if (!t) return;
@@ -2784,7 +2820,7 @@ function renderPicker(){
       </div>
     `;
     const openBtn = root.querySelector('[data-pro-open]');
-    if (openBtn) openBtn.addEventListener('click', () => openClusterInFeed(cid));
+    if (openBtn) openBtn.addEventListener('click', () => { void openClusterInTracking(cid); });
     const searchBtn = root.querySelector('[data-pro-track]');
     if (searchBtn) searchBtn.addEventListener('click', () => {
       const t = String(it?.title || '').trim();

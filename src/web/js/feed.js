@@ -19,6 +19,89 @@ let __feedAutoPaused = false;
 let __feedAutoExpandLatch = false;
 const FEED_AUTO_BATCH_SIZE = 10;
 
+const TRACKING_FOCUS_KEY = 'checkne_tracking_focus_v1';
+
+function _readTrackingFocusRequest(){
+  try {
+    const raw = sessionStorage.getItem(TRACKING_FOCUS_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    const cid = Number(data?.cluster_id);
+    if (!Number.isFinite(cid)) return null;
+    return {
+      cluster_id: cid,
+      scroll_to_graph: data?.scroll_to_graph !== false,
+      open_card: data?.open_card !== false,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function _writeTrackingFocusRequest(clusterId, opts = {}){
+  try {
+    const cid = Number(clusterId);
+    if (!Number.isFinite(cid)) return;
+    sessionStorage.setItem(TRACKING_FOCUS_KEY, JSON.stringify({
+      cluster_id: cid,
+      scroll_to_graph: opts?.scroll_to_graph !== false,
+      open_card: opts?.open_card !== false,
+      ts: Date.now(),
+    }));
+  } catch {}
+}
+
+function _clearTrackingFocusRequest(){
+  try { sessionStorage.removeItem(TRACKING_FOCUS_KEY); } catch {}
+}
+
+function focusTrackingCluster(clusterId, opts = {}){
+  const cid = Number(clusterId);
+  if (!Number.isFinite(cid)) return false;
+
+  const card = document.querySelector(`.newsCard[data-id="${CSS.escape(String(cid))}"]`);
+  if (!card) return false;
+
+  const detailsEl = card.querySelector('details.newsDetails');
+  if (opts?.open_card !== false && detailsEl && !detailsEl.open) {
+    detailsEl.open = true;
+    try { detailsEl.dispatchEvent(new Event('toggle')); } catch {}
+  }
+
+  try { window.__currentClusterId = cid; } catch {}
+  try { document.dispatchEvent(new CustomEvent('checkne:currentClusterChanged', { detail: { cluster_id: cid } })); } catch {}
+
+  const target = (opts?.scroll_to_graph === false)
+    ? card
+    : (card.querySelector(`.trustHistoryWrap[data-trust-cid="${CSS.escape(String(cid))}"]`) || card);
+
+  const scrollNow = () => {
+    try { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch {}
+  };
+  scrollNow();
+  setTimeout(scrollNow, 220);
+  return true;
+}
+
+function applyPendingTrackingFocus(attempt = 0){
+  const req = _readTrackingFocusRequest();
+  if (!req) return;
+
+  const ok = focusTrackingCluster(req.cluster_id, req);
+  if (ok) {
+    _clearTrackingFocusRequest();
+    return;
+  }
+
+  if (attempt >= 12) return;
+  setTimeout(() => applyPendingTrackingFocus(attempt + 1), 140);
+}
+
+try {
+  window.__queueTrackingFocus = _writeTrackingFocusRequest;
+  window.__focusTrackingCluster = focusTrackingCluster;
+} catch {}
+
 function buildSourceReaderUrl(rawUrl, title, source) {
   const safeUrl = String(rawUrl || '').trim();
   if (!safeUrl) return '#';
@@ -1182,11 +1265,15 @@ async function fetchFeed(opts) {
 
   const interests = encodeURIComponent((state.interests || []).join(","));
   const rawSearchQ = (state.q || "").trim();
-  // 🔥 topics can be multi-selected. We build a query string from them without touching the Search input.
-  const topicArr = Array.isArray(state.topicQs) ? state.topicQs : [];
-  const rawTopicQ = (topicArr.length ? topicArr.join(" ") : (state.topicQ || "")).trim();
-  // Keep `topicQ` in sync for older code paths.
-  state.topicQ = rawTopicQ;
+  // 🔥 topics keep their own UI selection state. When the user selects the whole visible trend universe,
+  // that should behave like "no extra trend restriction" without visually clearing the chips.
+  const topicSelection = Array.isArray(state.topicQs) ? state.topicQs.slice() : [];
+  const effectiveTopicArr = (typeof window.checkneGetEffectiveTopicQueries === 'function')
+    ? window.checkneGetEffectiveTopicQueries(topicSelection)
+    : topicSelection;
+  const rawTopicQ = (effectiveTopicArr.length ? effectiveTopicArr.join(" ") : "").trim();
+  // Keep legacy string in sync with the raw selection state, not the effective filter state.
+  state.topicQ = topicSelection.join(" ");
   // Effective query: Search box has priority. TopicQ is used by 🔥 chips and must not touch the Search input.
   const rawQ = rawSearchQ || rawTopicQ;
   const q = encodeURIComponent(rawQ);
@@ -1208,7 +1295,8 @@ async function fetchFeed(opts) {
       (q ? `&q=${q}` : "");
 
 
-  const feedKey = `${state.country}|${(state.interests || []).join(",")}|q=${rawSearchQ}|topic=${rawTopicQ}|${state.trendClusterId || ""}`;
+  const topicSelectionKey = topicSelection.map((x) => String(x || '').trim().toLowerCase()).filter(Boolean).join('|');
+  const feedKey = `${state.country}|${(state.interests || []).join(",")}|q=${rawSearchQ}|topicSel=${topicSelectionKey}|topic=${rawTopicQ}|${state.trendClusterId || ""}`;
 
   const keyChanged = (typeof currentFeedKey === "string") && (currentFeedKey !== feedKey);
   const shouldReset = forceReset || !currentFeedKey || keyChanged;
@@ -1312,6 +1400,8 @@ async function fetchFavorites(opts = {}) {
 
     // Hydrate trust history charts (server-side) for newly rendered cards
     if (!opts.quiet || opts.reset) hydrateTrustHistorySections();
+
+    applyPendingTrackingFocus();
 
     setStatus(items.length ? '' : 'Tracking is empty. Tap ★ on a news card to add.');
     updateCounts();

@@ -4122,10 +4122,12 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
     .mwDock.hasItems{ justify-content: center; }
     .mwDock.isOn{ display:flex; }
     .mwDockBtn{
-      width: 44px; height: 44px;
-      border-radius: 14px;
-      border: 1px solid rgba(15,23,42,.10);
-      background: rgba(17,17,19,.03);
+      width: 52px; height: 52px;
+      border-radius: 0;
+      border: none;
+      background: transparent;
+      box-shadow: none;
+      padding: 0;
       display:flex; align-items:center; justify-content:center;
       cursor:pointer;
       position: relative;
@@ -4169,7 +4171,7 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
       transform: scale(.98);
     }
     .mwDockBtn:active{ transform: translateY(1px); }
-    .mwDockBtn img{ width: 35px; height: 35px; display:block; user-select:none; -webkit-user-select:none; pointer-events:none; }
+    .mwDockBtn img{ width: 42px; height: 42px; display:block; user-select:none; -webkit-user-select:none; pointer-events:none; }
     /* Plus should be circular */
     .mwDockBtn.isPlus{ width: 54px; height: 54px; background:#fff; border-radius: 999px; box-shadow: 0 10px 22px rgba(15,23,42,.14); }
     .mwDockBtn.isPlus span{ font-size: 26px; font-weight: 900; line-height: 1; }
@@ -4255,15 +4257,17 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
     }
     .widgetIcon{
       width: 30px; height: 30px;
-      border-radius: 12px;
+      border-radius: 0;
       display:flex; align-items:center; justify-content:center;
       font-size: 16px;
-      border: 1px solid rgba(15,23,42,.10);
-      background: rgba(17,17,19,.03);
+      border: none;
+      background: transparent;
+      box-shadow: none;
+      padding: 0;
       flex: 0 0 auto;
     }
 
-    .widgetIconImg{ width: 18px; height: 18px; display:block; }
+    .widgetIconImg{ width: 30px; height: 30px; display:block; object-fit: contain; }
     .widgetTitle{
       font-weight: 800;
       letter-spacing: .02em;
@@ -4275,11 +4279,11 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
       text-overflow: ellipsis;
     }
     /* per-widget accents (subtle, in CHECKNE style) */
-    .widgetCard[data-type="fx_rates"] .widgetIcon{ background: rgba(16,185,129,.10); border-color: rgba(16,185,129,.20); }
-    .widgetCard[data-type="crypto_prices"] .widgetIcon{ background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.24); }
-    .widgetCard[data-type="headlines"] .widgetIcon{ background: rgba(59,130,246,.10); border-color: rgba(59,130,246,.22); }
-    .widgetCard[data-type="tracking_stats"] .widgetIcon{ background: rgba(99,102,241,.10); border-color: rgba(99,102,241,.22); }
-    .widgetCard[data-type="market_clock"] .widgetIcon{ background: rgba(236,72,153,.10); border-color: rgba(236,72,153,.22); }
+    .widgetCard[data-type="fx_rates"] .widgetIcon,
+    .widgetCard[data-type="crypto_prices"] .widgetIcon,
+    .widgetCard[data-type="headlines"] .widgetIcon,
+    .widgetCard[data-type="tracking_stats"] .widgetIcon,
+    .widgetCard[data-type="market_clock"] .widgetIcon{ background: transparent; border-color: transparent; }
 
     /* PRO pills + premium widget UI */
     .proPill{
@@ -5009,7 +5013,7 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
 }
   
 /* Media Bias widget */
-.widgetCard[data-type="media_bias"] .widgetIcon{ background: rgba(59,130,246,.10); border-color: rgba(59,130,246,.18); }
+.widgetCard[data-type="media_bias"] .widgetIcon{ background: transparent; border-color: transparent; }
 .mbBar{
   height: 12px;
   border-radius: 999px;

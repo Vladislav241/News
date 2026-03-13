@@ -248,7 +248,14 @@ function loadPrefs() {
     const p = JSON.parse(raw);
     // Keep interests deterministic & deduplicated (prevents duplicate chips like "technology" twice)
     const ints = Array.isArray(p.interests) ? p.interests : state.interests;
-    state.interests = [...new Set(ints.map(String))].filter(Boolean);
+    const normalize = (typeof window.checkneNormalizeInterests === 'function')
+      ? window.checkneNormalizeInterests
+      : ((list) => {
+          const uniq = [...new Set((Array.isArray(list) ? list : []).map((x) => String(x || '').trim().toLowerCase()).filter(Boolean))];
+          const core = uniq.filter((x) => ['business','technology','politics','science','sports','health'].includes(x));
+          return core.length ? core : ['general'];
+        });
+    state.interests = normalize(ints);
     state.country = p.country || state.country;
     state.language = p.language || state.language;
   } catch {}
@@ -317,8 +324,14 @@ function applyPrefsObject(p, { persistLocal = true } = {}){
   try{
     if (p && Array.isArray(p.interests)){
       const ints = p.interests;
-      state.interests = [...new Set(ints.map(String))].filter(Boolean);
-      if (state.interests.length === 0) state.interests = ['general'];
+      const normalize = (typeof window.checkneNormalizeInterests === 'function')
+        ? window.checkneNormalizeInterests
+        : ((list) => {
+            const uniq = [...new Set((Array.isArray(list) ? list : []).map((x) => String(x || '').trim().toLowerCase()).filter(Boolean))];
+            const core = uniq.filter((x) => ['business','technology','politics','science','sports','health'].includes(x));
+            return core.length ? core : ['general'];
+          });
+      state.interests = normalize(ints);
     }
     if (p && typeof p.country === 'string' && p.country) state.country = p.country;
     if (p && typeof p.language === 'string' && p.language) state.language = p.language;
@@ -349,7 +362,14 @@ async function syncPrefsFromServer(){
 window.checkneSyncPrefsFromServer = syncPrefsFromServer;
 
 function savePrefs() {
-  const interests = [...new Set((state.interests || []).map(String))].filter(Boolean);
+  const normalize = (typeof window.checkneNormalizeInterests === 'function')
+    ? window.checkneNormalizeInterests
+    : ((list) => {
+        const uniq = [...new Set((Array.isArray(list) ? list : []).map((x) => String(x || '').trim().toLowerCase()).filter(Boolean))];
+        const core = uniq.filter((x) => ['business','technology','politics','science','sports','health'].includes(x));
+        return core.length ? core : ['general'];
+      });
+  const interests = normalize(state.interests || ['general']);
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
     interests,
     country: state.country,
@@ -403,7 +423,14 @@ function requestSaveUiPrefs(){
     if (_uiRemoteSaveTimer) clearTimeout(_uiRemoteSaveTimer);
     _uiRemoteSaveTimer = setTimeout(async ()=>{
       try{
-        const interests = [...new Set((state.interests || []).map(String))].filter(Boolean);
+        const normalize = (typeof window.checkneNormalizeInterests === 'function')
+    ? window.checkneNormalizeInterests
+    : ((list) => {
+        const uniq = [...new Set((Array.isArray(list) ? list : []).map((x) => String(x || '').trim().toLowerCase()).filter(Boolean))];
+        const core = uniq.filter((x) => ['business','technology','politics','science','sports','health'].includes(x));
+        return core.length ? core : ['general'];
+      });
+  const interests = normalize(state.interests || ['general']);
         const ui = _collectUiPrefs();
         await fetch(`${API_BASE}/api/preferences`, {
           method:'POST',
