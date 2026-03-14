@@ -25,7 +25,7 @@ const VISUAL_SEARCH_MAX_UPLOAD_BYTES = 1024 * 1024;
 const VISUAL_SEARCH_MAX_DIMENSION = 2200;
 const VISUAL_SEARCH_MIN_DIMENSION = 900;
 const PERSONAL_RECO_INSERT_AFTER = 5;
-const PERSONAL_RECO_MAX_ITEMS = 5;
+const PERSONAL_RECO_MAX_ITEMS = 4;
 const PERSONAL_RECO_ENDPOINT_LIMIT = 18;
 
 let __personalRecoCache = {
@@ -180,6 +180,7 @@ function buildPersonalRecoAction(item) {
   const normalizedTitle = (typeof window.__checkneNormalizeStoryTitle === 'function')
     ? window.__checkneNormalizeStoryTitle(String(item?.title || ''))
     : String(item?.title || '').trim().toLowerCase();
+  const targetCountry = String(item?.country || '').trim().toLowerCase();
 
   if (id) {
     const escapedId = (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') ? CSS.escape(String(id)) : String(id).replace(/"/g, '\\"');
@@ -189,6 +190,7 @@ function buildPersonalRecoAction(item) {
       targetId: String(id),
       title: String(item?.title || ''),
       normalizedTitle,
+      targetCountry,
       inFeed: cardExists,
     };
   }
@@ -210,12 +212,13 @@ function getPersonalRecoInsertIndex(items) {
   return Math.max(0, Math.min(PERSONAL_RECO_INSERT_AFTER, list.length));
 }
 
-async function fetchPersonalRecoStoryById(targetId) {
+async function fetchPersonalRecoStoryById(targetId, opts = {}) {
   const id = String(targetId || '').trim();
   if (!id) return null;
   try {
     const interests = encodeURIComponent((state.interests || []).join(','));
-    const country = encodeURIComponent(state.country || 'world');
+    const preferredCountry = String(opts?.preferredCountry || '').trim().toLowerCase();
+    const country = encodeURIComponent(preferredCountry || state.country || 'world');
     const uiLang = encodeURIComponent(state.language || 'en');
     const res = await fetch(
       `${API_BASE}/api/news/by_ids?ids=${encodeURIComponent(id)}` +
@@ -231,9 +234,10 @@ async function fetchPersonalRecoStoryById(targetId) {
   }
 }
 
-async function forceOpenPersonalRecoStory(targetId, normalizedTitle) {
+async function forceOpenPersonalRecoStory(targetId, normalizedTitle, opts = {}) {
   const id = String(targetId || '').trim();
   const titleNorm = String(normalizedTitle || '').trim();
+  const preferredCountry = String(opts?.preferredCountry || '').trim().toLowerCase();
   if (!id && !titleNorm) return false;
 
   const directOpen = (() => {
@@ -249,7 +253,7 @@ async function forceOpenPersonalRecoStory(targetId, normalizedTitle) {
 
   const existing = Array.isArray(lastFeedItems) ? lastFeedItems : [];
   const inMemory = existing.find((it) => String(getItemId(it) || it?.id || '').trim() === id) || null;
-  const item = inMemory || await fetchPersonalRecoStoryById(id);
+  const item = inMemory || await fetchPersonalRecoStoryById(id, { preferredCountry });
   if (!item) {
     if (titleNorm) {
       try {
@@ -295,6 +299,35 @@ async function forceOpenPersonalRecoStory(targetId, normalizedTitle) {
   return !!opened;
 }
 
+function normalizeStoryCountry(country) {
+  const value = String(country || '').trim().toLowerCase();
+  if (!value || value === 'all') return '';
+  return value;
+}
+
+async function switchFeedCountryForPersonalReco(targetCountry) {
+  const desired = normalizeStoryCountry(targetCountry);
+  if (!desired || desired === 'world' || desired === String(state.country || '').trim().toLowerCase()) {
+    return false;
+  }
+
+  state.country = desired;
+  try { if (typeof syncDropdownsFromState === 'function') syncDropdownsFromState(); } catch {}
+  try { if (typeof savePrefs === 'function') savePrefs(); } catch {}
+  try { if (typeof resetFeedAutoLoadState === 'function') resetFeedAutoLoadState(); } catch {}
+  try { if (typeof setFeedExpanded === 'function') setFeedExpanded(false); } catch {}
+  await fetchFeed({ reset: true });
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  return true;
+}
+
+async function openPersonalRecoStoryAction(targetId, normalizedTitle, targetCountry) {
+  const desired = normalizeStoryCountry(targetCountry);
+  if (desired && desired !== 'world' && desired !== String(state.country || '').trim().toLowerCase()) {
+    await switchFeedCountryForPersonalReco(desired);
+  }
+  return await forceOpenPersonalRecoStory(targetId, normalizedTitle, { preferredCountry: desired });
+}
 
 function createPersonalRecoBanner(items) {
   const profile = __personalRecoCache.profile || inferBrowserAudienceProfile();
@@ -326,10 +359,10 @@ function createPersonalRecoBanner(items) {
     })();
     const action = buildPersonalRecoAction(item);
     const attr = action.type === 'story'
-      ? `data-action="story" data-target-id="${escapeHtml(String(action.targetId || ''))}" data-title-normalized="${escapeHtml(String(action.normalizedTitle || ''))}" data-title="${escapeHtml(String(action.title || item?.title || ''))}"`
+      ? `data-action="story" data-target-id="${escapeHtml(String(action.targetId || ''))}" data-title-normalized="${escapeHtml(String(action.normalizedTitle || ''))}" data-title="${escapeHtml(String(action.title || item?.title || ''))}" data-target-country="${escapeHtml(String(action.targetCountry || item?.country || ''))}"`
       : `data-action="source" data-href="${escapeHtml(String(action.href || '#'))}"`;
     const actionLabel = action.type === 'story'
-      ? (action.inFeed ? 'Go to story' : 'Load story')
+      ? (action.inFeed ? 'Open story' : 'Load story')
       : 'Read story';
     const actionClass = action.type === 'story'
       ? (action.inFeed ? 'isSecondary' : 'isPrimary')
@@ -375,10 +408,11 @@ function createPersonalRecoBanner(items) {
     if (action === 'story') {
       const targetId = String(btn.getAttribute('data-target-id') || '').trim();
       const normalizedTitle = String(btn.getAttribute('data-title-normalized') || '').trim();
+      const targetCountry = String(btn.getAttribute('data-target-country') || '').trim().toLowerCase();
       btn.disabled = true;
       btn.classList.add('isLoading');
       try {
-        const opened = await forceOpenPersonalRecoStory(targetId, normalizedTitle);
+        const opened = await openPersonalRecoStoryAction(targetId, normalizedTitle, targetCountry);
         if (!opened) {
           console.warn('[feed] reco story open failed', { targetId, normalizedTitle });
         }
@@ -1756,6 +1790,12 @@ async function fetchFavorites(opts = {}) {
 
     setStatus(items.length ? '' : 'Tracking is empty. Tap ★ on a news card to add.');
     updateCounts();
+
+    try {
+      if (typeof window.__consumeTrackingFocus === 'function') {
+        setTimeout(() => { void window.__consumeTrackingFocus(); }, 40);
+      }
+    } catch {}
   } catch (e) {
     console.error(e);
     setStatus('Failed to load tracking.');

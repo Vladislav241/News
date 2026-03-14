@@ -6,6 +6,127 @@
  * Keep files loaded in order (see index.html).
  */
 
+
+
+const TRACKING_FOCUS_KEY = 'checkne_tracking_focus_v1';
+
+function _readTrackingFocusPayload(){
+  try {
+    const raw = sessionStorage.getItem(TRACKING_FOCUS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && Number.isFinite(Number(parsed.cluster_id))) return parsed;
+    }
+  } catch {}
+
+  try {
+    const legacy = localStorage.getItem('checkne_pending_tracking_open');
+    const cid = Number(legacy);
+    if (Number.isFinite(cid) && cid > 0) {
+      return { cluster_id: cid, open_card: true, scroll_to_graph: true, ts: Date.now() };
+    }
+  } catch {}
+
+  return null;
+}
+
+function _clearTrackingFocusPayload(){
+  try { sessionStorage.removeItem(TRACKING_FOCUS_KEY); } catch {}
+  try { localStorage.removeItem('checkne_pending_tracking_open'); } catch {}
+  try { delete window.__pendingTrackingOpenClusterId; } catch {}
+}
+
+window.__queueTrackingFocus = function(clusterId, opts = {}){
+  const cid = Number(clusterId);
+  if (!Number.isFinite(cid) || cid <= 0) return false;
+  const payload = {
+    cluster_id: cid,
+    open_card: opts.open_card !== false,
+    scroll_to_graph: opts.scroll_to_graph !== false,
+    ts: Date.now(),
+  };
+  try { sessionStorage.setItem(TRACKING_FOCUS_KEY, JSON.stringify(payload)); } catch {}
+  try { localStorage.setItem('checkne_pending_tracking_open', String(cid)); } catch {}
+  try { window.__pendingTrackingOpenClusterId = cid; } catch {}
+  return true;
+};
+
+function _sleepTrackingFocus(ms){
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function _waitForTrackingFocusTarget(clusterId, maxWaitMs = 3200){
+  const started = Date.now();
+  while ((Date.now() - started) < maxWaitMs) {
+    const card = document.querySelector(`.newsCard[data-id="${String(clusterId)}"]`);
+    if (card) return card;
+    await _sleepTrackingFocus(80);
+  }
+  return null;
+}
+
+async function _waitForTrackingGraph(card, maxWaitMs = 2200){
+  const started = Date.now();
+  while ((Date.now() - started) < maxWaitMs) {
+    const graph = card?.querySelector('.trustHistoryWrap, .trustChartCard, .trustChartSvg');
+    if (graph) return graph;
+    await _sleepTrackingFocus(80);
+  }
+  return null;
+}
+
+let __trackingFocusInFlight = false;
+window.__consumeTrackingFocus = async function(){
+  if (__trackingFocusInFlight) return false;
+  if (!authState?.authenticated) return false;
+  if (!state || state.mode !== 'fav') return false;
+
+  const payload = _readTrackingFocusPayload();
+  if (!payload) return false;
+
+  const clusterId = Number(payload.cluster_id);
+  if (!Number.isFinite(clusterId) || clusterId <= 0) {
+    _clearTrackingFocusPayload();
+    return false;
+  }
+
+  __trackingFocusInFlight = true;
+  try {
+    const card = await _waitForTrackingFocusTarget(clusterId);
+    if (!card) return false;
+
+    if (payload.open_card !== false) {
+      try {
+        if (typeof window.__checkneOpenCardElement === 'function') {
+          window.__checkneOpenCardElement(card);
+        } else {
+          const details = card.querySelector('details.newsDetails');
+          if (details && !details.open) details.open = true;
+          try { card.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch {}
+        }
+      } catch {}
+    }
+
+    await _sleepTrackingFocus(260);
+
+    if (payload.scroll_to_graph !== false) {
+      const graphTarget = await _waitForTrackingGraph(card);
+      if (graphTarget) {
+        try { graphTarget.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' }); } catch {}
+        graphTarget.classList.add('isTrackingFocusTarget');
+        setTimeout(() => {
+          try { graphTarget.classList.remove('isTrackingFocusTarget'); } catch {}
+        }, 1800);
+      }
+    }
+
+    _clearTrackingFocusPayload();
+    return true;
+  } finally {
+    __trackingFocusInFlight = false;
+  }
+};
+
 // --- Tracking delta persistence ---
 // We keep the latest non-zero delta received from the server and keep showing it
 // until the user opens the card (so the indicator doesn't disappear on refresh).
