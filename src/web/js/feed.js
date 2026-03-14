@@ -321,12 +321,58 @@ async function switchFeedCountryForPersonalReco(targetCountry) {
   return true;
 }
 
+async function ensurePersonalRecoOpenContext() {
+  try {
+    if (typeof window.__navigate === 'function' && window.location && window.location.pathname !== '/') {
+      window.__navigate('/');
+    } else if (typeof window.__setMainPage === 'function') {
+      window.__setMainPage('feed');
+    }
+  } catch {}
+
+  try {
+    if (typeof switchMode === 'function' && state.mode !== 'feed') {
+      await switchMode('feed');
+    }
+  } catch {}
+
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+}
+
 async function openPersonalRecoStoryAction(targetId, normalizedTitle, targetCountry) {
   const desired = normalizeStoryCountry(targetCountry);
+  const id = String(targetId || '').trim();
+  const titleNorm = String(normalizedTitle || '').trim();
+
+  await ensurePersonalRecoOpenContext();
+
   if (desired && desired !== 'world' && desired !== String(state.country || '').trim().toLowerCase()) {
     await switchFeedCountryForPersonalReco(desired);
   }
-  return await forceOpenPersonalRecoStory(targetId, normalizedTitle, { preferredCountry: desired });
+
+  try {
+    if (typeof window.openStoryInFeed === 'function') {
+      const openedViaCore = await window.openStoryInFeed({ clusterId: id || null, title: titleNorm });
+      if (openedViaCore) return true;
+    }
+  } catch (err) {
+    console.warn('[feed] reco story open via core failed', err);
+  }
+
+  const openedViaBannerFlow = await forceOpenPersonalRecoStory(id, titleNorm, { preferredCountry: desired });
+  if (openedViaBannerFlow) return true;
+
+  try {
+    await fetchFeed({ reset: true });
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    if (typeof window.openStoryInFeed === 'function') {
+      return !!(await window.openStoryInFeed({ clusterId: id || null, title: titleNorm }));
+    }
+  } catch (err) {
+    console.warn('[feed] reco story open after refetch failed', err);
+  }
+
+  return false;
 }
 
 function createPersonalRecoBanner(items) {
