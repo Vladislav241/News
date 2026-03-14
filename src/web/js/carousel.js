@@ -33,40 +33,48 @@ function _topCarouselEls() {
 
 function _pickTopStories(feedItems) {
   const arr = Array.isArray(feedItems) ? feedItems : [];
+  if (!arr.length) return [];
 
-  // Prefer items with server-side trending flag.
-  let tops = arr.filter(it => !!it?.is_trending);
+  const MAX_TOP_STORIES = 6;
+  const MIN_FILL_COUNT = 4;
 
-  // If none are trending (rare), fall back to most "important" items.
-  if (!tops.length) {
-    tops = [...arr].sort((a, b) => {
-      const ia = Number(a?.importance ?? 0);
-      const ib = Number(b?.importance ?? 0);
-      if (ia !== ib) return ib - ia;
-      const sa = Number(a?.sources_count ?? (a?.sources ? a.sources.length : 0));
-      const sb = Number(b?.sources_count ?? (b?.sources ? b.sources.length : 0));
-      if (sa !== sb) return sb - sa;
-      const ua = Date.parse(a?.updated_at || a?.latest_published_at || a?.created_at || '') || 0;
-      const ub = Date.parse(b?.updated_at || b?.latest_published_at || b?.created_at || '') || 0;
-      return ub - ua;
-    });
-  } else {
-    // Keep deterministic but put "bigger" events first.
-    tops = [...tops].sort((a, b) => {
-      const sa = Number(a?.sources_count ?? (a?.sources ? a.sources.length : 0));
-      const sb = Number(b?.sources_count ?? (b?.sources ? b.sources.length : 0));
-      if (sa !== sb) return sb - sa;
-      const ia = Number(a?.importance ?? 0);
-      const ib = Number(b?.importance ?? 0);
-      if (ia !== ib) return ib - ia;
-      const ua = Date.parse(a?.updated_at || a?.latest_published_at || a?.created_at || '') || 0;
-      const ub = Date.parse(b?.updated_at || b?.latest_published_at || b?.created_at || '') || 0;
-      return ub - ua;
-    });
+  const byPriority = (a, b) => {
+    const sa = Number(a?.sources_count ?? (a?.sources ? a.sources.length : 0));
+    const sb = Number(b?.sources_count ?? (b?.sources ? b.sources.length : 0));
+    if (sa !== sb) return sb - sa;
+
+    const ia = Number(a?.importance ?? 0);
+    const ib = Number(b?.importance ?? 0);
+    if (ia !== ib) return ib - ia;
+
+    const ua = Date.parse(a?.updated_at || a?.latest_published_at || a?.created_at || '') || 0;
+    const ub = Date.parse(b?.updated_at || b?.latest_published_at || b?.created_at || '') || 0;
+    return ub - ua;
+  };
+
+  const sorted = [...arr].sort(byPriority);
+  const trending = sorted.filter(it => !!it?.is_trending);
+
+  // Prefer trending stories, but do not leave the hero with only 1 item
+  // when the current feed (for example "general") clearly has enough news.
+  const selected = [];
+  const seen = new Set();
+
+  const pushUnique = (item) => {
+    if (!item) return;
+    const key = String(item?.cluster_id ?? item?.event_id ?? item?.id ?? '');
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    selected.push(item);
+  };
+
+  trending.forEach(pushUnique);
+
+  if (selected.length < MIN_FILL_COUNT) {
+    sorted.forEach(pushUnique);
   }
 
-  // Keep it compact (premium hero, not a full list)
-  return tops.slice(0, 6);
+  return selected.slice(0, MAX_TOP_STORIES);
 }
 
 function _topCarouselStop() {
