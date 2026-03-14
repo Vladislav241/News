@@ -240,6 +240,9 @@ async function forceOpenPersonalRecoStory(targetId, normalizedTitle, opts = {}) 
   const preferredCountry = String(opts?.preferredCountry || '').trim().toLowerCase();
   if (!id && !titleNorm) return false;
 
+  pushFeedDiag('reco_force_open_start', { id, normalizedTitle: titleNorm, preferredCountry });
+  setPendingFeedFocusTarget({ id, title: titleNorm, source: 'reco_force_open' });
+
   const directOpen = (() => {
     try {
       if (typeof window.__checkneFindCardInFeed === 'function' && typeof window.__checkneOpenCardElement === 'function') {
@@ -249,11 +252,16 @@ async function forceOpenPersonalRecoStory(targetId, normalizedTitle, opts = {}) 
     } catch {}
     return false;
   })();
-  if (directOpen) return true;
+  if (directOpen) {
+    clearPendingFeedFocusTarget('direct_open');
+    pushFeedDiag('reco_force_open_direct_hit', { id, normalizedTitle: titleNorm });
+    return true;
+  }
 
   const existing = Array.isArray(lastFeedItems) ? lastFeedItems : [];
   const inMemory = existing.find((it) => String(getItemId(it) || it?.id || '').trim() === id) || null;
   const item = inMemory || await fetchPersonalRecoStoryById(id, { preferredCountry });
+  pushFeedDiag('reco_force_open_item_resolution', { id, normalizedTitle: titleNorm, inMemory: !!inMemory, fetched: !!item });
   if (!item) {
     if (titleNorm) {
       try {
@@ -263,10 +271,12 @@ async function forceOpenPersonalRecoStory(targetId, normalizedTitle, opts = {}) 
         }
       } catch {}
     }
+    clearPendingFeedFocusTarget('item_not_found');
     return false;
   }
 
   const itemId = String(getItemId(item) || item?.id || id).trim();
+  setPendingFeedFocusTarget({ id: itemId, title: titleNorm, source: 'reco_force_open_resolved' });
   const withoutExact = existing.filter((it) => String(getItemId(it) || it?.id || '').trim() !== itemId);
   const insertIndex = getPersonalRecoInsertIndex(withoutExact);
   const merged = [
@@ -276,6 +286,7 @@ async function forceOpenPersonalRecoStory(targetId, normalizedTitle, opts = {}) 
   ];
 
   lastFeedItems = merged;
+  pushFeedDiag('reco_force_open_render_injected', { id: itemId, insertIndex, mergedCount: merged.length });
   renderCards(merged, {
     nowTs: Date.now(),
     newIds: new Set(),
@@ -286,7 +297,8 @@ async function forceOpenPersonalRecoStory(targetId, normalizedTitle, opts = {}) 
 
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
-  let opened = false;
+  await waitForNewsCard(itemId, { maxAttempts: 18, delayMs: 120 });
+  let opened = maybeApplyPendingFeedFocusTarget();
   try {
     if (typeof window.__checkneFindCardInFeed === 'function' && typeof window.__checkneOpenCardElement === 'function') {
       const exact = window.__checkneFindCardInFeed({ clusterId: itemId, title: '' });
@@ -294,8 +306,10 @@ async function forceOpenPersonalRecoStory(targetId, normalizedTitle, opts = {}) 
     }
   } catch {}
   if (!opened) {
-    opened = focusNewsCardById(itemId, { open: true, block: 'center', maxAttempts: 14, delayMs: 120 });
+    opened = focusNewsCardById(itemId, { open: true, block: 'center', maxAttempts: 14, delayMs: 120, source: 'reco_force_open_fallback' });
   }
+  if (opened) clearPendingFeedFocusTarget('force_open_success');
+  else pushFeedDiag('reco_force_open_failed_after_render', { id: itemId, normalizedTitle: titleNorm }, 'warn');
   return !!opened;
 }
 
@@ -308,20 +322,25 @@ function normalizeStoryCountry(country) {
 async function switchFeedCountryForPersonalReco(targetCountry) {
   const desired = normalizeStoryCountry(targetCountry);
   if (!desired || desired === 'world' || desired === String(state.country || '').trim().toLowerCase()) {
+    pushFeedDiag('reco_country_switch_skipped', { targetCountry: desired || String(targetCountry || ''), currentCountry: String(state.country || '').trim().toLowerCase() });
     return false;
   }
+
+  pushFeedDiag('reco_country_switch_start', { from: String(state.country || '').trim().toLowerCase(), to: desired });
 
   state.country = desired;
   try { if (typeof syncDropdownsFromState === 'function') syncDropdownsFromState(); } catch {}
   try { if (typeof savePrefs === 'function') savePrefs(); } catch {}
   try { if (typeof resetFeedAutoLoadState === 'function') resetFeedAutoLoadState(); } catch {}
   try { if (typeof setFeedExpanded === 'function') setFeedExpanded(false); } catch {}
-  await fetchFeed({ reset: true });
+  await fetchFeed({ reset: true, reason: 'personal_reco_country_switch' });
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  pushFeedDiag('reco_country_switch_done', { to: desired, renderedCards: countRenderedNewsCards() });
   return true;
 }
 
 async function ensurePersonalRecoOpenContext() {
+  pushFeedDiag('reco_ensure_context_start', { path: window.location?.pathname || '', mode: state.mode, country: state.country });
   try {
     if (typeof window.__navigate === 'function' && window.location && window.location.pathname !== '/') {
       window.__navigate('/');
@@ -337,6 +356,7 @@ async function ensurePersonalRecoOpenContext() {
   } catch {}
 
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  pushFeedDiag('reco_ensure_context_done', { path: window.location?.pathname || '', mode: state.mode, country: state.country });
 }
 
 async function openPersonalRecoStoryAction(targetId, normalizedTitle, targetCountry) {
@@ -344,6 +364,8 @@ async function openPersonalRecoStoryAction(targetId, normalizedTitle, targetCoun
   const id = String(targetId || '').trim();
   const titleNorm = String(normalizedTitle || '').trim();
 
+  pushFeedDiag('reco_open_click', { id, normalizedTitle: titleNorm, targetCountry: desired || String(targetCountry || ''), lookup: getFeedLookupState(id, titleNorm) });
+  setPendingFeedFocusTarget({ id, title: titleNorm, source: 'reco_click' });
   await ensurePersonalRecoOpenContext();
 
   if (desired && desired !== 'world' && desired !== String(state.country || '').trim().toLowerCase()) {
@@ -352,26 +374,42 @@ async function openPersonalRecoStoryAction(targetId, normalizedTitle, targetCoun
 
   try {
     if (typeof window.openStoryInFeed === 'function') {
-      const openedViaCore = await window.openStoryInFeed({ clusterId: id || null, title: titleNorm });
-      if (openedViaCore) return true;
+      const openedViaCore = await window.openStoryInFeed({ clusterId: id || null, title: id ? '' : titleNorm });
+      if (openedViaCore) {
+        clearPendingFeedFocusTarget('opened_via_core');
+        pushFeedDiag('reco_open_success_core', { id, normalizedTitle: titleNorm });
+        return true;
+      }
     }
   } catch (err) {
     console.warn('[feed] reco story open via core failed', err);
   }
 
   const openedViaBannerFlow = await forceOpenPersonalRecoStory(id, titleNorm, { preferredCountry: desired });
-  if (openedViaBannerFlow) return true;
+  if (openedViaBannerFlow) {
+    clearPendingFeedFocusTarget('opened_via_banner_flow');
+    pushFeedDiag('reco_open_success_banner_flow', { id, normalizedTitle: titleNorm });
+    return true;
+  }
 
   try {
-    await fetchFeed({ reset: true });
+    await fetchFeed({ reset: true, reason: 'personal_reco_refetch' });
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    maybeApplyPendingFeedFocusTarget();
     if (typeof window.openStoryInFeed === 'function') {
-      return !!(await window.openStoryInFeed({ clusterId: id || null, title: titleNorm }));
+      const openedAfterRefetch = !!(await window.openStoryInFeed({ clusterId: id || null, title: id ? '' : titleNorm }));
+      if (openedAfterRefetch) {
+        clearPendingFeedFocusTarget('opened_after_refetch');
+        pushFeedDiag('reco_open_success_refetch', { id, normalizedTitle: titleNorm });
+      }
+      return openedAfterRefetch;
     }
   } catch (err) {
     console.warn('[feed] reco story open after refetch failed', err);
   }
 
+  pushFeedDiag('reco_open_failed', { id, normalizedTitle: titleNorm, targetCountry: desired }, 'warn');
+  clearPendingFeedFocusTarget('open_failed');
   return false;
 }
 
@@ -458,9 +496,11 @@ function createPersonalRecoBanner(items) {
       btn.disabled = true;
       btn.classList.add('isLoading');
       try {
+        pushFeedDiag('reco_button_pressed', { targetId, normalizedTitle, targetCountry, label: btn.textContent?.trim() || '' });
         const opened = await openPersonalRecoStoryAction(targetId, normalizedTitle, targetCountry);
         if (!opened) {
-          console.warn('[feed] reco story open failed', { targetId, normalizedTitle });
+          pushFeedDiag('reco_button_open_failed', { targetId, normalizedTitle, targetCountry }, 'warn');
+          console.warn('[feed] reco story open failed', { targetId, normalizedTitle, targetCountry });
         }
       } finally {
         btn.disabled = false;
@@ -520,6 +560,109 @@ function setImgFallback(imgEl) {
 }
 
 
+const __feedDiagMaxEntries = 200;
+let __pendingFeedFocusTarget = null;
+let __feedRequestSeq = 0;
+let __activeFeedRequestSeq = 0;
+
+function pushFeedDiag(event, payload = {}, level = 'info') {
+  try {
+    const entry = {
+      ts: new Date().toISOString(),
+      event: String(event || 'unknown'),
+      ...payload,
+    };
+    const store = (window.__checkneFeedDiagnostics = Array.isArray(window.__checkneFeedDiagnostics) ? window.__checkneFeedDiagnostics : []);
+    store.push(entry);
+    if (store.length > __feedDiagMaxEntries) store.splice(0, store.length - __feedDiagMaxEntries);
+    const logger = (level === 'warn') ? console.warn : (level === 'error' ? console.error : console.info);
+    logger(`[feed] ${entry.event}`, entry);
+  } catch {}
+}
+
+function setPendingFeedFocusTarget(target) {
+  const id = String(target?.id || '').trim();
+  const title = String(target?.title || '').trim();
+  if (!id && !title) {
+    __pendingFeedFocusTarget = null;
+    return;
+  }
+  __pendingFeedFocusTarget = {
+    id,
+    title,
+    createdAt: Date.now(),
+    open: target?.open !== false,
+    block: String(target?.block || 'center'),
+    source: String(target?.source || 'unknown'),
+  };
+  try { window.__checknePendingFeedFocusTarget = { ...__pendingFeedFocusTarget }; } catch {}
+  pushFeedDiag('pending_focus_set', { id, title, source: __pendingFeedFocusTarget.source });
+}
+
+function clearPendingFeedFocusTarget(reason = '') {
+  if (!__pendingFeedFocusTarget) return;
+  pushFeedDiag('pending_focus_cleared', {
+    id: __pendingFeedFocusTarget.id,
+    title: __pendingFeedFocusTarget.title,
+    reason: String(reason || ''),
+  });
+  __pendingFeedFocusTarget = null;
+  try { delete window.__checknePendingFeedFocusTarget; } catch {}
+}
+
+function maybeApplyPendingFeedFocusTarget() {
+  const target = __pendingFeedFocusTarget;
+  if (!target) return false;
+  let card = null;
+  try {
+    if (typeof window.__checkneFindCardInFeed === 'function') {
+      card = window.__checkneFindCardInFeed({ clusterId: target.id || null, title: target.title || '' });
+    }
+  } catch {}
+  if (!card && target.id) {
+    card = document.querySelector(`.newsCard[data-id="${target.id}"]`);
+  }
+  if (!card) return false;
+  let opened = false;
+  try {
+    if (typeof window.__checkneOpenCardElement === 'function') {
+      opened = !!window.__checkneOpenCardElement(card, { block: target.block, source: target.source });
+    }
+  } catch {}
+  if (!opened) {
+    opened = focusNewsCardById(target.id, { open: target.open, block: target.block, maxAttempts: 1, delayMs: 0 });
+  }
+  if (opened) clearPendingFeedFocusTarget('applied');
+  return !!opened;
+}
+
+function waitForNewsCard(cardId, opts = {}) {
+  const id = String(cardId || '').trim();
+  const maxAttempts = Number.isFinite(Number(opts.maxAttempts)) ? Number(opts.maxAttempts) : 24;
+  const delayMs = Number.isFinite(Number(opts.delayMs)) ? Number(opts.delayMs) : 120;
+  return new Promise((resolve) => {
+    if (!id) { resolve(null); return; }
+    let attempts = 0;
+    const run = () => {
+      const card = document.querySelector(`.newsCard[data-id="${id}"]`);
+      if (card) { resolve(card); return; }
+      if (attempts++ >= maxAttempts) { resolve(null); return; }
+      setTimeout(run, delayMs);
+    };
+    run();
+  });
+}
+
+function getFeedLookupState(targetId, normalizedTitle) {
+  const id = String(targetId || '').trim();
+  const titleNorm = String(normalizedTitle || '').trim();
+  const items = Array.isArray(lastFeedItems) ? lastFeedItems : [];
+  const renderedExact = !!(id && document.querySelector(`.newsCard[data-id="${id}"]`));
+  const memoryExact = !!(id && items.some((it) => String(getItemId(it) || it?.id || '').trim() === id));
+  const renderedTitle = !!(!renderedExact && titleNorm && typeof window.__checkneFindCardInFeed === 'function' && window.__checkneFindCardInFeed({ title: titleNorm }));
+  return { renderedExact, memoryExact, renderedTitle, itemCount: items.length };
+}
+
 function getItemId(it) {
   const id = it?.cluster_id ?? it?.event_id;
   return id == null ? '' : String(id);
@@ -533,12 +676,16 @@ function focusNewsCardById(cardId, opts = {}) {
   const delayMs = Number.isFinite(Number(opts.delayMs)) ? Number(opts.delayMs) : 120;
   const shouldOpen = opts.open !== false;
   const scrollBlock = String(opts.block || 'center');
+  const source = String(opts.source || 'focusNewsCardById');
 
   let attempts = 0;
   const run = () => {
     const card = document.querySelector(`.newsCard[data-id="${id}"]`);
     if (!card) {
-      if (attempts++ >= maxAttempts) return;
+      if (attempts++ >= maxAttempts) {
+        pushFeedDiag('focus_failed_no_dom', { id, source, attempts });
+        return;
+      }
       setTimeout(run, delayMs);
       return;
     }
@@ -560,6 +707,7 @@ function focusNewsCardById(cardId, opts = {}) {
     setTimeout(() => {
       try { card.classList.remove('newsCardFocusPulse'); } catch {}
     }, 1800);
+    pushFeedDiag('focus_applied', { id, source, attempts, opened: !!details?.open });
   };
 
   run();
@@ -1313,6 +1461,7 @@ if (incremental && state.mode === 'feed' && newFeedEls.length) {
   }
   // Notify side widgets (best-effort)
   try { document.dispatchEvent(new CustomEvent("checkne:feedRendered")); } catch {}
+  maybeApplyPendingFeedFocusTarget();
   syncPersonalRecoBanner(visible);
 
 }
@@ -1697,6 +1846,8 @@ function getFeedLimitForCurrentPlan() {
 
 async function fetchFeed(opts) {
   const options = opts || {};
+  const requestSeq = ++__feedRequestSeq;
+  __activeFeedRequestSeq = requestSeq;
   const quiet = !!options.quiet;
   const forceReset = !!options.reset;
   const signal = options.signal;
@@ -1737,16 +1888,22 @@ async function fetchFeed(opts) {
   // On first load (or after key reset), suppress NEW badges and avoid animations.
   const suppressNewBadges = !hasInitialFeedLoaded || shouldReset;
 
+  pushFeedDiag('fetch_feed_start', { requestSeq, quiet, forceReset, reason: String(options.reason || ''), country: state.country, mode: state.mode, q: rawQ, interests: (state.interests || []).join(','), trendId: state.trendClusterId || '' });
   if (!quiet) setStatus(t("ui.loading_feed","Loading feed..."));
 
   // Allow the caller to abort (we use this to prevent overlapping requests on slow hosts like Render)
   const res = await fetch(url, signal ? { signal } : undefined);
   if (!res.ok) {
+    pushFeedDiag('fetch_feed_http_error', { requestSeq, status: res.status, url }, 'warn');
     if (!quiet) setStatus(`${t("ui.error_api_news","Error /api/news")}: ${res.status}`);
     return;
   }
 
   const data = await res.json();
+  if (requestSeq !== __activeFeedRequestSeq) {
+    pushFeedDiag('fetch_feed_stale_ignored', { requestSeq, activeRequestSeq: __activeFeedRequestSeq, url });
+    return;
+  }
   const items = data.items || [];
 
   try { window.__checkneFeedItems = items; } catch {}
@@ -1787,6 +1944,8 @@ renderCards(items, {
 
   }
 
+  maybeApplyPendingFeedFocusTarget();
+  pushFeedDiag('fetch_feed_done', { requestSeq, itemCount: items.length, renderedCards: countRenderedNewsCards(), incremental: useIncremental, activeRequestSeq: __activeFeedRequestSeq });
   if (!quiet) setStatus("");
 }
 

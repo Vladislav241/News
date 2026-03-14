@@ -43,8 +43,10 @@ window.__checkneNormalizeStoryTitle = __checkneNormalizeStoryTitle;
 function __checkneFindCardInFeed({ clusterId = null, title = '' } = {}) {
   const cards = document.getElementById('cards');
   if (!cards) return null;
-  if (clusterId != null && clusterId !== '' && !Number.isNaN(Number(clusterId))) {
-    const exact = cards.querySelector(`.newsCard[data-id="${String(clusterId)}"], .newsCard[data-cluster-id="${String(clusterId)}"]`);
+  const exactId = String(clusterId ?? '').trim();
+  if (exactId) {
+    const escapedId = (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') ? CSS.escape(exactId) : exactId.replace(/"/g, '\"');
+    const exact = cards.querySelector(`.newsCard[data-id="${escapedId}"], .newsCard[data-cluster-id="${escapedId}"]`);
     if (exact) return exact;
   }
 
@@ -70,8 +72,9 @@ function __checkneFindCardInFeed({ clusterId = null, title = '' } = {}) {
   return bestScore > 0 ? best : null;
 }
 
-function __checkneOpenCardElement(card) {
+function __checkneOpenCardElement(card, opts = {}) {
   if (!card) return false;
+  const block = String(opts?.block || 'start');
   const details = card.querySelector('details.newsDetails');
   if (details && !details.open) {
     const body = details.querySelector('.newsOpenBody');
@@ -81,18 +84,19 @@ function __checkneOpenCardElement(card) {
       details.open = true;
     }
   }
-  try { card.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch { try { card.scrollIntoView(); } catch {} }
+  try { card.scrollIntoView({ behavior: 'smooth', block, inline: 'nearest' }); } catch { try { card.scrollIntoView(); } catch {} }
   card.classList.add('isDeepLinked');
   setTimeout(() => card.classList.remove('isDeepLinked'), 1600);
   return true;
 }
 
 async function openStoryInFeed({ clusterId = null, title = '' } = {}) {
-  const found = __checkneFindCardInFeed({ clusterId, title });
-  if (found) return __checkneOpenCardElement(found);
-  if (clusterId != null && clusterId !== '' && !Number.isNaN(Number(clusterId))) {
+  const exactId = String(clusterId ?? '').trim();
+  const found = __checkneFindCardInFeed({ clusterId: exactId || null, title });
+  if (found) return __checkneOpenCardElement(found, { block: 'center' });
+  if (exactId && /^\d+$/.test(exactId)) {
     try {
-      return await ensureItemInFeedAndOpen(Number(clusterId));
+      return await ensureItemInFeedAndOpen(Number(exactId));
     } catch {}
   }
   return false;
