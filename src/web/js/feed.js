@@ -654,17 +654,50 @@ function tryResolvePendingStoryFocus(opts = {}) {
 }
 
 
+function centerNewsCardInViewport(card, opts = {}) {
+  if (!card) return false;
+  const behavior = opts.behavior === 'auto' ? 'auto' : 'smooth';
+  const extraOffset = Number.isFinite(Number(opts.offsetY)) ? Number(opts.offsetY) : 0;
+  const settlePasses = Number.isFinite(Number(opts.settlePasses)) ? Number(opts.settlePasses) : 3;
+  const settleDelayMs = Number.isFinite(Number(opts.settleDelayMs)) ? Number(opts.settleDelayMs) : 120;
+
+  const scrollOnce = (scrollBehavior) => {
+    const rect = card.getBoundingClientRect();
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    const absoluteTop = window.pageYOffset + rect.top;
+    const targetTop = Math.max(0, absoluteTop - Math.max(0, (viewportHeight - rect.height) / 2) - extraOffset);
+    try {
+      window.scrollTo({ top: targetTop, behavior: scrollBehavior, left: window.pageXOffset || 0 });
+      return true;
+    } catch {
+      try {
+        card.scrollIntoView({ behavior: scrollBehavior, block: 'center', inline: 'nearest' });
+        return true;
+      } catch {
+        try { card.scrollIntoView(); } catch {}
+      }
+    }
+    return false;
+  };
+
+  scrollOnce(behavior);
+  for (let i = 1; i <= settlePasses; i += 1) {
+    setTimeout(() => { try { scrollOnce('auto'); } catch {} }, settleDelayMs * i);
+  }
+  return true;
+}
+try { window.__checkneCenterNewsCardInViewport = centerNewsCardInViewport; } catch {}
+
 function focusNewsCardById(cardId, opts = {}) {
   const id = String(cardId || '').trim();
   if (!id) return false;
   const maxAttempts = Number.isFinite(Number(opts.maxAttempts)) ? Number(opts.maxAttempts) : 24;
   const delayMs = Number.isFinite(Number(opts.delayMs)) ? Number(opts.delayMs) : 120;
   const shouldOpen = opts.open !== false;
-  const scrollBlock = String(opts.block || 'center');
 
   let attempts = 0;
   const run = () => {
-    const card = document.querySelector(`.newsCard[data-id="${id}"]`);
+    const card = document.querySelector(`.newsCard[data-id="${id}"], .newsCard[data-cluster-id="${id}"]`);
     if (!card) {
       if (attempts++ >= maxAttempts) return;
       setTimeout(run, delayMs);
@@ -672,15 +705,16 @@ function focusNewsCardById(cardId, opts = {}) {
     }
 
     const details = card.querySelector('details.newsDetails');
+    const wasClosed = !!(details && !details.open);
     if (details && shouldOpen && !details.open) {
       try { details.open = true; } catch {}
     }
 
-    try {
-      card.scrollIntoView({ behavior: 'smooth', block: scrollBlock, inline: 'nearest' });
-    } catch {
-      try { card.scrollIntoView(); } catch {}
-    }
+    centerNewsCardInViewport(card, {
+      behavior: 'smooth',
+      settlePasses: wasClosed ? 5 : 3,
+      settleDelayMs: wasClosed ? 140 : 100,
+    });
 
     card.classList.remove('newsCardFocusPulse');
     void card.offsetWidth;

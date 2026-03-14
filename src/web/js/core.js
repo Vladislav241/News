@@ -87,6 +87,7 @@ function __checkneFindCardInFeed({ clusterId = null, title = '', exactTitleOnly 
 function __checkneOpenCardElement(card) {
   if (!card) return false;
   const details = card.querySelector('details.newsDetails');
+  const wasClosed = !!(details && !details.open);
   if (details && !details.open) {
     const body = details.querySelector('.newsOpenBody');
     if (body && typeof window.__checkneAnimateDetails === 'function') {
@@ -95,7 +96,19 @@ function __checkneOpenCardElement(card) {
       details.open = true;
     }
   }
-  try { card.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch { try { card.scrollIntoView(); } catch {} }
+  if (typeof window.__checkneCenterNewsCardInViewport === 'function') {
+    try {
+      window.__checkneCenterNewsCardInViewport(card, {
+        behavior: 'smooth',
+        settlePasses: wasClosed ? 5 : 3,
+        settleDelayMs: wasClosed ? 140 : 100,
+      });
+    } catch {
+      try { card.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' }); } catch { try { card.scrollIntoView(); } catch {} }
+    }
+  } else {
+    try { card.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' }); } catch { try { card.scrollIntoView(); } catch {} }
+  }
   card.classList.add('isDeepLinked');
   setTimeout(() => card.classList.remove('isDeepLinked'), 1600);
   return true;
