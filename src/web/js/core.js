@@ -40,41 +40,52 @@ function __checkneNormalizeStoryTitle(value) {
 }
 window.__checkneNormalizeStoryTitle = __checkneNormalizeStoryTitle;
 
-function __checkneFindCardInFeed({ clusterId = null, title = '' } = {}) {
+function __checkneFindCardInFeed({ clusterId = null, title = '', exactTitleOnly = false, allowLooseTitleMatch = true } = {}) {
   const cards = document.getElementById('cards');
   if (!cards) return null;
-  const exactId = String(clusterId ?? '').trim();
-  if (exactId) {
-    const escapedId = (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') ? CSS.escape(exactId) : exactId.replace(/"/g, '\"');
-    const exact = cards.querySelector(`.newsCard[data-id="${escapedId}"], .newsCard[data-cluster-id="${escapedId}"]`);
+  const id = String(clusterId ?? '').trim();
+  const hasNumericId = id !== '' && !Number.isNaN(Number(id));
+  if (hasNumericId) {
+    const exact = cards.querySelector(`.newsCard[data-id="${id}"], .newsCard[data-cluster-id="${id}"]`);
     if (exact) return exact;
+    if (!title || !allowLooseTitleMatch) return null;
   }
 
   const normalizedTitle = __checkneNormalizeStoryTitle(title);
   if (!normalizedTitle) return null;
 
   const list = Array.from(cards.querySelectorAll('.newsCard'));
+  let exactTitleMatch = null;
   let best = null;
   let bestScore = -1;
   for (const card of list) {
-    const cardNorm = String(card.getAttribute('data-title-normalized') || '').trim() || __checkneNormalizeStoryTitle(card.getAttribute('data-title') || card.querySelector('.newsTitle')?.textContent || '');
+    const rawTitle = String(card.getAttribute('data-title') || card.querySelector('.newsTitle')?.textContent || '');
+    const cardNorm = String(card.getAttribute('data-title-normalized') || '').trim() || __checkneNormalizeStoryTitle(rawTitle);
     if (!cardNorm) continue;
-    if (cardNorm === normalizedTitle) return card;
-    let score = -1;
-    if (cardNorm.includes(normalizedTitle) || normalizedTitle.includes(cardNorm)) score = Math.min(cardNorm.length, normalizedTitle.length);
-    else {
-      const words = normalizedTitle.split(/\s+/).filter(Boolean);
-      const hits = words.filter(w => w.length >= 4 && cardNorm.includes(w)).length;
-      if (hits) score = hits;
+    if (cardNorm === normalizedTitle) {
+      exactTitleMatch = card;
+      break;
     }
-    if (score > bestScore) { bestScore = score; best = card; }
+    if (exactTitleOnly || !allowLooseTitleMatch) continue;
+    let score = -1;
+    if (cardNorm.includes(normalizedTitle) || normalizedTitle.includes(cardNorm)) {
+      score = Math.min(cardNorm.length, normalizedTitle.length);
+    } else {
+      const words = normalizedTitle.split(/\s+/).filter(Boolean);
+      const hits = words.filter(w => w.length >= 5 && cardNorm.includes(w)).length;
+      if (hits >= 2) score = hits;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      best = card;
+    }
   }
-  return bestScore > 0 ? best : null;
+  if (exactTitleMatch) return exactTitleMatch;
+  return (!exactTitleOnly && allowLooseTitleMatch && bestScore > 1) ? best : null;
 }
 
-function __checkneOpenCardElement(card, opts = {}) {
+function __checkneOpenCardElement(card) {
   if (!card) return false;
-  const block = String(opts?.block || 'start');
   const details = card.querySelector('details.newsDetails');
   if (details && !details.open) {
     const body = details.querySelector('.newsOpenBody');
@@ -84,20 +95,23 @@ function __checkneOpenCardElement(card, opts = {}) {
       details.open = true;
     }
   }
-  try { card.scrollIntoView({ behavior: 'smooth', block, inline: 'nearest' }); } catch { try { card.scrollIntoView(); } catch {} }
+  try { card.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch { try { card.scrollIntoView(); } catch {} }
   card.classList.add('isDeepLinked');
   setTimeout(() => card.classList.remove('isDeepLinked'), 1600);
   return true;
 }
 
-async function openStoryInFeed({ clusterId = null, title = '' } = {}) {
-  const exactId = String(clusterId ?? '').trim();
-  const found = __checkneFindCardInFeed({ clusterId: exactId || null, title });
-  if (found) return __checkneOpenCardElement(found, { block: 'center' });
-  if (exactId && /^\d+$/.test(exactId)) {
+async function openStoryInFeed({ clusterId = null, title = '', exactTitleOnly = false, allowLooseTitleMatch = true } = {}) {
+  const found = __checkneFindCardInFeed({ clusterId, title, exactTitleOnly, allowLooseTitleMatch });
+  if (found) return __checkneOpenCardElement(found);
+  if (clusterId != null && clusterId !== '' && !Number.isNaN(Number(clusterId))) {
     try {
-      return await ensureItemInFeedAndOpen(Number(exactId));
+      return await ensureItemInFeedAndOpen(Number(clusterId));
     } catch {}
+  }
+  if (title) {
+    const exactTitleCard = __checkneFindCardInFeed({ title, exactTitleOnly: true, allowLooseTitleMatch: false });
+    if (exactTitleCard) return __checkneOpenCardElement(exactTitleCard);
   }
   return false;
 }

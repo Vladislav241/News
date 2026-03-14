@@ -240,43 +240,26 @@ async function forceOpenPersonalRecoStory(targetId, normalizedTitle, opts = {}) 
   const preferredCountry = String(opts?.preferredCountry || '').trim().toLowerCase();
   if (!id && !titleNorm) return false;
 
-  pushFeedDiag('reco_force_open_start', { id, normalizedTitle: titleNorm, preferredCountry });
-  setPendingFeedFocusTarget({ id, title: titleNorm, source: 'reco_force_open' });
-
   const directOpen = (() => {
     try {
       if (typeof window.__checkneFindCardInFeed === 'function' && typeof window.__checkneOpenCardElement === 'function') {
-        const found = window.__checkneFindCardInFeed({ clusterId: id || null, title: '' });
+        const found = window.__checkneFindCardInFeed({ clusterId: id || null, title: '', allowLooseTitleMatch: false });
         if (found) return window.__checkneOpenCardElement(found);
       }
     } catch {}
     return false;
   })();
-  if (directOpen) {
-    clearPendingFeedFocusTarget('direct_open');
-    pushFeedDiag('reco_force_open_direct_hit', { id, normalizedTitle: titleNorm });
-    return true;
-  }
+  if (directOpen) return true;
 
   const existing = Array.isArray(lastFeedItems) ? lastFeedItems : [];
   const inMemory = existing.find((it) => String(getItemId(it) || it?.id || '').trim() === id) || null;
   const item = inMemory || await fetchPersonalRecoStoryById(id, { preferredCountry });
-  pushFeedDiag('reco_force_open_item_resolution', { id, normalizedTitle: titleNorm, inMemory: !!inMemory, fetched: !!item });
   if (!item) {
-    if (titleNorm) {
-      try {
-        if (typeof window.__checkneFindCardInFeed === 'function' && typeof window.__checkneOpenCardElement === 'function') {
-          const fallback = window.__checkneFindCardInFeed({ title: titleNorm });
-          if (fallback) return window.__checkneOpenCardElement(fallback);
-        }
-      } catch {}
-    }
-    clearPendingFeedFocusTarget('item_not_found');
+    logRecoStoryDiagnostic('story-fetch-returned-empty', { id, normalizedTitle: titleNorm, preferredCountry });
     return false;
   }
 
   const itemId = String(getItemId(item) || item?.id || id).trim();
-  setPendingFeedFocusTarget({ id: itemId, title: titleNorm, source: 'reco_force_open_resolved' });
   const withoutExact = existing.filter((it) => String(getItemId(it) || it?.id || '').trim() !== itemId);
   const insertIndex = getPersonalRecoInsertIndex(withoutExact);
   const merged = [
@@ -286,7 +269,6 @@ async function forceOpenPersonalRecoStory(targetId, normalizedTitle, opts = {}) 
   ];
 
   lastFeedItems = merged;
-  pushFeedDiag('reco_force_open_render_injected', { id: itemId, insertIndex, mergedCount: merged.length });
   renderCards(merged, {
     nowTs: Date.now(),
     newIds: new Set(),
@@ -297,19 +279,16 @@ async function forceOpenPersonalRecoStory(targetId, normalizedTitle, opts = {}) 
 
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
-  await waitForNewsCard(itemId, { maxAttempts: 18, delayMs: 120 });
-  let opened = maybeApplyPendingFeedFocusTarget();
+  let opened = false;
   try {
     if (typeof window.__checkneFindCardInFeed === 'function' && typeof window.__checkneOpenCardElement === 'function') {
-      const exact = window.__checkneFindCardInFeed({ clusterId: itemId, title: '' });
+      const exact = window.__checkneFindCardInFeed({ clusterId: itemId, title: '', allowLooseTitleMatch: false });
       if (exact) opened = window.__checkneOpenCardElement(exact);
     }
   } catch {}
   if (!opened) {
-    opened = focusNewsCardById(itemId, { open: true, block: 'center', maxAttempts: 14, delayMs: 120, source: 'reco_force_open_fallback' });
+    opened = focusNewsCardById(itemId, { open: true, block: 'center', maxAttempts: 14, delayMs: 120 });
   }
-  if (opened) clearPendingFeedFocusTarget('force_open_success');
-  else pushFeedDiag('reco_force_open_failed_after_render', { id: itemId, normalizedTitle: titleNorm }, 'warn');
   return !!opened;
 }
 
@@ -322,25 +301,20 @@ function normalizeStoryCountry(country) {
 async function switchFeedCountryForPersonalReco(targetCountry) {
   const desired = normalizeStoryCountry(targetCountry);
   if (!desired || desired === 'world' || desired === String(state.country || '').trim().toLowerCase()) {
-    pushFeedDiag('reco_country_switch_skipped', { targetCountry: desired || String(targetCountry || ''), currentCountry: String(state.country || '').trim().toLowerCase() });
     return false;
   }
-
-  pushFeedDiag('reco_country_switch_start', { from: String(state.country || '').trim().toLowerCase(), to: desired });
 
   state.country = desired;
   try { if (typeof syncDropdownsFromState === 'function') syncDropdownsFromState(); } catch {}
   try { if (typeof savePrefs === 'function') savePrefs(); } catch {}
   try { if (typeof resetFeedAutoLoadState === 'function') resetFeedAutoLoadState(); } catch {}
   try { if (typeof setFeedExpanded === 'function') setFeedExpanded(false); } catch {}
-  await fetchFeed({ reset: true, reason: 'personal_reco_country_switch' });
+  await fetchFeed({ reset: true });
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-  pushFeedDiag('reco_country_switch_done', { to: desired, renderedCards: countRenderedNewsCards() });
   return true;
 }
 
 async function ensurePersonalRecoOpenContext() {
-  pushFeedDiag('reco_ensure_context_start', { path: window.location?.pathname || '', mode: state.mode, country: state.country });
   try {
     if (typeof window.__navigate === 'function' && window.location && window.location.pathname !== '/') {
       window.__navigate('/');
@@ -356,7 +330,6 @@ async function ensurePersonalRecoOpenContext() {
   } catch {}
 
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-  pushFeedDiag('reco_ensure_context_done', { path: window.location?.pathname || '', mode: state.mode, country: state.country });
 }
 
 async function openPersonalRecoStoryAction(targetId, normalizedTitle, targetCountry) {
@@ -364,8 +337,21 @@ async function openPersonalRecoStoryAction(targetId, normalizedTitle, targetCoun
   const id = String(targetId || '').trim();
   const titleNorm = String(normalizedTitle || '').trim();
 
-  pushFeedDiag('reco_open_click', { id, normalizedTitle: titleNorm, targetCountry: desired || String(targetCountry || ''), lookup: getFeedLookupState(id, titleNorm) });
-  setPendingFeedFocusTarget({ id, title: titleNorm, source: 'reco_click' });
+  setPendingStoryFocus({
+    id,
+    normalizedTitle: titleNorm,
+    title: String(titleNorm || ''),
+    country: desired,
+    reason: 'personal-reco-banner',
+  });
+  logRecoStoryDiagnostic('click', {
+    id,
+    normalizedTitle: titleNorm,
+    targetCountry: desired,
+    currentCountry: String(state.country || '').trim().toLowerCase(),
+    mode: String(state.mode || ''),
+  });
+
   await ensurePersonalRecoOpenContext();
 
   if (desired && desired !== 'world' && desired !== String(state.country || '').trim().toLowerCase()) {
@@ -374,42 +360,31 @@ async function openPersonalRecoStoryAction(targetId, normalizedTitle, targetCoun
 
   try {
     if (typeof window.openStoryInFeed === 'function') {
-      const openedViaCore = await window.openStoryInFeed({ clusterId: id || null, title: id ? '' : titleNorm });
-      if (openedViaCore) {
-        clearPendingFeedFocusTarget('opened_via_core');
-        pushFeedDiag('reco_open_success_core', { id, normalizedTitle: titleNorm });
-        return true;
-      }
+      const openedViaCore = await window.openStoryInFeed({ clusterId: id || null, title: titleNorm, exactTitleOnly: true, allowLooseTitleMatch: false });
+      if (openedViaCore) return true;
     }
   } catch (err) {
     console.warn('[feed] reco story open via core failed', err);
   }
 
   const openedViaBannerFlow = await forceOpenPersonalRecoStory(id, titleNorm, { preferredCountry: desired });
-  if (openedViaBannerFlow) {
-    clearPendingFeedFocusTarget('opened_via_banner_flow');
-    pushFeedDiag('reco_open_success_banner_flow', { id, normalizedTitle: titleNorm });
-    return true;
-  }
+  if (openedViaBannerFlow) return true;
+
+  tryResolvePendingStoryFocus({ context: 'after-force-open' });
 
   try {
-    await fetchFeed({ reset: true, reason: 'personal_reco_refetch' });
+    await fetchFeed({ reset: true, reason: 'reco-story-refetch' });
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    maybeApplyPendingFeedFocusTarget();
     if (typeof window.openStoryInFeed === 'function') {
-      const openedAfterRefetch = !!(await window.openStoryInFeed({ clusterId: id || null, title: id ? '' : titleNorm }));
-      if (openedAfterRefetch) {
-        clearPendingFeedFocusTarget('opened_after_refetch');
-        pushFeedDiag('reco_open_success_refetch', { id, normalizedTitle: titleNorm });
-      }
-      return openedAfterRefetch;
+      const openedAfterRefetch = !!(await window.openStoryInFeed({ clusterId: id || null, title: titleNorm, exactTitleOnly: true, allowLooseTitleMatch: false }));
+      if (openedAfterRefetch) return true;
     }
   } catch (err) {
     console.warn('[feed] reco story open after refetch failed', err);
   }
 
-  pushFeedDiag('reco_open_failed', { id, normalizedTitle: titleNorm, targetCountry: desired }, 'warn');
-  clearPendingFeedFocusTarget('open_failed');
+  logRecoStoryDiagnostic('open-failed', { id, normalizedTitle: titleNorm, targetCountry: desired });
+  clearPendingStoryFocus('open-failed');
   return false;
 }
 
@@ -496,11 +471,9 @@ function createPersonalRecoBanner(items) {
       btn.disabled = true;
       btn.classList.add('isLoading');
       try {
-        pushFeedDiag('reco_button_pressed', { targetId, normalizedTitle, targetCountry, label: btn.textContent?.trim() || '' });
         const opened = await openPersonalRecoStoryAction(targetId, normalizedTitle, targetCountry);
         if (!opened) {
-          pushFeedDiag('reco_button_open_failed', { targetId, normalizedTitle, targetCountry }, 'warn');
-          console.warn('[feed] reco story open failed', { targetId, normalizedTitle, targetCountry });
+          console.warn('[feed] reco story open failed', { targetId, normalizedTitle });
         }
       } finally {
         btn.disabled = false;
@@ -560,112 +533,124 @@ function setImgFallback(imgEl) {
 }
 
 
-const __feedDiagMaxEntries = 200;
-let __pendingFeedFocusTarget = null;
-let __feedRequestSeq = 0;
-let __activeFeedRequestSeq = 0;
-
-function pushFeedDiag(event, payload = {}, level = 'info') {
-  try {
-    const entry = {
-      ts: new Date().toISOString(),
-      event: String(event || 'unknown'),
-      ...payload,
-    };
-    const store = (window.__checkneFeedDiagnostics = Array.isArray(window.__checkneFeedDiagnostics) ? window.__checkneFeedDiagnostics : []);
-    store.push(entry);
-    if (store.length > __feedDiagMaxEntries) store.splice(0, store.length - __feedDiagMaxEntries);
-    const logger = (level === 'warn') ? console.warn : (level === 'error' ? console.error : console.info);
-    logger(`[feed] ${entry.event}`, entry);
-  } catch {}
-}
-
-function setPendingFeedFocusTarget(target) {
-  const id = String(target?.id || '').trim();
-  const title = String(target?.title || '').trim();
-  if (!id && !title) {
-    __pendingFeedFocusTarget = null;
-    return;
-  }
-  __pendingFeedFocusTarget = {
-    id,
-    title,
-    createdAt: Date.now(),
-    open: target?.open !== false,
-    block: String(target?.block || 'center'),
-    source: String(target?.source || 'unknown'),
-  };
-  try { window.__checknePendingFeedFocusTarget = { ...__pendingFeedFocusTarget }; } catch {}
-  pushFeedDiag('pending_focus_set', { id, title, source: __pendingFeedFocusTarget.source });
-}
-
-function clearPendingFeedFocusTarget(reason = '') {
-  if (!__pendingFeedFocusTarget) return;
-  pushFeedDiag('pending_focus_cleared', {
-    id: __pendingFeedFocusTarget.id,
-    title: __pendingFeedFocusTarget.title,
-    reason: String(reason || ''),
-  });
-  __pendingFeedFocusTarget = null;
-  try { delete window.__checknePendingFeedFocusTarget; } catch {}
-}
-
-function maybeApplyPendingFeedFocusTarget() {
-  const target = __pendingFeedFocusTarget;
-  if (!target) return false;
-  let card = null;
-  try {
-    if (typeof window.__checkneFindCardInFeed === 'function') {
-      card = window.__checkneFindCardInFeed({ clusterId: target.id || null, title: target.title || '' });
-    }
-  } catch {}
-  if (!card && target.id) {
-    card = document.querySelector(`.newsCard[data-id="${target.id}"]`);
-  }
-  if (!card) return false;
-  let opened = false;
-  try {
-    if (typeof window.__checkneOpenCardElement === 'function') {
-      opened = !!window.__checkneOpenCardElement(card, { block: target.block, source: target.source });
-    }
-  } catch {}
-  if (!opened) {
-    opened = focusNewsCardById(target.id, { open: target.open, block: target.block, maxAttempts: 1, delayMs: 0 });
-  }
-  if (opened) clearPendingFeedFocusTarget('applied');
-  return !!opened;
-}
-
-function waitForNewsCard(cardId, opts = {}) {
-  const id = String(cardId || '').trim();
-  const maxAttempts = Number.isFinite(Number(opts.maxAttempts)) ? Number(opts.maxAttempts) : 24;
-  const delayMs = Number.isFinite(Number(opts.delayMs)) ? Number(opts.delayMs) : 120;
-  return new Promise((resolve) => {
-    if (!id) { resolve(null); return; }
-    let attempts = 0;
-    const run = () => {
-      const card = document.querySelector(`.newsCard[data-id="${id}"]`);
-      if (card) { resolve(card); return; }
-      if (attempts++ >= maxAttempts) { resolve(null); return; }
-      setTimeout(run, delayMs);
-    };
-    run();
-  });
-}
-
-function getFeedLookupState(targetId, normalizedTitle) {
-  const id = String(targetId || '').trim();
-  const titleNorm = String(normalizedTitle || '').trim();
-  const items = Array.isArray(lastFeedItems) ? lastFeedItems : [];
-  const renderedExact = !!(id && document.querySelector(`.newsCard[data-id="${id}"]`));
-  const memoryExact = !!(id && items.some((it) => String(getItemId(it) || it?.id || '').trim() === id));
-  const renderedTitle = !!(!renderedExact && titleNorm && typeof window.__checkneFindCardInFeed === 'function' && window.__checkneFindCardInFeed({ title: titleNorm }));
-  return { renderedExact, memoryExact, renderedTitle, itemCount: items.length };
-}
-
 function getItemId(it) {
   const id = it?.cluster_id ?? it?.event_id;
   return id == null ? '' : String(id);
+}
+
+let __feedRequestSeq = 0;
+let __feedActiveAbortController = null;
+let __pendingStoryFocus = null;
+
+function logRecoStoryDiagnostic(stage, payload = {}) {
+  try {
+    console.info('[feed][load-story]', stage, payload);
+  } catch {}
+}
+
+function setPendingStoryFocus(target = {}) {
+  const id = String(target?.id || '').trim();
+  const normalizedTitle = String(target?.normalizedTitle || '').trim();
+  if (!id && !normalizedTitle) return null;
+  __pendingStoryFocus = {
+    id,
+    normalizedTitle,
+    title: String(target?.title || '').trim(),
+    country: String(target?.country || '').trim().toLowerCase(),
+    createdAt: Date.now(),
+    attempts: 0,
+    reason: String(target?.reason || 'load-story').trim(),
+  };
+  logRecoStoryDiagnostic('pending-focus-set', __pendingStoryFocus);
+  return __pendingStoryFocus;
+}
+
+function clearPendingStoryFocus(reason = '') {
+  if (!__pendingStoryFocus) return;
+  logRecoStoryDiagnostic('pending-focus-clear', {
+    reason,
+    id: __pendingStoryFocus.id,
+    normalizedTitle: __pendingStoryFocus.normalizedTitle,
+  });
+  __pendingStoryFocus = null;
+}
+
+function getPendingStoryFocus() {
+  if (!__pendingStoryFocus) return null;
+  if ((Date.now() - Number(__pendingStoryFocus.createdAt || 0)) > 30000) {
+    clearPendingStoryFocus('expired');
+    return null;
+  }
+  return __pendingStoryFocus;
+}
+
+function ensurePendingStoryIncluded(items, filtered) {
+  const pending = getPendingStoryFocus();
+  const allItems = Array.isArray(items) ? items : [];
+  const current = Array.isArray(filtered) ? filtered.slice() : [];
+  if (!pending || (!pending.id && !pending.normalizedTitle)) return current;
+  const id = String(pending.id || '').trim();
+  const normalizedTitle = String(pending.normalizedTitle || '').trim();
+  const matchesPending = (it) => {
+    const itemId = String(getItemId(it) || it?.id || '').trim();
+    if (id && itemId === id) return true;
+    if (normalizedTitle && typeof window.__checkneNormalizeStoryTitle === 'function') {
+      return window.__checkneNormalizeStoryTitle(String(it?.title || '')) === normalizedTitle;
+    }
+    return false;
+  };
+  if (current.some(matchesPending)) return current;
+  const match = allItems.find(matchesPending);
+  if (!match) return current;
+  logRecoStoryDiagnostic('pending-focus-injected-into-render', { id, normalizedTitle });
+  return [match, ...current];
+}
+
+function tryResolvePendingStoryFocus(opts = {}) {
+  const pending = getPendingStoryFocus();
+  if (!pending) return false;
+  pending.attempts = Number(pending.attempts || 0) + 1;
+  const id = String(pending.id || '').trim();
+  const normalizedTitle = String(pending.normalizedTitle || '').trim();
+  let card = null;
+  try {
+    if (typeof window.__checkneFindCardInFeed === 'function') {
+      card = window.__checkneFindCardInFeed({
+        clusterId: id || null,
+        title: pending.title || '',
+        exactTitleOnly: true,
+        allowLooseTitleMatch: false,
+      });
+    }
+  } catch {}
+  if (!card) {
+    logRecoStoryDiagnostic('pending-focus-dom-miss', {
+      id,
+      normalizedTitle,
+      attempt: pending.attempts,
+      context: String(opts?.context || ''),
+    });
+    return false;
+  }
+  let opened = false;
+  try {
+    if (typeof window.__checkneOpenCardElement === 'function') opened = window.__checkneOpenCardElement(card);
+  } catch {}
+  if (!opened && id) {
+    opened = focusNewsCardById(id, { open: true, block: 'center', maxAttempts: 1, delayMs: 40 });
+  }
+  if (opened) {
+    clearPendingStoryFocus('resolved');
+    logRecoStoryDiagnostic('pending-focus-resolved', {
+      id,
+      normalizedTitle,
+      attempt: pending.attempts,
+      context: String(opts?.context || ''),
+    });
+    return true;
+  }
+  logRecoStoryDiagnostic('pending-focus-open-failed', { id, normalizedTitle, attempt: pending.attempts });
+  return false;
 }
 
 
@@ -676,16 +661,12 @@ function focusNewsCardById(cardId, opts = {}) {
   const delayMs = Number.isFinite(Number(opts.delayMs)) ? Number(opts.delayMs) : 120;
   const shouldOpen = opts.open !== false;
   const scrollBlock = String(opts.block || 'center');
-  const source = String(opts.source || 'focusNewsCardById');
 
   let attempts = 0;
   const run = () => {
     const card = document.querySelector(`.newsCard[data-id="${id}"]`);
     if (!card) {
-      if (attempts++ >= maxAttempts) {
-        pushFeedDiag('focus_failed_no_dom', { id, source, attempts });
-        return;
-      }
+      if (attempts++ >= maxAttempts) return;
       setTimeout(run, delayMs);
       return;
     }
@@ -707,7 +688,6 @@ function focusNewsCardById(cardId, opts = {}) {
     setTimeout(() => {
       try { card.classList.remove('newsCardFocusPulse'); } catch {}
     }, 1800);
-    pushFeedDiag('focus_applied', { id, source, attempts, opened: !!details?.open });
   };
 
   run();
@@ -742,6 +722,13 @@ function createCardElement(item, ctx, seen, idx) {
   const id = Number(item.cluster_id ?? item.event_id);
   const idStr = String(id);
   div.setAttribute('data-id', idStr);
+  div.setAttribute('data-title', String(item?.title || ''));
+  try {
+    const normalizedCardTitle = (typeof window.__checkneNormalizeStoryTitle === 'function')
+      ? window.__checkneNormalizeStoryTitle(String(item?.title || ''))
+      : String(item?.title || '').trim().toLowerCase();
+    if (normalizedCardTitle) div.setAttribute('data-title-normalized', normalizedCardTitle);
+  } catch {}
 
   const favOn = isFav(id);
   const sourcesCount = Number(item.sources_count ?? (item.sources ? item.sources.length : 0));
@@ -1358,9 +1345,10 @@ function renderCards(items, opts) {
 
   const q = (state.q || '').trim();
 
-  const filtered = (items || [])
+  const filteredBase = (items || [])
     .filter((it) => isUrlQuery(q) ? true : itemMatchesSearch(it, q))
     .filter((it) => itemPassesFilters(it));
+  const filtered = ensurePendingStoryIncluded(items, filteredBase);
 
   // IMPORTANT: do not sort on the client.
   // The server returns a deterministic order (and a time-bucketed snapshot),
@@ -1461,7 +1449,7 @@ if (incremental && state.mode === 'feed' && newFeedEls.length) {
   }
   // Notify side widgets (best-effort)
   try { document.dispatchEvent(new CustomEvent("checkne:feedRendered")); } catch {}
-  maybeApplyPendingFeedFocusTarget();
+  tryResolvePendingStoryFocus({ context: 'renderCards' });
   syncPersonalRecoBanner(visible);
 
 }
@@ -1618,9 +1606,10 @@ function incrementalUpdateFeed(sortedItems, opts) {
   if (!cards) return;
 
   const q = (state.q || '').trim();
-  const filtered = (sortedItems || [])
+  const filteredBase = (sortedItems || [])
     .filter((it) => isUrlQuery(q) ? true : itemMatchesSearch(it, q))
     .filter((it) => itemPassesFilters(it));
+  const filtered = ensurePendingStoryIncluded(sortedItems, filteredBase);
 
   // We only display a slice when collapsed.
   let visible = filtered;
@@ -1683,6 +1672,7 @@ function incrementalUpdateFeed(sortedItems, opts) {
 
   updateLoadMoreBlock(filtered.length);
   syncPersonalRecoBanner(visible);
+  tryResolvePendingStoryFocus({ context: 'incremental-render' });
 }
 
 
@@ -1846,11 +1836,29 @@ function getFeedLimitForCurrentPlan() {
 
 async function fetchFeed(opts) {
   const options = opts || {};
-  const requestSeq = ++__feedRequestSeq;
-  __activeFeedRequestSeq = requestSeq;
   const quiet = !!options.quiet;
   const forceReset = !!options.reset;
-  const signal = options.signal;
+  const externalSignal = options.signal;
+  const requestReason = String(options.reason || '').trim();
+  const requestSeq = ++__feedRequestSeq;
+  let controller = null;
+  let signal = externalSignal;
+  if (!signal) {
+    try { if (__feedActiveAbortController) __feedActiveAbortController.abort(); } catch {}
+    try {
+      controller = new AbortController();
+      signal = controller.signal;
+      __feedActiveAbortController = controller;
+    } catch {}
+  }
+  logRecoStoryDiagnostic('fetch-feed-start', {
+    requestSeq,
+    reason: requestReason,
+    reset: forceReset,
+    quiet,
+    country: String(state.country || ''),
+    mode: String(state.mode || ''),
+  });
 
   const interests = encodeURIComponent((state.interests || []).join(","));
   const rawSearchQ = (state.q || "").trim();
@@ -1888,23 +1896,41 @@ async function fetchFeed(opts) {
   // On first load (or after key reset), suppress NEW badges and avoid animations.
   const suppressNewBadges = !hasInitialFeedLoaded || shouldReset;
 
-  pushFeedDiag('fetch_feed_start', { requestSeq, quiet, forceReset, reason: String(options.reason || ''), country: state.country, mode: state.mode, q: rawQ, interests: (state.interests || []).join(','), trendId: state.trendClusterId || '' });
   if (!quiet) setStatus(t("ui.loading_feed","Loading feed..."));
 
   // Allow the caller to abort (we use this to prevent overlapping requests on slow hosts like Render)
-  const res = await fetch(url, signal ? { signal } : undefined);
+  let res;
+  try {
+    res = await fetch(url, signal ? { signal } : undefined);
+  } catch (err) {
+    if (err && (err.name === 'AbortError' || String(err.message || '').toLowerCase().includes('abort'))) {
+      logRecoStoryDiagnostic('fetch-feed-aborted', { requestSeq, reason: requestReason });
+      if (controller && __feedActiveAbortController === controller) __feedActiveAbortController = null;
+      return;
+    }
+    if (controller && __feedActiveAbortController === controller) __feedActiveAbortController = null;
+    throw err;
+  }
+  if (requestSeq !== __feedRequestSeq) {
+    logRecoStoryDiagnostic('fetch-feed-stale-response', { requestSeq, currentSeq: __feedRequestSeq, reason: requestReason });
+    if (controller && __feedActiveAbortController === controller) __feedActiveAbortController = null;
+    return;
+  }
   if (!res.ok) {
-    pushFeedDiag('fetch_feed_http_error', { requestSeq, status: res.status, url }, 'warn');
     if (!quiet) setStatus(`${t("ui.error_api_news","Error /api/news")}: ${res.status}`);
+    logRecoStoryDiagnostic('fetch-feed-http-error', { requestSeq, status: res.status, reason: requestReason });
+    if (controller && __feedActiveAbortController === controller) __feedActiveAbortController = null;
     return;
   }
 
   const data = await res.json();
-  if (requestSeq !== __activeFeedRequestSeq) {
-    pushFeedDiag('fetch_feed_stale_ignored', { requestSeq, activeRequestSeq: __activeFeedRequestSeq, url });
+  if (requestSeq !== __feedRequestSeq) {
+    logRecoStoryDiagnostic('fetch-feed-stale-json', { requestSeq, currentSeq: __feedRequestSeq, reason: requestReason });
+    if (controller && __feedActiveAbortController === controller) __feedActiveAbortController = null;
     return;
   }
   const items = data.items || [];
+  logRecoStoryDiagnostic('fetch-feed-success', { requestSeq, reason: requestReason, items: items.length });
 
   try { window.__checkneFeedItems = items; } catch {}
   try { document.dispatchEvent(new CustomEvent("checkne:feedItemsUpdated", { detail: { items } })); } catch {}
@@ -1944,9 +1970,10 @@ renderCards(items, {
 
   }
 
-  maybeApplyPendingFeedFocusTarget();
-  pushFeedDiag('fetch_feed_done', { requestSeq, itemCount: items.length, renderedCards: countRenderedNewsCards(), incremental: useIncremental, activeRequestSeq: __activeFeedRequestSeq });
   if (!quiet) setStatus("");
+  if (controller && __feedActiveAbortController === controller) {
+    __feedActiveAbortController = null;
+  }
 }
 
 
