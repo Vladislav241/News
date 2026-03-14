@@ -455,13 +455,13 @@
  cursor:pointer;
   transition: transform .18s ease, background .18s ease, opacity .18s ease;
 }
+
 .visualSearchBtn:hover{ background: rgba(15,23,42,.1); transform: translateY(-1px); }
 .visualSearchBtn:active{ transform: translateY(0); }
 .visualSearchBtn:disabled{ opacity:.6; cursor:default; transform:none; }
 .visualSearchBtn::before{
-  content:""; width:22px; height:22px; display:block; background: currentColor;
-  -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h3l2-2h6l2 2h3a1 1 0 0 1 1 1v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="4"/></svg>') center/contain no-repeat;
-  mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h3l2-2h6l2 2h3a1 1 0 0 1 1 1v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="4"/></svg>') center/contain no-repeat;
+  content:""; width:27px; height:27px; display:block;
+  background: url('/static/icons/photo.svg') center/contain no-repeat;
 }
 .visualSearchBtn[data-loading="1"]{ background: rgba(15,23,42,.1); }
 .visualSearchInput{ display:none; }
@@ -497,9 +497,8 @@
   background: rgba(15,23,42,.05); color: rgba(15,23,42,.72); font-size:13px; font-weight:600;
 }
 .visualSearchModal__eyebrow::before{
-  content:""; width:15px; height:15px; opacity:.7; background: currentColor;
-  -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h3l2-2h6l2 2h3a1 1 0 0 1 1 1v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="4"/></svg>') center/contain no-repeat;
-  mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h3l2-2h6l2 2h3a1 1 0 0 1 1 1v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="4"/></svg>') center/contain no-repeat;
+  content:""; width:15px; height:15px; opacity:.7;
+  background: url('/static/icons/photo.svg') center/contain no-repeat;
 }
 .visualSearchModal__title{ margin-top:12px; font-size:30px; line-height:1.08; font-weight:700; letter-spacing:-.03em; color:#0f172a; }
 .visualSearchModal__sub{ margin-top:10px; color: rgba(15,23,42,.62); font-size:15px; line-height:1.55; max-width: 560px; }
@@ -533,9 +532,8 @@
   background: rgba(15,23,42,.06); color:#0f172a;
 }
 .visualSearchDropzone__icon::before{
-  content:""; width:36px; height:36px; background: currentColor; opacity:.92;
-  -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h3l2-2h6l2 2h3a1 1 0 0 1 1 1v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="4"/></svg>') center/contain no-repeat;
-  mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h3l2-2h6l2 2h3a1 1 0 0 1 1 1v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="4"/></svg>') center/contain no-repeat;
+  content:""; width:36px; height:36px; opacity:.92;
+  background: url('/static/icons/photo.svg') center/contain no-repeat;
 }
 .visualSearchDropzone__title{ margin-top:18px; font-size:24px; font-weight:700; color:#0f172a; }
 .visualSearchDropzone__hint{ margin-top:10px; max-width:420px; color: rgba(15,23,42,.64); font-size:15px; line-height:1.6; }
@@ -4508,6 +4506,8 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
       line-height: 1;
     }
     .iconBtn:hover{ background: rgba(17,17,19,.04); }
+    .iconBtn--icon{ padding:0; }
+    .iconBtnImg{ width:14px; height:14px; display:block; object-fit:contain; }
     .miniBtn{
       height: 30px;
       padding: 0 12px;

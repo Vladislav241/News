@@ -339,8 +339,33 @@ async function main() {
     try { window.__routeFromLocation(); } catch (_) {}
   }
 
-  // initial load
-  await fetchFeed({ reset: true });
+  const initialPath = (() => {
+    try {
+      let path = String(window.location?.pathname || '/');
+      path = path.split('?')[0].split('#')[0];
+      if (!path.startsWith('/')) path = '/' + path;
+      if (path.length > 1) path = path.replace(/\/+$/, '');
+      return path || '/';
+    } catch {
+      return '/';
+    }
+  })();
+
+  // Initial data load must respect the direct route.
+  // Without this, opening /tracking and then refreshing can first render the
+  // main feed snapshot, which mixes feed cards into the tracking view.
+  if (initialPath === '/tracking') {
+    try { state.mode = 'fav'; } catch {}
+    try { applyTabs(); } catch {}
+    try {
+      if (typeof window.__setWidgetsEnabled === 'function') {
+        window.__setWidgetsEnabled(false);
+      }
+    } catch {}
+    await fetchFavorites({ reset: true });
+  } else {
+    await fetchFeed({ reset: true });
+  }
 
   // If we arrived via a shared URL (/?open=...), open that article card.
   await maybeOpenDeepLinkedArticle();

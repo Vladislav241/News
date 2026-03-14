@@ -63,7 +63,7 @@
 
   const PRO_ICON_POOL = [
     "/static/icons/FxRates.svg",
-    "/static/icons/Crypto.svg",
+    "/static/icons/CryptoFix.svg",
     "/static/icons/TopHeadlines.svg",
     "/static/icons/TrackingStats.svg",
     "/static/icons/MarketClock.svg",
@@ -1667,8 +1667,8 @@ function saveLayout(){
     if (def.settingsUI){
       const cfg = document.createElement('button');
       cfg.type = 'button';
-      cfg.className = 'iconBtn';
-      cfg.textContent = '⚙';
+      cfg.className = 'iconBtn iconBtn--icon';
+      cfg.innerHTML = '<img class="iconBtnImg" src="/static/icons/gear.svg" alt="" />';
       cfg.setAttribute('aria-label', wt('widgets.configure', 'Configure'));
       cfg.addEventListener('click', (e) => {
         e.preventDefault(); e.stopPropagation();
@@ -1992,7 +1992,12 @@ document.addEventListener('checkne:currentStoryChanged', () => {
     b.className = "iconBtn";
     b.type = "button";
     b.setAttribute("aria-label", label);
-    b.textContent = text;
+    if (String(label || '').toLowerCase() === 'configure') {
+      b.classList.add('iconBtn--icon');
+      b.innerHTML = '<img class="iconBtnImg" src="/static/icons/gear.svg" alt="" />';
+    } else {
+      b.textContent = text;
+    }
     return b;
   }
 

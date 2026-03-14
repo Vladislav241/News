@@ -2697,12 +2697,14 @@ function openVisualResultModal(items, meta = {}){
 
   visualResultListEl.innerHTML = list.map((item, idx) => {
     const id = escapeHtml(getItemId(item));
-    const title = escapeHtml(String(item?.title || 'Untitled story'));
+    const titleRaw = String(item?.title || 'Untitled story');
+    const title = escapeHtml(titleRaw);
     const source = escapeHtml(String(item?.source || item?.outlet || item?.topic || 'Related'));
     const topic = escapeHtml(String(item?.topic || 'general'));
+    const country = escapeHtml(String(item?.country || ''));
     const score = Number(item?.score ?? item?.credibility_score ?? item?.credibility ?? 0) || 0;
     return `
-      <button class="visualResultItem ${idx === 0 ? 'isPrimary' : ''}" type="button" data-visual-result-id="${id}">
+      <button class="visualResultItem ${idx === 0 ? 'isPrimary' : ''}" type="button" data-visual-result-id="${id}" data-visual-result-title="${escapeHtml(titleRaw)}" data-visual-result-country="${country}">
         ${renderThumb(item)}
         <div class="visualResultItem__content">
           <div class="visualResultItem__topline">
@@ -2727,6 +2729,76 @@ function closeUploadAndShowVisualResults(items, meta = {}){
   }
   resetVisualModalState();
   openVisualResultModal(items, meta);
+}
+
+async function openVisualSearchResultAction(target = {}) {
+  const id = String(target?.id || '').trim();
+  const title = String(target?.title || '').trim();
+  const desiredCountry = normalizeStoryCountry(target?.country);
+
+  closeVisualResultModal();
+  await ensurePersonalRecoOpenContext();
+
+  let opened = false;
+  try {
+    if (typeof window.openStoryInFeed === 'function') {
+      opened = !!(await window.openStoryInFeed({
+        clusterId: id || null,
+        title,
+        exactTitleOnly: !!title,
+        allowLooseTitleMatch: !title,
+      }));
+    }
+  } catch (err) {
+    console.warn('[visual-search] open in current feed failed', err);
+  }
+  if (opened) return true;
+
+  if (desiredCountry && desiredCountry !== 'world' && desiredCountry !== String(state.country || '').trim().toLowerCase()) {
+    try {
+      await switchFeedCountryForPersonalReco(desiredCountry);
+    } catch (err) {
+      console.warn('[visual-search] switch feed country failed', err);
+    }
+
+    try {
+      if (typeof window.openStoryInFeed === 'function') {
+        opened = !!(await window.openStoryInFeed({
+          clusterId: id || null,
+          title,
+          exactTitleOnly: !!title,
+          allowLooseTitleMatch: !title,
+        }));
+      }
+    } catch (err) {
+      console.warn('[visual-search] open after country switch failed', err);
+    }
+    if (opened) return true;
+  }
+
+  if (id) {
+    try {
+      opened = focusNewsCardById(id, { open: true, block: 'center', maxAttempts: 28, delayMs: 120 });
+    } catch {}
+    if (opened) return true;
+  }
+
+  try {
+    await fetchFeed({ reset: true, reason: 'visual-search-open-story' });
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    if (typeof window.openStoryInFeed === 'function') {
+      opened = !!(await window.openStoryInFeed({
+        clusterId: id || null,
+        title,
+        exactTitleOnly: !!title,
+        allowLooseTitleMatch: !title,
+      }));
+    }
+  } catch (err) {
+    console.warn('[visual-search] refetch + open failed', err);
+  }
+
+  return !!opened;
 }
 
 async function pickVisualClipboardImage(){
@@ -2790,8 +2862,9 @@ if (visualResultModalEl) {
     const btn = e.target && e.target.closest('[data-visual-result-id]');
     if (!btn) return;
     const cardId = btn.getAttribute('data-visual-result-id') || '';
-    closeVisualResultModal();
-    focusNewsCardById(cardId, { open: true, block: 'center', maxAttempts: 28, delayMs: 120 });
+    const title = btn.getAttribute('data-visual-result-title') || '';
+    const country = btn.getAttribute('data-visual-result-country') || '';
+    void openVisualSearchResultAction({ id: cardId, title, country });
   });
 }
 if (visualDropzoneEl) {
