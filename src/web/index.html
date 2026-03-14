@@ -4200,9 +4200,10 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
     .mwDock.isOn{ display:flex; }
     .mwDockBtn{
       width: 44px; height: 44px;
-      border-radius: 14px;
-      border: 1px solid rgba(15,23,42,.10);
-      background: rgba(17,17,19,.03);
+      border-radius: 0;
+      border: none;
+      background: transparent;
+      box-shadow: none;
       display:flex; align-items:center; justify-content:center;
       cursor:pointer;
       position: relative;
@@ -4212,6 +4213,8 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
       -webkit-user-select: none;
       -webkit-tap-highlight-color: transparent;
       -webkit-touch-callout: none;
+      padding: 0;
+      overflow: visible;
     }
     
     .mwDockBtn.isDisabled{
@@ -4242,11 +4245,11 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
     }
     .mwDock.hasItems .mwDockHint{ display:block; }
 .mwDockBtn.isHold{
-      background: rgba(17,17,19,.07);
+      background: transparent;
       transform: scale(.98);
     }
     .mwDockBtn:active{ transform: translateY(1px); }
-    .mwDockBtn img{ width: 35px; height: 35px; display:block; user-select:none; -webkit-user-select:none; pointer-events:none; }
+    .mwDockBtn img{ width: 42px; height: 42px; display:block; object-fit: contain; user-select:none; -webkit-user-select:none; pointer-events:none; }
     /* Plus should be circular */
     .mwDockBtn.isPlus{ width: 54px; height: 54px; background:#fff; border-radius: 999px; box-shadow: 0 10px 22px rgba(15,23,42,.14); }
     .mwDockBtn.isPlus span{ font-size: 26px; font-weight: 900; line-height: 1; }
@@ -4332,15 +4335,18 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
     }
     .widgetIcon{
       width: 30px; height: 30px;
-      border-radius: 12px;
+      border-radius: 0;
       display:flex; align-items:center; justify-content:center;
       font-size: 16px;
-      border: 1px solid rgba(15,23,42,.10);
-      background: rgba(17,17,19,.03);
+      border: none;
+      background: transparent;
+      box-shadow: none;
+      padding: 0;
       flex: 0 0 auto;
+      overflow: visible;
     }
 
-    .widgetIconImg{ width: 18px; height: 18px; display:block; }
+    .widgetIconImg{ width: 30px; height: 30px; display:block; object-fit: contain; }
     .widgetTitle{
       font-weight: 800;
       letter-spacing: .02em;
@@ -4352,11 +4358,6 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
       text-overflow: ellipsis;
     }
     /* per-widget accents (subtle, in CHECKNE style) */
-    .widgetCard[data-type="fx_rates"] .widgetIcon{ background: rgba(16,185,129,.10); border-color: rgba(16,185,129,.20); }
-    .widgetCard[data-type="crypto_prices"] .widgetIcon{ background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.24); }
-    .widgetCard[data-type="headlines"] .widgetIcon{ background: rgba(59,130,246,.10); border-color: rgba(59,130,246,.22); }
-    .widgetCard[data-type="tracking_stats"] .widgetIcon{ background: rgba(99,102,241,.10); border-color: rgba(99,102,241,.22); }
-    .widgetCard[data-type="market_clock"] .widgetIcon{ background: rgba(236,72,153,.10); border-color: rgba(236,72,153,.22); }
 
     /* PRO pills + premium widget UI */
     .proPill{
@@ -5086,7 +5087,6 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
 }
   
 /* Media Bias widget */
-.widgetCard[data-type="media_bias"] .widgetIcon{ background: rgba(59,130,246,.10); border-color: rgba(59,130,246,.18); }
 .mbBar{
   height: 12px;
   border-radius: 999px;
@@ -5141,6 +5141,295 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
 .mbMeta{
   margin-top:12px;
 }
+
+
+/* ===== Personalized mid-feed recommendation banner ===== */
+.personalRecoBanner{
+  position: relative;
+  overflow: hidden;
+  margin: 20px 0;
+  padding: 18px;
+  border-radius: 24px;
+  border: 1px solid rgba(15,23,42,.08);
+  background: linear-gradient(135deg, rgba(255,255,255,.98), rgba(247,248,251,.98));
+  box-shadow: 0 18px 44px rgba(15,23,42,.08);
+}
+.personalRecoBanner__glow{
+  position:absolute;
+  inset:auto -40px -60px auto;
+  width:220px;
+  height:220px;
+  border-radius:999px;
+  background: radial-gradient(circle, rgba(17,24,39,.08), rgba(17,24,39,0));
+  pointer-events:none;
+}
+.personalRecoBanner__head{
+  position:relative;
+  z-index:1;
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+  margin-bottom:16px;
+}
+.personalRecoBanner__kicker{
+  font-size:12px;
+  font-weight:800;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:#111827;
+  opacity:.74;
+  margin-bottom:6px;
+}
+.personalRecoBanner__title{
+  font-size:22px;
+  line-height:1.15;
+  font-weight:900;
+  color:#111827;
+}
+.personalRecoBanner__sub{
+  margin-top:7px;
+  color:#4b5563;
+  font-size:13px;
+  line-height:1.45;
+}
+.personalRecoBanner__badges{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+  gap:8px;
+}
+.personalRecoBanner__badge{
+  display:inline-flex;
+  align-items:center;
+  padding:9px 12px;
+  border-radius:999px;
+  background:#fff;
+  border:1px solid rgba(15,23,42,.08);
+  color:#111827;
+  font-size:12px;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  box-shadow:0 8px 18px rgba(15,23,42,.06);
+}
+.personalRecoBanner__badge.isPrimary{
+  background:#111827;
+  color:#fff;
+  border-color:#111827;
+}
+.personalRecoBanner__grid{
+  position:relative;
+  z-index:1;
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+}
+.personalRecoBanner__swipeHint{
+  display:none;
+  position:relative;
+  z-index:1;
+  margin:-2px 0 10px;
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:#64748b;
+}
+.personalRecoItem{
+  display:flex;
+  gap:12px;
+  min-width:0;
+  padding:12px;
+  border-radius:20px;
+  background:linear-gradient(180deg, rgba(255,255,255,.98), rgba(249,250,252,.96));
+  border:1px solid rgba(15,23,42,.08);
+  box-shadow:0 10px 24px rgba(15,23,42,.05);
+  transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+.personalRecoItem:hover{
+  transform:translateY(-2px);
+  box-shadow:0 16px 30px rgba(15,23,42,.09);
+  border-color:rgba(15,23,42,.14);
+}
+.personalRecoItem__thumb{
+  flex:0 0 104px;
+  width:104px;
+  height:88px;
+  border-radius:16px;
+  overflow:hidden;
+  background:#eef1f6;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.personalRecoItem__thumb img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:block;
+}
+.personalRecoItem__thumb[data-image-state="empty"] span{
+  color:#6b7280;
+  font-size:12px;
+  font-weight:700;
+}
+.personalRecoItem__body{
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+}
+.personalRecoItem__eyebrow{
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:#6b7280;
+  margin-bottom:5px;
+}
+.personalRecoItem__title{
+  font-size:15px;
+  font-weight:800;
+  line-height:1.3;
+  color:#111827;
+  display:-webkit-box;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical;
+  overflow:hidden;
+}
+.personalRecoItem__meta{
+  margin-top:6px;
+  font-size:12px;
+  color:#6b7280;
+  display:-webkit-box;
+  -webkit-line-clamp:1;
+  -webkit-box-orient:vertical;
+  overflow:hidden;
+}
+.personalRecoItem__action{
+  margin-top:auto;
+  align-self:flex-start;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  min-height:32px;
+  border:1px solid transparent;
+  border-radius:999px;
+  color:#fff;
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.01em;
+  padding:5px 7px 5px 10px;
+  cursor:pointer;
+  transition:transform .18s ease, box-shadow .18s ease, background .18s ease, border-color .18s ease, color .18s ease, opacity .18s ease;
+  box-shadow:0 10px 20px rgba(15,23,42,.14);
+}
+.personalRecoItem__action.isLoading{
+  opacity:.72;
+  pointer-events:none;
+}
+.personalRecoItem__action.isPrimary{
+  background:linear-gradient(135deg, #0f172a, #1f2a44);
+  border-color:rgba(15,23,42,.95);
+}
+.personalRecoItem__action.isSecondary{
+  background:rgba(255,255,255,.96);
+  color:#0f172a;
+  border-color:rgba(15,23,42,.12);
+  box-shadow:0 10px 20px rgba(15,23,42,.08);
+}
+.personalRecoItem__action:hover{
+  transform:translateY(-1px);
+}
+.personalRecoItem__action:active{
+  transform:translateY(0);
+}
+.personalRecoItem__actionLabel{
+  white-space:nowrap;
+}
+.personalRecoItem__actionIcon{
+  width:18px;
+  height:18px;
+  border-radius:999px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  font-size:10px;
+  line-height:1;
+  background:rgba(255,255,255,.16);
+}
+.personalRecoItem__action.isSecondary .personalRecoItem__actionIcon{
+  background:rgba(15,23,42,.08);
+}
+@media (max-width: 900px){
+  .personalRecoBanner__grid{ grid-template-columns:1fr; }
+}
+@media (max-width: 700px){
+  .personalRecoBanner{
+    padding:16px;
+    border-radius:22px;
+    margin:16px 0;
+  }
+  .personalRecoBanner__head{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+  .personalRecoBanner__badges{
+    justify-content:flex-start;
+  }
+  .personalRecoBanner__title{
+    font-size:19px;
+  }
+  .personalRecoBanner__swipeHint{
+    display:block;
+  }
+  .personalRecoBanner__grid{
+    display:flex;
+    gap:12px;
+    overflow-x:auto;
+    overflow-y:hidden;
+    padding:2px 10px 8px 0;
+    margin-right:-8px;
+    scroll-snap-type:x proximity;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+  }
+  .personalRecoBanner__grid::-webkit-scrollbar{
+    display:none;
+  }
+  .personalRecoBanner__grid::after{
+    content:'';
+    flex:0 0 16px;
+  }
+  .personalRecoItem{
+    flex:0 0 85%;
+    min-width:85%;
+    padding:10px;
+    border-radius:18px;
+    scroll-snap-align:start;
+  }
+  .personalRecoItem__thumb{
+    flex-basis:88px;
+    width:88px;
+    height:78px;
+  }
+  .personalRecoItem__title{
+    font-size:14px;
+    -webkit-line-clamp:3;
+  }
+  .personalRecoItem__action{
+    min-height:30px;
+    padding:5px 7px 5px 10px;
+    font-size:10px;
+    gap:6px;
+  }
+  .personalRecoItem__actionIcon{
+    width:17px;
+    height:17px;
+    font-size:9px;
+  }
+}
+
 </style>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
@@ -5830,7 +6119,7 @@ body.eventMapModalOpen{overflow:hidden;}
   <script src="/static/js/interests.js?v=2026-03-01"></script>
 <script src="/static/js/pricing.js?v=2026-03-08-relative-time" defer></script>
 <script src="/static/js/carousel.js?v=2026-02-24" defer></script>
-<script src="/static/js/feed.js?v=vs-results-2" defer></script>
+<script src="/static/js/feed.js?v=personal-reco-2" defer></script>
 <script src="/static/js/news-map.js?v=2026-03-06-eventmap2" defer></script>
 <script src="/static/js/report.js?v=2026-03-01" defer></script>
 <script src="/static/js/widgets.js?v=2026-03-13-media-bias-layout-1" defer></script>

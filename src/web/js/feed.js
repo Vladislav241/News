@@ -17,7 +17,403 @@ let __feedAutoExpandObserver = null;
 let __feedVisibleLimit = (typeof FEED_PAGE_SIZE !== 'undefined' ? FEED_PAGE_SIZE : 10);
 let __feedAutoPaused = false;
 let __feedAutoExpandLatch = false;
+
 const FEED_AUTO_BATCH_SIZE = 10;
+const VISUAL_SEARCH_SOFT_TARGET_BYTES = 900 * 1024; // stay safely below common production body limits
+const VISUAL_SEARCH_HARD_MAX_BYTES = 24 * 1024 * 1024;
+const VISUAL_SEARCH_MAX_UPLOAD_BYTES = 1024 * 1024;
+const VISUAL_SEARCH_MAX_DIMENSION = 2200;
+const VISUAL_SEARCH_MIN_DIMENSION = 900;
+const PERSONAL_RECO_INSERT_AFTER = 5;
+const PERSONAL_RECO_MAX_ITEMS = 5;
+const PERSONAL_RECO_ENDPOINT_LIMIT = 18;
+
+let __personalRecoCache = {
+  key: '',
+  items: [],
+  profile: null,
+  fetchedAt: 0,
+  loadingPromise: null,
+};
+
+function inferBrowserAudienceProfile() {
+  try {
+    const langs = (navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language])
+      .map((x) => String(x || '').trim())
+      .filter(Boolean);
+    const primary = String(langs[0] || navigator.language || '').trim();
+    const localeMatch = primary.match(/[-_]([A-Za-z]{2})\b/);
+    let country = localeMatch ? String(localeMatch[1]).toLowerCase() : '';
+    const timeZone = String(Intl.DateTimeFormat().resolvedOptions().timeZone || '').trim();
+    if (!country && timeZone) {
+      const tz = timeZone.toLowerCase();
+      const tzMap = [
+        [/europe\/berlin|europe\/busingen/, 'de'],
+        [/europe\/vienna/, 'at'],
+        [/europe\/zurich/, 'ch'],
+        [/europe\/paris/, 'fr'],
+        [/europe\/madrid/, 'es'],
+        [/europe\/rome/, 'it'],
+        [/europe\/amsterdam/, 'nl'],
+        [/europe\/brussels/, 'be'],
+        [/europe\/warsaw/, 'pl'],
+        [/europe\/prague/, 'cz'],
+        [/europe\/kyiv|europe\/kiev/, 'ua'],
+        [/europe\/london/, 'gb'],
+        [/america\/new_york|america\/chicago|america\/denver|america\/los_angeles/, 'us'],
+        [/america\/toronto|america\/vancouver/, 'ca'],
+      ];
+      for (const [rx, code] of tzMap) {
+        if (rx.test(tz)) { country = code; break; }
+      }
+    }
+    const language = String(primary.split(/[-_]/)[0] || state.language || 'en').toLowerCase();
+    return {
+      country: country || '',
+      language,
+      locale: primary || `${language}`,
+      timeZone,
+      reason: timeZone ? `${primary || language} · ${timeZone}` : (primary || language),
+    };
+  } catch {
+    return { country: '', language: String(state.language || 'en').toLowerCase(), locale: '', timeZone: '', reason: '' };
+  }
+}
+
+function shouldShowPersonalRecoBanner() {
+  if (state.mode !== 'feed') return false;
+  if (String(state.q || '').trim()) return false;
+  if (Array.isArray(state.topicQs) && state.topicQs.length) return false;
+  if (String(state.topicQ || '').trim()) return false;
+  if (state.trendClusterId) return false;
+  return true;
+}
+
+function removePersonalRecoBanner() {
+  try { document.getElementById('personalRecoBanner')?.remove(); } catch {}
+}
+
+function buildPersonalRecoCacheKey(profile) {
+  const interests = (state.interests || []).slice().sort().join(',');
+  const ui = String(state.language || 'en').toLowerCase();
+  const stateCountry = String(state.country || 'world').toLowerCase();
+  const browserCountry = String(profile?.country || '').toLowerCase();
+  return `${interests}|ui=${ui}|state=${stateCountry}|browser=${browserCountry}`;
+}
+
+async function ensurePersonalRecoItems(currentItems) {
+  if (!shouldShowPersonalRecoBanner()) {
+    removePersonalRecoBanner();
+    return [];
+  }
+
+  const profile = inferBrowserAudienceProfile();
+  const targetCountry = String(profile?.country || '').toLowerCase();
+  if (!targetCountry || targetCountry === 'world') {
+    removePersonalRecoBanner();
+    return [];
+  }
+
+  const cacheKey = buildPersonalRecoCacheKey(profile);
+  if (__personalRecoCache.key === cacheKey && Array.isArray(__personalRecoCache.items) && __personalRecoCache.items.length) {
+    return __personalRecoCache.items;
+  }
+  if (__personalRecoCache.loadingPromise && __personalRecoCache.key === cacheKey) {
+    return __personalRecoCache.loadingPromise;
+  }
+
+  const requestUrl = `${API_BASE}/api/news?interests=${encodeURIComponent((state.interests || []).join(','))}` +
+    `&country=${encodeURIComponent(targetCountry)}` +
+    `&language=all&ui_lang=${encodeURIComponent(state.language || 'en')}` +
+    `&limit=${PERSONAL_RECO_ENDPOINT_LIMIT}`;
+
+  const currentIds = new Set((Array.isArray(currentItems) ? currentItems : []).map((it) => getItemId(it)).filter(Boolean));
+
+  const promise = fetch(requestUrl)
+    .then((res) => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    })
+    .then((data) => {
+      const fetched = Array.isArray(data?.items) ? data.items : [];
+      let picked = fetched.filter((it) => {
+        const id = getItemId(it);
+        if (!id) return false;
+        return !currentIds.has(id);
+      });
+      if (!picked.length) picked = fetched.slice();
+      picked = picked.slice(0, PERSONAL_RECO_MAX_ITEMS);
+      __personalRecoCache = {
+        key: cacheKey,
+        items: picked,
+        profile,
+        fetchedAt: Date.now(),
+        loadingPromise: null,
+      };
+      return picked;
+    })
+    .catch((err) => {
+      console.warn('[feed] personal recommendations failed', err);
+      __personalRecoCache = {
+        key: cacheKey,
+        items: [],
+        profile,
+        fetchedAt: Date.now(),
+        loadingPromise: null,
+      };
+      return [];
+    });
+
+  __personalRecoCache = {
+    key: cacheKey,
+    items: __personalRecoCache.items || [],
+    profile,
+    fetchedAt: __personalRecoCache.fetchedAt || 0,
+    loadingPromise: promise,
+  };
+
+  return promise;
+}
+
+function buildPersonalRecoAction(item) {
+  const id = getItemId(item) || String(item?.id || '').trim();
+  const normalizedTitle = (typeof window.__checkneNormalizeStoryTitle === 'function')
+    ? window.__checkneNormalizeStoryTitle(String(item?.title || ''))
+    : String(item?.title || '').trim().toLowerCase();
+
+  if (id) {
+    const escapedId = (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') ? CSS.escape(String(id)) : String(id).replace(/"/g, '\\"');
+    const cardExists = !!document.querySelector(`.newsCard[data-id="${escapedId}"]`);
+    return {
+      type: 'story',
+      targetId: String(id),
+      title: String(item?.title || ''),
+      normalizedTitle,
+      inFeed: cardExists,
+    };
+  }
+
+  const source = Array.isArray(item?.sources) && item.sources.length ? item.sources[0] : null;
+  const rawUrl = String(source?.url || '').trim();
+  if (rawUrl) {
+    return {
+      type: 'source',
+      href: buildSourceReaderUrl(rawUrl, String(source?.title || item?.title || rawUrl), String(source?.source_name || pickPrimarySourceName(item) || 'unknown')),
+    };
+  }
+  return { type: 'source', href: '#' };
+}
+
+function getPersonalRecoInsertIndex(items) {
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) return 0;
+  return Math.max(0, Math.min(PERSONAL_RECO_INSERT_AFTER, list.length));
+}
+
+async function fetchPersonalRecoStoryById(targetId) {
+  const id = String(targetId || '').trim();
+  if (!id) return null;
+  try {
+    const interests = encodeURIComponent((state.interests || []).join(','));
+    const country = encodeURIComponent(state.country || 'world');
+    const uiLang = encodeURIComponent(state.language || 'en');
+    const res = await fetch(
+      `${API_BASE}/api/news/by_ids?ids=${encodeURIComponent(id)}` +
+      `&interests=${interests}&country=${country}&language=all&ui_lang=${uiLang}`
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const items = Array.isArray(data?.items) ? data.items : [];
+    return items.find((it) => String(getItemId(it) || it?.id || '').trim() === id) || items[0] || null;
+  } catch (err) {
+    console.warn('[feed] reco story fetch failed', err);
+    return null;
+  }
+}
+
+async function forceOpenPersonalRecoStory(targetId, normalizedTitle) {
+  const id = String(targetId || '').trim();
+  const titleNorm = String(normalizedTitle || '').trim();
+  if (!id && !titleNorm) return false;
+
+  const directOpen = (() => {
+    try {
+      if (typeof window.__checkneFindCardInFeed === 'function' && typeof window.__checkneOpenCardElement === 'function') {
+        const found = window.__checkneFindCardInFeed({ clusterId: id || null, title: '' });
+        if (found) return window.__checkneOpenCardElement(found);
+      }
+    } catch {}
+    return false;
+  })();
+  if (directOpen) return true;
+
+  const existing = Array.isArray(lastFeedItems) ? lastFeedItems : [];
+  const inMemory = existing.find((it) => String(getItemId(it) || it?.id || '').trim() === id) || null;
+  const item = inMemory || await fetchPersonalRecoStoryById(id);
+  if (!item) {
+    if (titleNorm) {
+      try {
+        if (typeof window.__checkneFindCardInFeed === 'function' && typeof window.__checkneOpenCardElement === 'function') {
+          const fallback = window.__checkneFindCardInFeed({ title: titleNorm });
+          if (fallback) return window.__checkneOpenCardElement(fallback);
+        }
+      } catch {}
+    }
+    return false;
+  }
+
+  const itemId = String(getItemId(item) || item?.id || id).trim();
+  const withoutExact = existing.filter((it) => String(getItemId(it) || it?.id || '').trim() !== itemId);
+  const insertIndex = getPersonalRecoInsertIndex(withoutExact);
+  const merged = [
+    ...withoutExact.slice(0, insertIndex),
+    item,
+    ...withoutExact.slice(insertIndex),
+  ];
+
+  lastFeedItems = merged;
+  renderCards(merged, {
+    nowTs: Date.now(),
+    newIds: new Set(),
+    suppressNewBadges: true,
+    incremental: false,
+    animate: false,
+  });
+
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+  let opened = false;
+  try {
+    if (typeof window.__checkneFindCardInFeed === 'function' && typeof window.__checkneOpenCardElement === 'function') {
+      const exact = window.__checkneFindCardInFeed({ clusterId: itemId, title: '' });
+      if (exact) opened = window.__checkneOpenCardElement(exact);
+    }
+  } catch {}
+  if (!opened) {
+    opened = focusNewsCardById(itemId, { open: true, block: 'center', maxAttempts: 14, delayMs: 120 });
+  }
+  return !!opened;
+}
+
+
+function createPersonalRecoBanner(items) {
+  const profile = __personalRecoCache.profile || inferBrowserAudienceProfile();
+  const banner = document.createElement('section');
+  banner.className = 'personalRecoBanner';
+  banner.id = 'personalRecoBanner';
+
+  const browserCountry = String(profile?.country || '').toUpperCase() || 'YOUR REGION';
+  const currentCountry = String(state.country || 'world').toUpperCase();
+  const regionBadge = currentCountry !== browserCountry && browserCountry !== 'YOUR REGION'
+    ? `${browserCountry} picks`
+    : 'Smart picks';
+  const reasonText = profile?.reason
+    ? `Based on your browser region — ${profile.reason}`
+    : 'Based on your browser region and interests';
+
+  const cardsHtml = (Array.isArray(items) ? items : []).slice(0, PERSONAL_RECO_MAX_ITEMS).map((item, idx) => {
+    const title = escapeHtml(String(item?.title || 'Story'));
+    const source = escapeHtml(String(pickPrimarySourceName(item) || item?.topic || 'Recommended'));
+    const topic = escapeHtml(String(item?.topic || 'general'));
+    const thumb = (() => {
+      try {
+        const url = String(getNewsImage(item, 'thumb') || getNewsImage(item, 'card') || '').trim();
+        if (!url) return `<div class="personalRecoItem__thumb" data-image-state="empty"><span>No image</span></div>`;
+        return `<div class="personalRecoItem__thumb"><img src="${escapeHtml(url)}" alt="" loading="lazy" onerror="this.closest('.personalRecoItem__thumb')?.setAttribute('data-image-state','empty'); this.remove();" /></div>`;
+      } catch {
+        return `<div class="personalRecoItem__thumb" data-image-state="empty"><span>No image</span></div>`;
+      }
+    })();
+    const action = buildPersonalRecoAction(item);
+    const attr = action.type === 'story'
+      ? `data-action="story" data-target-id="${escapeHtml(String(action.targetId || ''))}" data-title-normalized="${escapeHtml(String(action.normalizedTitle || ''))}" data-title="${escapeHtml(String(action.title || item?.title || ''))}"`
+      : `data-action="source" data-href="${escapeHtml(String(action.href || '#'))}"`;
+    const actionLabel = action.type === 'story'
+      ? (action.inFeed ? 'Go to story' : 'Load story')
+      : 'Read story';
+    const actionClass = action.type === 'story'
+      ? (action.inFeed ? 'isSecondary' : 'isPrimary')
+      : 'isPrimary';
+    const metaBits = [source, topic.toUpperCase()];
+    if (item?.country) metaBits.push(escapeHtml(String(item.country).toUpperCase()));
+    return `
+      <article class="personalRecoItem">
+        ${thumb}
+        <div class="personalRecoItem__body">
+          <div class="personalRecoItem__eyebrow">${idx === 0 ? 'Top match' : 'Recommended'}</div>
+          <div class="personalRecoItem__title">${title}</div>
+          <div class="personalRecoItem__meta">${metaBits.join(' · ')}</div>
+          <button type="button" class="personalRecoItem__action ${actionClass}" ${attr}>
+            <span class="personalRecoItem__actionLabel">${actionLabel}</span>
+            <span class="personalRecoItem__actionIcon" aria-hidden="true">→</span>
+          </button>
+        </div>
+      </article>`;
+  }).join('');
+
+  banner.innerHTML = `
+    <div class="personalRecoBanner__glow" aria-hidden="true"></div>
+    <div class="personalRecoBanner__head">
+      <div>
+        <div class="personalRecoBanner__kicker">You may be interested</div>
+        <div class="personalRecoBanner__title">Personalized stories beyond your current feed</div>
+        <div class="personalRecoBanner__sub">${escapeHtml(reasonText)}</div>
+      </div>
+      <div class="personalRecoBanner__badges">
+        <span class="personalRecoBanner__badge isPrimary">${escapeHtml(regionBadge)}</span>
+        <span class="personalRecoBanner__badge">${escapeHtml(String((state.interests || ['general']).join(' · ') || 'general'))}</span>
+      </div>
+    </div>
+    <div class="personalRecoBanner__swipeHint" aria-hidden="true">Swipe for more →</div>
+    <div class="personalRecoBanner__grid">${cardsHtml}</div>
+  `;
+
+  banner.addEventListener('click', async (event) => {
+    const btn = event.target.closest('.personalRecoItem__action');
+    if (!btn) return;
+    const action = String(btn.getAttribute('data-action') || '').trim();
+    if (action === 'story') {
+      const targetId = String(btn.getAttribute('data-target-id') || '').trim();
+      const normalizedTitle = String(btn.getAttribute('data-title-normalized') || '').trim();
+      btn.disabled = true;
+      btn.classList.add('isLoading');
+      try {
+        const opened = await forceOpenPersonalRecoStory(targetId, normalizedTitle);
+        if (!opened) {
+          console.warn('[feed] reco story open failed', { targetId, normalizedTitle });
+        }
+      } finally {
+        btn.disabled = false;
+        btn.classList.remove('isLoading');
+      }
+      return;
+    }
+    const href = String(btn.getAttribute('data-href') || '').trim();
+    if (href && href !== '#') {
+      window.open(href, '_blank', 'noopener,noreferrer');
+    }
+  });
+
+  return banner;
+}
+
+async function syncPersonalRecoBanner(currentItems) {
+  const cards = qs('cards');
+  if (!cards) return;
+  removePersonalRecoBanner();
+  if (!shouldShowPersonalRecoBanner()) return;
+
+  const renderedCards = Array.from(cards.querySelectorAll('.newsCard'));
+  if (renderedCards.length <= PERSONAL_RECO_INSERT_AFTER) return;
+
+  const items = await ensurePersonalRecoItems(currentItems);
+  if (!Array.isArray(items) || !items.length) return;
+
+  const anchor = renderedCards[PERSONAL_RECO_INSERT_AFTER];
+  const banner = createPersonalRecoBanner(items);
+  if (anchor) cards.insertBefore(banner, anchor);
+  else cards.appendChild(banner);
+}
 
 function buildSourceReaderUrl(rawUrl, title, source) {
   const safeUrl = String(rawUrl || '').trim();
@@ -773,6 +1169,7 @@ function renderCards(items, opts) {
   }
 
   if (filtered.length === 0) {
+    removePersonalRecoBanner();
     cards.innerHTML = `<div class="panel muted">${t("ui.no_results","No results")}</div>`;
     return;
   }
@@ -836,6 +1233,7 @@ if (incremental && state.mode === 'feed' && newFeedEls.length) {
   }
   // Notify side widgets (best-effort)
   try { document.dispatchEvent(new CustomEvent("checkne:feedRendered")); } catch {}
+  syncPersonalRecoBanner(visible);
 
 }
 
@@ -1055,6 +1453,7 @@ function incrementalUpdateFeed(sortedItems, opts) {
   }
 
   updateLoadMoreBlock(filtered.length);
+  syncPersonalRecoBanner(visible);
 }
 
 
@@ -1718,14 +2117,140 @@ function clearVisualInputValue(){
   try { if (visualInputEl) visualInputEl.value = ''; } catch {}
 }
 
+
+async function loadVisualImageForOptimization(file){
+  return await new Promise((resolve, reject) => {
+    try {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        try { URL.revokeObjectURL(url); } catch {}
+        resolve(img);
+      };
+      img.onerror = () => {
+        try { URL.revokeObjectURL(url); } catch {}
+        reject(new Error('Could not read this image.'));
+      };
+      img.src = url;
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+async function canvasToBlobAsync(canvas, type, quality){
+  return await new Promise((resolve, reject) => {
+    try {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error('Could not compress image.'));
+      }, type, quality);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+async function optimizeVisualFileForUpload(file){
+  if (!file) return { file, optimized: false, reason: 'empty' };
+
+  const originalSize = Number(file.size || 0);
+  const type = String(file.type || '').toLowerCase();
+  const alreadySafe = originalSize <= VISUAL_SEARCH_MAX_UPLOAD_BYTES;
+  if (alreadySafe && (type === 'image/jpeg' || type === 'image/jpg')) {
+    return { file, optimized: false, reason: 'already-small', originalSize, finalSize: originalSize };
+  }
+
+  const img = await loadVisualImageForOptimization(file);
+  const originalWidth = Math.max(1, Number(img.naturalWidth || img.width || 1));
+  const originalHeight = Math.max(1, Number(img.naturalHeight || img.height || 1));
+  const longestSide = Math.max(originalWidth, originalHeight);
+  const initialScale = Math.min(1, VISUAL_SEARCH_MAX_DIMENSION / longestSide);
+
+  let bestBlob = null;
+  let bestWidth = originalWidth;
+  let bestHeight = originalHeight;
+
+  const qualities = [0.88, 0.8, 0.72, 0.64, 0.58, 0.5, 0.44];
+  const scaleSteps = [
+    initialScale,
+    initialScale * 0.9,
+    initialScale * 0.8,
+    initialScale * 0.7,
+    initialScale * 0.6,
+    initialScale * 0.5,
+  ].filter((value, index, arr) => value > 0 && arr.indexOf(value) === index);
+
+  for (const scaleValue of scaleSteps) {
+    const width = Math.max(VISUAL_SEARCH_MIN_DIMENSION, Math.round(originalWidth * Math.min(1, scaleValue || 1)));
+    const height = Math.max(Math.round((width / originalWidth) * originalHeight), Math.min(500, VISUAL_SEARCH_MIN_DIMENSION));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d', { alpha: false });
+    if (!ctx) continue;
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, 0, 0, width, height);
+
+    for (const quality of qualities) {
+      let blob = null;
+      try {
+        blob = await canvasToBlobAsync(canvas, 'image/jpeg', quality);
+      } catch {
+        blob = null;
+      }
+      if (!blob) continue;
+
+      if (!bestBlob || blob.size < bestBlob.size) {
+        bestBlob = blob;
+        bestWidth = width;
+        bestHeight = height;
+      }
+
+      if (blob.size <= VISUAL_SEARCH_SOFT_TARGET_BYTES) {
+        const safeName = String(file.name || 'visual-search-image').replace(/\.[^.]+$/, '') || 'visual-search-image';
+        return {
+          file: new File([blob], `${safeName}.jpg`, { type: 'image/jpeg', lastModified: Date.now() }),
+          optimized: true,
+          reason: 'compressed',
+          originalSize,
+          finalSize: blob.size,
+          width,
+          height,
+        };
+      }
+    }
+  }
+
+  if (bestBlob) {
+    const safeName = String(file.name || 'visual-search-image').replace(/\.[^.]+$/, '') || 'visual-search-image';
+    return {
+      file: new File([bestBlob], `${safeName}.jpg`, { type: 'image/jpeg', lastModified: Date.now() }),
+      optimized: bestBlob.size < originalSize,
+      reason: 'best-effort',
+      originalSize,
+      finalSize: bestBlob.size,
+      width: bestWidth,
+      height: bestHeight,
+    };
+  }
+
+  return { file, optimized: false, reason: 'fallback', originalSize, finalSize: originalSize, width: originalWidth, height: originalHeight };
+}
+
 function validateVisualFile(file){
   if (!file) return { ok:false, message: t('ui.visual_search_pick_image', 'Choose an image to start searching.') };
   const type = String(file.type || '').toLowerCase();
   if (!visualAllowedTypes.has(type)) {
     return { ok:false, message: t('ui.visual_search_bad_type', 'Please upload PNG, JPG, JPEG or WEBP.') };
   }
-  if ((file.size || 0) > 8 * 1024 * 1024) {
-    return { ok:false, message: t('ui.visual_search_too_large', 'Image is too large. Max 8 MB.') };
+  if ((file.size || 0) > VISUAL_SEARCH_HARD_MAX_BYTES) {
+    return { ok:false, message: t('ui.visual_search_too_large', 'Image is too large. Max 24 MB before optimization.') };
   }
   return { ok:true, message:'' };
 }
@@ -2011,13 +2536,44 @@ async function runVisualSearch(file){
     return;
   }
 
+  let uploadFile = file;
+  try {
+    if ((file.size || 0) > VISUAL_SEARCH_MAX_UPLOAD_BYTES || /^image\/(png|heic|heif|webp)$/i.test(String(file.type || ''))) {
+      setVisualStatus(t('ui.visual_search_step_preparing', 'Preparing image for upload...'));
+      const optimized = await optimizeVisualFileForUpload(file);
+      if (optimized && optimized.file) {
+        uploadFile = optimized.file;
+        const savedMb = Math.max(0, ((Number(optimized.originalSize || file.size || 0) - Number(optimized.finalSize || uploadFile.size || 0)) / (1024 * 1024)));
+        if (optimized.optimized && savedMb > 0.05) {
+          setVisualStatus(`Prepared image for upload · saved ${savedMb.toFixed(1)} MB`);
+        }
+      }
+    }
+
+    if ((uploadFile.size || 0) > VISUAL_SEARCH_MAX_UPLOAD_BYTES) {
+      setVisualStatus('Large screenshot detected. Compressing more aggressively for production upload...');
+      const retryOptimized = await optimizeVisualFileForUpload(uploadFile);
+      if (retryOptimized && retryOptimized.file) uploadFile = retryOptimized.file;
+    }
+
+    if ((uploadFile.size || 0) > VISUAL_SEARCH_MAX_UPLOAD_BYTES) {
+      throw new Error(`Image is still too large to upload safely (${Math.round((uploadFile.size || 0) / 1024)} KB). Try a tighter crop.`);
+    }
+  } catch (prepErr) {
+    console.warn('[visual-search] upload optimization failed', prepErr);
+    const prepMessage = prepErr?.message || 'Could not prepare this image for upload. Try a tighter crop or a smaller screenshot.';
+    setVisualStatus(prepMessage);
+    return;
+  }
+
   state.visualSearch = { active: true, filename: String(file.name || 'image') };
   setFeedExpanded(false);
   setStatus(t('ui.visual_search_loading', 'Analyzing image and looking for related news...'));
   setVisualStatus(t('ui.visual_search_step_reading', 'Reading text from screenshot...'));
 
   const fd = new FormData();
-  fd.append('image', file);
+  fd.append('image', uploadFile);
+  fd.append('original_filename', String(file.name || uploadFile.name || 'image'));
   fd.append('ui_lang', String(state.language || 'en'));
   fd.append('country', String(state.country || 'world'));
   fd.append('language', 'all');
@@ -2104,7 +2660,10 @@ async function runVisualSearch(file){
     }), 220);
   } catch (e) {
     console.error(e);
-    const msg = `${t('ui.visual_search_error', 'Could not analyze this image.')} ${e?.message || ''}`.trim();
+    const detail = String(e?.message || '').trim();
+    const msg = /HTTP 413|too large/i.test(detail)
+      ? 'This image is still too large for the live server. Try a smaller screenshot or a cropped area.'
+      : `${t('ui.visual_search_error', 'Could not analyze this image.')} ${detail}`.trim();
     setStatus(msg);
     setVisualStatus(msg);
   } finally {

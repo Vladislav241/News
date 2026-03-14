@@ -16,7 +16,7 @@
     '/static/js/auth.js?v=2026-02-24',
     '/static/js/pricing.js?v=2026-02-24',
     '/static/js/carousel.js?v=2026-02-24',
-    '/static/js/feed.js?v=2026-03-13-fixes-2',
+    '/static/js/feed.js?v=2026-03-14-reco-open-fix',
     '/static/js/dropdowns.js?v=2026-02-24',
     '/static/js/bootstrap.js?v=2026-02-24'
   ];

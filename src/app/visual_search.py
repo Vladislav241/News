@@ -24,7 +24,7 @@ ALLOWED_MIME_TYPES = {
     "image/jpg",
     "image/webp",
 }
-MAX_IMAGE_BYTES = 8 * 1024 * 1024
+MAX_IMAGE_BYTES = 12 * 1024 * 1024
 
 _UI_NOISE_PATTERNS = [
     r"\b(sign in|log in|subscribe|open app|share|comments?|reply|retweet|repost|menu|search|home|live|breaking|follow|read more)\b",
@@ -167,7 +167,7 @@ def validate_visual_image(raw: bytes, filename: str, mime_type: str) -> dict[str
     if not raw:
         raise VisualSearchError("Uploaded image is empty.", code="empty_image", status_code=400)
     if len(raw) > MAX_IMAGE_BYTES:
-        raise VisualSearchError("Image is too large. Maximum supported size is 8 MB.", code="image_too_large", status_code=413)
+        raise VisualSearchError("Image is too large. Maximum supported size is 12 MB.", code="image_too_large", status_code=413)
     mime = (mime_type or "").strip().lower()
     if mime not in ALLOWED_MIME_TYPES:
         raise VisualSearchError("Unsupported image format. Please upload PNG, JPG, JPEG or WEBP.", code="bad_image_type", status_code=400)

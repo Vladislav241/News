@@ -1887,8 +1887,8 @@ async def news_visual_search(
 
     if not raw:
         raise HTTPException(status_code=400, detail="Uploaded image is empty")
-    if len(raw) > 8 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="Image is too large (max 8 MB)")
+    if len(raw) > 12 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Image is too large (max 12 MB)")
 
     try:
         signal = extract_visual_search_signal(
