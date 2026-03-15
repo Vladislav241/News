@@ -1243,9 +1243,34 @@ const showTrackingUI = state.mode === 'fav';
     };
   }
 
+  const syncTrackingCardDraggable = () => {
+    const isTracking = (state.mode === 'fav');
+    const openDetails = div.querySelector('details.newsDetails[open]');
+    if (isTracking && !openDetails) div.setAttribute('draggable', 'true');
+    else div.removeAttribute('draggable');
+  };
+
   // Drag-to-delete in Tracking tab
+  let __cardDragGhost = null;
+  const __clearCardDragGhost = () => {
+    try { __cardDragGhost?.remove(); } catch (_) {}
+    __cardDragGhost = null;
+  };
   div.addEventListener('dragstart', (e) => {
-    if (state.mode !== 'fav') return;
+    if (state.mode !== 'fav') {
+      e.preventDefault();
+      return;
+    }
+
+    const openDetails = div.querySelector('details.newsDetails[open]');
+    if (openDetails || div.getAttribute('draggable') !== 'true') {
+      e.preventDefault();
+      return;
+    }
+
+    document.querySelectorAll('.newsCard.isDragging').forEach((el) => {
+      if (el !== div) el.classList.remove('isDragging');
+    });
 
     state.isDragging = true;
     updateTrashZone();
@@ -1253,6 +1278,24 @@ const showTrackingUI = state.mode === 'fav';
     try {
       e.dataTransfer.setData('text/plain', String(id));
       e.dataTransfer.effectAllowed = 'move';
+
+      const rect = div.getBoundingClientRect();
+      const ghost = div.cloneNode(true);
+      ghost.classList.remove('isDragging');
+      ghost.style.position = 'fixed';
+      ghost.style.left = '-10000px';
+      ghost.style.top = '0';
+      ghost.style.width = `${Math.max(220, Math.round(rect.width))}px`;
+      ghost.style.maxWidth = `${Math.max(220, Math.round(rect.width))}px`;
+      ghost.style.transform = 'none';
+      ghost.style.transition = 'none';
+      ghost.style.pointerEvents = 'none';
+      ghost.style.margin = '0';
+      ghost.style.opacity = '1';
+      ghost.style.zIndex = '-1';
+      document.body.appendChild(ghost);
+      __cardDragGhost = ghost;
+      e.dataTransfer.setDragImage(ghost, Math.min(24, Math.max(0, e.clientX - rect.left)), Math.min(24, Math.max(0, e.clientY - rect.top)));
     } catch (_) {}
     div.classList.add('isDragging');
   });
@@ -1260,6 +1303,8 @@ const showTrackingUI = state.mode === 'fav';
     div.classList.remove('isDragging');
     state.isDragging = false;
     updateTrashZone();
+    __clearCardDragGhost();
+    syncTrackingCardDraggable();
   });
 
   
@@ -1269,6 +1314,7 @@ const showTrackingUI = state.mode === 'fav';
 const detailsOpenEl = div.querySelector('details.newsDetails');
 if (detailsOpenEl) {
   detailsOpenEl.addEventListener('toggle', () => {
+  syncTrackingCardDraggable();
   // When a card is opened, remember it as the "current story" for PRO widgets
   // (Momentum Timeline / Top Charts etc.).
   // This is intentionally independent from search/topic filters.
@@ -1317,6 +1363,9 @@ try {
   // Apply once for programmatic opens (deep links)
   const tw0 = div.querySelector('.newsThumbWrap');
   if (tw0) tw0.style.display = detailsOpenEl.open ? 'none' : '';
+  syncTrackingCardDraggable();
+} else {
+  syncTrackingCardDraggable();
 }
 
 return div;
@@ -1344,8 +1393,9 @@ function updateCardElement(el, item, ctx, seen) {
   const trackingWrap = el.querySelector('.trackingWrap');
   if (trackingWrap) trackingWrap.style.display = (state.mode === 'fav') ? 'flex' : 'none';
 
-  // Toggle draggable depending on tab
-  if (state.mode === 'fav') el.setAttribute('draggable', 'true');
+  // Toggle draggable depending on tab and expanded state
+  const openDetails = el.querySelector('details.newsDetails[open]');
+  if (state.mode === 'fav' && !openDetails) el.setAttribute('draggable', 'true');
   else el.removeAttribute('draggable');
 
   // Update Trending flame visibility (server-driven)

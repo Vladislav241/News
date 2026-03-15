@@ -287,10 +287,12 @@ async function shareCluster(item) {
 }
 
 let __sharePhotoDragCleanup = null;
+let __sharePhotoCropState = null;
 
 function __destroySharePhotoDrag(){
   try { if (typeof __sharePhotoDragCleanup === 'function') __sharePhotoDragCleanup(); } catch {}
   __sharePhotoDragCleanup = null;
+  __sharePhotoCropState = null;
 }
 
 function __setupSharePhotoDrag(data) {
@@ -312,6 +314,7 @@ function __setupSharePhotoDrag(data) {
   pane.style.display = '';
   dragImg.draggable = false;
   dragImg.src = src;
+  __sharePhotoCropState = { fx: 0.5, fy: 0.5 };
 
   let destroyed = false;
   let raf = 0;
@@ -362,6 +365,10 @@ function __setupSharePhotoDrag(data) {
       tx = clamp(tx, minX, 0);
       ty = clamp(ty, minY, 0);
     }
+    __sharePhotoCropState = {
+      fx: (minX < 0) ? clamp((-tx) / (-minX || 1), 0, 1) : 0.5,
+      fy: (minY < 0) ? clamp((-ty) / (-minY || 1), 0, 1) : 0.5,
+    };
     queuePaint();
   };
 
@@ -382,6 +389,10 @@ function __setupSharePhotoDrag(data) {
     if (!dragging || activePointerId !== e.pointerId) return;
     tx = clamp(startTx + (e.clientX - startX), minX, 0);
     ty = clamp(startTy + (e.clientY - startY), minY, 0);
+    __sharePhotoCropState = {
+      fx: (minX < 0) ? clamp((-tx) / (-minX || 1), 0, 1) : 0.5,
+      fy: (minY < 0) ? clamp((-ty) / (-minY || 1), 0, 1) : 0.5,
+    };
     queuePaint();
     e.preventDefault();
   };
@@ -428,6 +439,19 @@ function __setupSharePhotoDrag(data) {
   };
 }
 
+function __shareUrlWithCrop(url) {
+  try {
+    const u = new URL(String(url || ''), location.origin);
+    const fx = Number(__sharePhotoCropState?.fx);
+    const fy = Number(__sharePhotoCropState?.fy);
+    if (Number.isFinite(fx)) u.searchParams.set('fx', fx.toFixed(4));
+    if (Number.isFinite(fy)) u.searchParams.set('fy', fy.toFixed(4));
+    return u.toString();
+  } catch {
+    return String(url || '');
+  }
+}
+
 function openShareModal(data) {
   const backdrop = document.getElementById('shareBackdrop');
   const closeBtn = document.getElementById('shareCloseBtn'); // may be null if removed in UI
@@ -459,29 +483,31 @@ function openShareModal(data) {
     if (dragImg) dragImg.removeAttribute('src');
   };
 
-  const encodedUrl = encodeURIComponent(data.url);
+  const getShareUrl = () => __shareUrlWithCrop(data.url);
   const tweetText = encodeURIComponent(`Trust score • ${data.title || 'CHECKNE.'}`);
-  const xUrl = `https://twitter.com/intent/tweet?url=${encodedUrl}&text=${tweetText}`;
+  const getXUrl = () => `https://twitter.com/intent/tweet?url=${encodeURIComponent(getShareUrl())}&text=${tweetText}`;
 
   toX.onclick = async () => {
     if (typeof window.__sharePromoBeforeOpen === 'function') {
-      const handled = await window.__sharePromoBeforeOpen({ item: data, platform: 'x', defaultUrl: xUrl, defaultShareUrl: data.url });
+      const shareUrl = getShareUrl();
+      const handled = await window.__sharePromoBeforeOpen({ item: data, platform: 'x', defaultUrl: getXUrl(), defaultShareUrl: shareUrl });
       if (handled) return;
     }
-    window.open(xUrl, '_blank', 'noopener,noreferrer');
+    window.open(getXUrl(), '_blank', 'noopener,noreferrer');
   };
 
   // Threads doesn't provide a fully reliable web intent. Best UX: open Threads and copy the link.
   toThreads.onclick = async () => {
     if (typeof window.__sharePromoBeforeOpen === 'function') {
-      const handled = await window.__sharePromoBeforeOpen({ item: data, platform: 'threads', defaultUrl: 'https://www.threads.net/', defaultShareUrl: data.url });
+      const shareUrl = getShareUrl();
+      const handled = await window.__sharePromoBeforeOpen({ item: data, platform: 'threads', defaultUrl: 'https://www.threads.net/', defaultShareUrl: shareUrl });
       if (handled) return;
     }
-    await copyShareLink(data.url);
+    await copyShareLink(getShareUrl());
     window.open('https://www.threads.net/', '_blank', 'noopener,noreferrer');
   };
 
-  copyBtn.onclick = () => copyShareLink(data.url);
+  copyBtn.onclick = () => copyShareLink(getShareUrl());
 
   const close = () => closeShareModal();
   if (closeBtn) closeBtn.onclick = close;

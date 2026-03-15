@@ -330,7 +330,7 @@ function buildTrustHistorySvg(points) {
 
   return `
   <svg class="trustChartSvg" viewBox="0 0 ${W} ${H}" width="100%" height="260" role="img" aria-label="Trust score history chart"
-       data-plot-left="${plotX}" data-plot-right="${plotX + plotW}" data-view-w="${W}" data-view-h="${H}">
+       data-plot-left="${plotX}" data-plot-right="${plotX + plotW}" data-view-w="${W}" data-view-h="${H}" data-plot-top="${plotY}" data-plot-height="${plotH}">
     <defs>
       <clipPath id="${clipId}">
         <rect x="${plotX}" y="${clipY}" width="${plotW}" height="${clipH}" rx="12" ry="12"></rect>
@@ -342,6 +342,7 @@ function buildTrustHistorySvg(points) {
 
     <!-- Pan/zoom gesture layer (behind dots) -->
     <rect class="trustPanLayer" x="${plotX}" y="${plotY}" width="${plotW}" height="${plotH}" fill="transparent"></rect>
+    <rect class="trustSelectRect" x="${plotX}" y="${plotY}" width="0" height="0" rx="10" ry="10" style="display:none;"></rect>
 
     <!-- Plot layer is clipped + transformed for zoom/pan -->
     <g class="trustPlot" clip-path="url(#${clipId})">

@@ -67,6 +67,16 @@ def _human_age(dt: Optional[datetime]) -> str:
     days = hours // 24
     return f"Update {days}d ago"
 
+def _query_float(request: Request, name: str, default: float) -> float:
+    raw = (request.query_params.get(name) or '').strip()
+    if not raw:
+        return default
+    try:
+        val = float(raw)
+    except Exception:
+        return default
+    return max(0.0, min(1.0, val))
+
 def _fonts_dir() -> str:
     """Project fonts directory (bundled, works on local + Render)."""
     here = os.path.dirname(__file__)
@@ -140,16 +150,21 @@ def _download_image(url: str) -> Optional[Image.Image]:
     except Exception:
         return None
 
-def _cover_resize(img: Image.Image, w: int, h: int) -> Image.Image:
-    # Resize to cover (like CSS object-fit: cover)
+def _cover_resize(img: Image.Image, w: int, h: int, *, focus_x: float = 0.5, focus_y: float = 0.5) -> Image.Image:
     iw, ih = img.size
     if iw == 0 or ih == 0:
         return img.resize((w, h))
     scale = max(w / iw, h / ih)
     nw, nh = int(iw * scale), int(ih * scale)
     img = img.resize((nw, nh), Image.Resampling.LANCZOS)
-    left = (nw - w) // 2
-    top = (nh - h) // 2
+    extra_x = max(0, nw - w)
+    extra_y = max(0, nh - h)
+    fx = max(0.0, min(1.0, float(focus_x)))
+    fy = max(0.0, min(1.0, float(focus_y)))
+    left = int(round(extra_x * fx))
+    top = int(round(extra_y * fy))
+    left = max(0, min(left, extra_x))
+    top = max(0, min(top, extra_y))
     return img.crop((left, top, left + w, top + h))
 
 def _draw_trust_pie(draw: ImageDraw.ImageDraw, center: tuple[int,int], radius: int, score: int):
@@ -355,10 +370,13 @@ def share_image(cluster_id: int, request: Request):
             img_url = s["image_url"]
             break
 
+    focus_x = _query_float(request, "fx", 0.5)
+    focus_y = _query_float(request, "fy", 0.5)
+
     updated_at = score_row.get("computed_at") or meta.get("updated_at") or meta.get("created_at") or ""
     dt = _parse_dt(updated_at)
     v = str(int(dt.timestamp())) if dt else str(int(time.time()))
-    version = f"{meta.get('title','')}|{summary}|{score}|{top_source}|{outlets_count}|{img_url}|{updated_at}|v8"
+    version = f"{meta.get('title','')}|{summary}|{score}|{top_source}|{outlets_count}|{img_url}|{updated_at}|{focus_x:.4f}|{focus_y:.4f}|v9"
     out_path = _cache_path(int(cluster_id), version)
 
     if os.path.exists(out_path):
@@ -378,7 +396,7 @@ def share_image(cluster_id: int, request: Request):
         art = Image.new("RGB", (left_w, OG_H), (235, 235, 240))
         ad = ImageDraw.Draw(art)
         ad.text((34, 34), "No related image", font=_font(28, weight="bold"), fill=(110, 110, 120))
-    art = _cover_resize(art, left_w, OG_H)
+    art = _cover_resize(art, left_w, OG_H, focus_x=focus_x, focus_y=focus_y)
     canvas.paste(art, (0, 0))
 
     cd.rectangle((right_x0, 0, OG_W, OG_H), fill=(255, 255, 255))
@@ -544,9 +562,12 @@ def share_page(cluster_id: int, request: Request):
     base = _base_url(request)
 
     sref = (request.query_params.get("sref") or "").strip()
-    page_url = f"{base}/share/{int(cluster_id)}?v={v}" + (f"&sref={sref}" if sref else "")
+    focus_x = _query_float(request, "fx", 0.5)
+    focus_y = _query_float(request, "fy", 0.5)
+    focus_qs = f"&fx={focus_x:.4f}&fy={focus_y:.4f}"
+    page_url = f"{base}/share/{int(cluster_id)}?v={v}{focus_qs}" + (f"&sref={sref}" if sref else "")
     app_url  = f"{base}/?open={int(cluster_id)}&shared=1" + (f"&sref={sref}" if sref else "")
-    img_url  = f"{base}/api/share-image/{int(cluster_id)}.png?v={v}"
+    img_url  = f"{base}/api/share-image/{int(cluster_id)}.png?v={v}{focus_qs}"
 
     html = f"""<!doctype html>
 <html lang="en">
@@ -598,7 +619,7 @@ def share_page(cluster_id: int, request: Request):
     <div class="frame">
       <h1>ARTICLE SHARE</h1>
       <div class="card">
-        <img src="/api/share-image/{int(cluster_id)}.png" alt="Share card" />
+        <img src="/api/share-image/{int(cluster_id)}.png?fx={focus_x:.4f}&fy={focus_y:.4f}" alt="Share card" />
       </div>
       <div class="cta">
         <a class="btn" href="{app_url}" id="openBtn" style="text-decoration:none; display:inline-flex; align-items:center; justify-content:center;">Open article</a>

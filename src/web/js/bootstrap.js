@@ -740,45 +740,89 @@ function initTrustHistoryZoom(chartCard) {
     const xform = svg.querySelector('g.trustPlotXform');
     const panLayer = svg.querySelector('rect.trustPanLayer');
     if (!xform || !panLayer) return;
+    try {
+      svg.style.touchAction = 'none';
+      panLayer.style.touchAction = 'none';
+      panLayer.style.cursor = 'crosshair';
+    } catch {}
 
     const plotLeft = Number(svg.getAttribute('data-plot-left') || 0);
     const plotRight = Number(svg.getAttribute('data-plot-right') || 0);
+    const plotTop = Number(svg.getAttribute('data-plot-top') || 0);
+    const plotHeight = Number(svg.getAttribute('data-plot-height') || 0);
     const viewW = Number(svg.getAttribute('data-view-w') || 0);
+    const viewH = Number(svg.getAttribute('data-view-h') || 0);
     if (!Number.isFinite(plotLeft) || !Number.isFinite(plotRight) || !Number.isFinite(viewW) || viewW <= 0) return;
 
     const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
     const MAX_ZOOM = 20;
 
-    // per-chart state
+    const existingRect = svg.querySelector('rect.trustSelectionRect');
+    if (existingRect) existingRect.remove();
+    const selectionRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    selectionRect.setAttribute('class', 'trustSelectionRect');
+    selectionRect.setAttribute('fill', 'rgba(0,0,0,0.08)');
+    selectionRect.setAttribute('stroke', 'rgba(0,0,0,0.42)');
+    selectionRect.setAttribute('stroke-width', '1.5');
+    selectionRect.setAttribute('stroke-dasharray', '7 5');
+    selectionRect.setAttribute('vector-effect', 'non-scaling-stroke');
+    selectionRect.style.display = 'none';
+    selectionRect.style.pointerEvents = 'none';
+    svg.appendChild(selectionRect);
+
     const st = {
       sx: 1,
       tx: 0,
-      dragging: false,
-      dragStartX: 0,
-      txStart: 0,
       pinch: null,
-      // Remember the last interaction point so +/- zoom from where the user focused.
+      selecting: false,
+      selectionMoved: false,
+      pointerId: null,
+      selectStartViewX: 0,
+      selectCurrentViewX: 0,
       lastViewX: (plotLeft + plotRight) / 2,
     };
 
-    // Keep dots visually circular when we zoom only along X.
-    // Without compensation, scaling the plot group on X turns circles into ellipses.
+    function viewXToDataX(viewX) {
+      return (viewX - st.tx) / (st.sx || 1);
+    }
+
+    function dataXToViewX(dataX) {
+      return st.sx * dataX + st.tx;
+    }
+
     function updateDotCompensation() {
       const inv = 1 / (st.sx || 1);
       svg.querySelectorAll('g.trustPlotXform circle.ptDot, g.trustPlotXform circle.ptHalo').forEach((c) => {
         const cx = Number(c.getAttribute('cx'));
         const cy = Number(c.getAttribute('cy'));
         if (!Number.isFinite(cx) || !Number.isFinite(cy)) return;
-        // Apply inverse X-scale around the circle center.
         c.setAttribute('transform', `translate(${cx} ${cy}) scale(${inv} 1) translate(${-cx} ${-cy})`);
       });
     }
 
     function boundsFor(sx) {
-      // Keep content covering the plot area (avoid blank gaps).
       const minTx = plotRight - sx * plotRight;
       const maxTx = plotLeft - sx * plotLeft;
       return { minTx, maxTx };
+    }
+
+    function hideSelection() {
+      selectionRect.style.display = 'none';
+    }
+
+    function renderSelection() {
+      const x1 = clamp(Math.min(st.selectStartViewX, st.selectCurrentViewX), plotLeft, plotRight);
+      const x2 = clamp(Math.max(st.selectStartViewX, st.selectCurrentViewX), plotLeft, plotRight);
+      const w = Math.max(0, x2 - x1);
+      if (w < 2) {
+        hideSelection();
+        return;
+      }
+      selectionRect.setAttribute('x', String(x1));
+      selectionRect.setAttribute('y', String(plotTop));
+      selectionRect.setAttribute('width', String(w));
+      selectionRect.setAttribute('height', String(Math.max(0, plotHeight || viewH || 260)));
+      selectionRect.style.display = 'block';
     }
 
     function apply() {
@@ -786,8 +830,7 @@ function initTrustHistoryZoom(chartCard) {
       st.tx = clamp(st.tx, b.minTx, b.maxTx);
       xform.setAttribute('transform', `matrix(${st.sx} 0 0 1 ${st.tx} 0)`);
       updateDotCompensation();
-      // Cursor feedback
-      panLayer.style.cursor = (st.sx > 1.001) ? (st.dragging ? 'grabbing' : 'grab') : 'default';
+      panLayer.style.cursor = 'crosshair';
     }
 
     function clientXToViewBoxX(clientX) {
@@ -796,17 +839,48 @@ function initTrustHistoryZoom(chartCard) {
       return clamp(px, 0, 1) * viewW;
     }
 
-    function zoomAt(viewX, factor) {
+    function clientYToViewBoxY(clientY) {
+      const r = svg.getBoundingClientRect();
+      const py = (clientY - r.top) / (r.height || 1);
+      return clamp(py, 0, 1) * viewH;
+    }
+
+    function isInsidePlotClient(clientX, clientY) {
+      const vx = clientXToViewBoxX(clientX);
+      const vy = clientYToViewBoxY(clientY);
+      return vx >= plotLeft && vx <= plotRight && vy >= plotTop && vy <= (plotTop + plotHeight);
+    }
+
+    function zoomAt(anchorViewX, factor) {
       const next = clamp(st.sx * factor, 1, MAX_ZOOM);
       if (Math.abs(next - st.sx) < 0.0001) return;
-      // Keep viewX stable under the cursor
-      st.tx = st.tx + (st.sx - next) * viewX;
+      const dataX = clamp(viewXToDataX(anchorViewX), plotLeft, plotRight);
+      st.tx = anchorViewX - next * dataX;
       st.sx = next;
       apply();
     }
 
+    function zoomToRange(startViewX, endViewX) {
+      const selStartView = clamp(Math.min(startViewX, endViewX), plotLeft, plotRight);
+      const selEndView = clamp(Math.max(startViewX, endViewX), plotLeft, plotRight);
+      const selViewW = selEndView - selStartView;
+      const plotW = Math.max(1, plotRight - plotLeft);
+      if (selViewW < Math.max(14, plotW * 0.02)) {
+        hideSelection();
+        return;
+      }
+      const selStartData = clamp(viewXToDataX(selStartView), plotLeft, plotRight);
+      const selEndData = clamp(viewXToDataX(selEndView), plotLeft, plotRight);
+      const selDataW = Math.max(0.0001, selEndData - selStartData);
+      const nextSx = clamp(plotW / selDataW, 1, MAX_ZOOM);
+      st.sx = nextSx;
+      st.tx = plotLeft - nextSx * selStartData;
+      st.lastViewX = (selStartView + selEndView) / 2;
+      hideSelection();
+      apply();
+    }
+
     function rememberFocusFromClientX(clientX) {
-      // Keep focus inside the plot area for nicer behavior.
       const viewX = clientXToViewBoxX(clientX);
       st.lastViewX = clamp(viewX, plotLeft, plotRight);
     }
@@ -814,12 +888,14 @@ function initTrustHistoryZoom(chartCard) {
     function reset() {
       st.sx = 1;
       st.tx = 0;
-      st.dragging = false;
       st.pinch = null;
+      st.selecting = false;
+      st.selectionMoved = false;
+      st.pointerId = null;
+      hideSelection();
       apply();
     }
 
-    // Buttons (controls live in header outside chartCard)
     const wrap = chartCard.closest('.trustHistoryWrap') || chartCard;
     wrap.querySelectorAll('.trustChartControls .trustCtl').forEach((btn) => {
       btn.addEventListener('click', (e) => {
@@ -833,9 +909,7 @@ function initTrustHistoryZoom(chartCard) {
       });
     });
 
-    // Wheel zoom (trackpad/mouse)
     svg.addEventListener('wheel', (e) => {
-      // Only if inside plot area
       const r = svg.getBoundingClientRect();
       const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
       if (!inside) return;
@@ -846,50 +920,71 @@ function initTrustHistoryZoom(chartCard) {
       zoomAt(viewX, factor);
     }, { passive: false });
 
-    // Drag to pan (Pointer Events)
-    panLayer.addEventListener('pointerdown', (e) => {
-      // Always remember where the user touched/clicked, so subsequent +/- zoom
-      // feels anchored to their intent.
-      rememberFocusFromClientX(e.clientX);
+    const pointerSurface = svg;
 
-      if (st.sx <= 1.001) return; // no pan when not zoomed
-      st.dragging = true;
-      st.dragStartX = e.clientX;
-      st.txStart = st.tx;
-      try { panLayer.setPointerCapture(e.pointerId); } catch {}
-      apply();
-      e.preventDefault();
-      e.stopPropagation();
-    });
-    panLayer.addEventListener('pointermove', (e) => {
-      if (!st.dragging) return;
+    pointerSurface.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      if (!isInsidePlotClient(e.clientX, e.clientY)) return;
       rememberFocusFromClientX(e.clientX);
-      const r = svg.getBoundingClientRect();
-      const dxPx = e.clientX - st.dragStartX;
-      // Convert screen px to viewBox units
-      const dxView = (dxPx / (r.width || 1)) * viewW;
-      st.tx = st.txStart + dxView;
-      apply();
+      st.selecting = true;
+      st.selectionMoved = false;
+      st.pointerId = e.pointerId;
+      st.selectStartViewX = clamp(clientXToViewBoxX(e.clientX), plotLeft, plotRight);
+      st.selectCurrentViewX = st.selectStartViewX;
+      renderSelection();
+      try { pointerSurface.setPointerCapture(e.pointerId); } catch {}
       e.preventDefault();
       e.stopPropagation();
-    });
-    const endDrag = () => {
-      if (!st.dragging) return;
-      st.dragging = false;
+    }, true);
+
+    pointerSurface.addEventListener('pointermove', (e) => {
+      if (!st.selecting || st.pointerId !== e.pointerId) return;
+      rememberFocusFromClientX(e.clientX);
+      st.selectCurrentViewX = clamp(clientXToViewBoxX(e.clientX), plotLeft, plotRight);
+      if (Math.abs(st.selectCurrentViewX - st.selectStartViewX) >= 3) st.selectionMoved = true;
+      renderSelection();
+      e.preventDefault();
+      e.stopPropagation();
+    }, true);
+
+    const finishSelection = (e) => {
+      if (!st.selecting) return;
+      if (e && st.pointerId != null && e.pointerId !== st.pointerId) return;
+      const startX = st.selectStartViewX;
+      const endX = st.selectCurrentViewX;
+      st.selecting = false;
+      st.pointerId = null;
+      if (e) {
+        try { pointerSurface.releasePointerCapture(e.pointerId); } catch {}
+      }
+      if (st.selectionMoved) zoomToRange(startX, endX);
+      else hideSelection();
+      st.selectionMoved = false;
       apply();
     };
-    panLayer.addEventListener('pointerup', endDrag);
-    panLayer.addEventListener('pointercancel', endDrag);
-    panLayer.addEventListener('pointerleave', endDrag);
 
-    // Pinch zoom (touch)
+    pointerSurface.addEventListener('pointerup', finishSelection, true);
+    pointerSurface.addEventListener('pointercancel', finishSelection, true);
+    pointerSurface.addEventListener('pointerleave', (e) => {
+      if (!st.selecting) return;
+      if (e && st.pointerId != null && e.pointerId !== st.pointerId) return;
+      st.selectCurrentViewX = clamp(clientXToViewBoxX(e.clientX), plotLeft, plotRight);
+      renderSelection();
+    }, true);
+    window.addEventListener('pointerup', finishSelection, true);
+
     svg.addEventListener('touchstart', (e) => {
       if (e.touches && e.touches.length === 2) {
+        hideSelection();
+        st.selecting = false;
+        st.selectionMoved = false;
+        st.pointerId = null;
         const a = e.touches[0], b = e.touches[1];
         const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
         const midX = (a.clientX + b.clientX) / 2;
         rememberFocusFromClientX(midX);
-        st.pinch = { dist, sx: st.sx, tx: st.tx, midViewX: clientXToViewBoxX(midX) };
+        const midViewX = clientXToViewBoxX(midX);
+        st.pinch = { dist, sx: st.sx, tx: st.tx, midViewX, midDataX: clamp(viewXToDataX(midViewX), plotLeft, plotRight) };
       }
     }, { passive: true });
     svg.addEventListener('touchmove', (e) => {
@@ -899,17 +994,15 @@ function initTrustHistoryZoom(chartCard) {
       const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
       const ratio = dist / (st.pinch.dist || dist || 1);
       const next = clamp(st.pinch.sx * ratio, 1, MAX_ZOOM);
-      st.tx = st.pinch.tx + (st.pinch.sx - next) * st.pinch.midViewX;
+      st.tx = st.pinch.midViewX - next * st.pinch.midDataX;
       st.sx = next;
       apply();
     }, { passive: false });
     svg.addEventListener('touchend', () => { st.pinch = null; }, { passive: true });
     svg.addEventListener('touchcancel', () => { st.pinch = null; }, { passive: true });
 
-    // Init
     apply();
   } catch {
-    // never break the tracking page if something goes wrong
   }
 }
 
