@@ -282,7 +282,150 @@ async function shareCluster(item) {
     title: item?.title || 'CHECKNE.',
     score: item?.score ?? item?.trust_score ?? null,
     outlets: item?.sources_count ?? item?.outlet_count ?? null,
+    imageUrl: item?.image || item?.thumbnail || item?.thumb || item?.image_url || item?.imageUrl || item?.urlToImage || item?.thumbnail_url || item?.thumb_url || item?.hero_image || item?.heroImage || item?.lead_image_url || item?.leadImageUrl || item?.og_image || item?.ogImage || item?.open_graph_image || item?.openGraphImage || '',
   });
+}
+
+let __sharePhotoDragCleanup = null;
+
+function __destroySharePhotoDrag(){
+  try { if (typeof __sharePhotoDragCleanup === 'function') __sharePhotoDragCleanup(); } catch {}
+  __sharePhotoDragCleanup = null;
+}
+
+function __setupSharePhotoDrag(data) {
+  __destroySharePhotoDrag();
+
+  const pane = document.getElementById('sharePhotoDragPane');
+  const viewport = document.getElementById('sharePhotoViewport');
+  const dragImg = document.getElementById('sharePhotoDragImg');
+  const baseImg = document.getElementById('sharePreviewImg');
+  if (!pane || !viewport || !dragImg || !baseImg) return;
+
+  const src = String(data?.imageUrl || '').trim();
+  if (!src) {
+    pane.style.display = 'none';
+    dragImg.removeAttribute('src');
+    return;
+  }
+
+  pane.style.display = '';
+  dragImg.draggable = false;
+  dragImg.src = src;
+
+  let destroyed = false;
+  let raf = 0;
+  let tx = 0;
+  let ty = 0;
+  let minX = 0;
+  let minY = 0;
+  let dragging = false;
+  let activePointerId = null;
+  let startX = 0;
+  let startY = 0;
+  let startTx = 0;
+  let startTy = 0;
+
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+  const paint = () => {
+    raf = 0;
+    dragImg.style.transform = `translate(${tx}px, ${ty}px)`;
+  };
+
+  const queuePaint = () => {
+    if (raf) return;
+    raf = requestAnimationFrame(paint);
+  };
+
+  const layout = () => {
+    if (destroyed || !dragImg.naturalWidth || !dragImg.naturalHeight) return;
+    const rect = viewport.getBoundingClientRect();
+    const vw = Math.max(0, rect.width);
+    const vh = Math.max(0, rect.height);
+    if (!vw || !vh) return;
+
+    const scale = Math.max(vw / dragImg.naturalWidth, vh / dragImg.naturalHeight);
+    const renderW = dragImg.naturalWidth * scale;
+    const renderH = dragImg.naturalHeight * scale;
+
+    dragImg.style.width = `${renderW}px`;
+    dragImg.style.height = `${renderH}px`;
+
+    minX = Math.min(0, vw - renderW);
+    minY = Math.min(0, vh - renderH);
+
+    if (!Number.isFinite(tx) || !Number.isFinite(ty)) {
+      tx = minX / 2;
+      ty = minY / 2;
+    } else {
+      tx = clamp(tx, minX, 0);
+      ty = clamp(ty, minY, 0);
+    }
+    queuePaint();
+  };
+
+  const onPointerDown = (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    dragging = true;
+    activePointerId = e.pointerId;
+    startX = e.clientX;
+    startY = e.clientY;
+    startTx = tx;
+    startTy = ty;
+    pane.classList.add('isDragging');
+    try { pane.setPointerCapture(e.pointerId); } catch {}
+    e.preventDefault();
+  };
+
+  const onPointerMove = (e) => {
+    if (!dragging || activePointerId !== e.pointerId) return;
+    tx = clamp(startTx + (e.clientX - startX), minX, 0);
+    ty = clamp(startTy + (e.clientY - startY), minY, 0);
+    queuePaint();
+    e.preventDefault();
+  };
+
+  const stopDrag = (e) => {
+    if (!dragging || (e && activePointerId !== e.pointerId)) return;
+    dragging = false;
+    pane.classList.remove('isDragging');
+    if (e) {
+      try { pane.releasePointerCapture(e.pointerId); } catch {}
+    }
+    activePointerId = null;
+  };
+
+  const onBaseLoad = () => { layout(); };
+  const onDragLoad = () => { tx = NaN; ty = NaN; layout(); };
+  const onResize = () => { layout(); };
+  const onDragError = () => { pane.style.display = 'none'; };
+
+  dragImg.addEventListener('load', onDragLoad);
+  dragImg.addEventListener('error', onDragError);
+  baseImg.addEventListener('load', onBaseLoad);
+  pane.addEventListener('pointerdown', onPointerDown);
+  pane.addEventListener('pointermove', onPointerMove);
+  pane.addEventListener('pointerup', stopDrag);
+  pane.addEventListener('pointercancel', stopDrag);
+  window.addEventListener('resize', onResize);
+
+  if (dragImg.complete && dragImg.naturalWidth) onDragLoad();
+  if (baseImg.complete && baseImg.naturalWidth) onBaseLoad();
+
+  __sharePhotoDragCleanup = () => {
+    destroyed = true;
+    if (raf) cancelAnimationFrame(raf);
+    pane.classList.remove('isDragging');
+    dragImg.removeEventListener('load', onDragLoad);
+    dragImg.removeEventListener('error', onDragError);
+    baseImg.removeEventListener('load', onBaseLoad);
+    pane.removeEventListener('pointerdown', onPointerDown);
+    pane.removeEventListener('pointermove', onPointerMove);
+    pane.removeEventListener('pointerup', stopDrag);
+    pane.removeEventListener('pointercancel', stopDrag);
+    window.removeEventListener('resize', onResize);
+  };
 }
 
 function openShareModal(data) {
@@ -302,13 +445,18 @@ function openShareModal(data) {
 
   // Populate UI
   headline.textContent = data.title || 'Share';
+  img.style.display = '';
   img.src = `/api/share-image/${encodeURIComponent(data.id)}.png?dpr=2&v=${encodeURIComponent(data.v || Date.now())}`;
-
+  __setupSharePhotoDrag(data);
 
   img.onerror = () => {
-    // If image generator fails, still allow share
     img.removeAttribute('src');
     img.style.display = 'none';
+    __destroySharePhotoDrag();
+    const pane = document.getElementById('sharePhotoDragPane');
+    const dragImg = document.getElementById('sharePhotoDragImg');
+    if (pane) pane.style.display = 'none';
+    if (dragImg) dragImg.removeAttribute('src');
   };
 
   const encodedUrl = encodeURIComponent(data.url);
@@ -356,6 +504,7 @@ function openShareModal(data) {
 }
 
 function closeShareModal(){
+  __destroySharePhotoDrag();
   const backdrop = document.getElementById('shareBackdrop');
   if (!backdrop) return;
   backdrop.classList.remove('isOpen');

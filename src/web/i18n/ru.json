@@ -135,7 +135,8 @@
     "on_x": "Поделиться в X",
     "on_threads": "Поделиться в Threads",
     "no_thanks": "Не надо!",
-    "tweet_prefix": "Trust score •"
+    "tweet_prefix": "Trust score •",
+    "photo_hint": "Перетаскивай фото, чтобы настроить кадрирование"
   },
   "card": {
     "source_diffs": "Различия между источниками",

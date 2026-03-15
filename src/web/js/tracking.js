@@ -168,62 +168,16 @@ async function fetchTrustHistory(clusterId, limit = 60) {
 
 
 // Build SVG line chart for trust score history (0..100)
-function _monotoneXToBezierPath(coords) {
-  // Monotone cubic interpolation in X (like d3.curveMonotoneX)
-  // Prevents overshoot/loops and avoids the line 'going backwards'.
-  if (!coords || coords.length < 2) return '';
-  const pts = coords;
-  if (pts.length === 2) {
-    const a = pts[0], b = pts[1];
-    return `M ${a.x.toFixed(2)} ${a.y.toFixed(2)} L ${b.x.toFixed(2)} ${b.y.toFixed(2)}`;
+function _sharpPolylinePath(coords) {
+  if (!coords || !coords.length) return '';
+  const pts = coords.slice().sort((a, b) => (a.x - b.x) || (a.y - b.y));
+  if (pts.length === 1) {
+    return `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`;
   }
 
-  // Ensure increasing X (fallback: sort + stable tie-break)
-  const sorted = pts.slice().sort((a, b) => (a.x - b.x) || (a.y - b.y));
-
-  const n = sorted.length;
-  const dx = new Array(n - 1);
-  const dy = new Array(n - 1);
-  const slope = new Array(n - 1);
-  for (let i = 0; i < n - 1; i++) {
-    dx[i] = sorted[i + 1].x - sorted[i].x;
-    dy[i] = sorted[i + 1].y - sorted[i].y;
-    slope[i] = dx[i] ? (dy[i] / dx[i]) : 0;
-  }
-
-  // Tangents
-  const m = new Array(n);
-  m[0] = slope[0];
-  for (let i = 1; i < n - 1; i++) m[i] = (slope[i - 1] + slope[i]) / 2;
-  m[n - 1] = slope[n - 2];
-
-  // Fritsch–Carlson adjustment (keeps the curve from overshooting)
-  for (let i = 0; i < n - 1; i++) {
-    if (slope[i] === 0) {
-      m[i] = 0;
-      m[i + 1] = 0;
-      continue;
-    }
-    const a = m[i] / slope[i];
-    const b = m[i + 1] / slope[i];
-    const h = Math.hypot(a, b);
-    if (h > 3) {
-      const t = 3 / h;
-      m[i] = t * a * slope[i];
-      m[i + 1] = t * b * slope[i];
-    }
-  }
-
-  let d = `M ${sorted[0].x.toFixed(2)} ${sorted[0].y.toFixed(2)}`;
-  for (let i = 0; i < n - 1; i++) {
-    const p0 = sorted[i];
-    const p1 = sorted[i + 1];
-    const h = (p1.x - p0.x);
-    const c1x = p0.x + h / 3;
-    const c1y = p0.y + m[i] * h / 3;
-    const c2x = p1.x - h / 3;
-    const c2y = p1.y - m[i + 1] * h / 3;
-    d += ` C ${c1x.toFixed(2)} ${c1y.toFixed(2)} ${c2x.toFixed(2)} ${c2y.toFixed(2)} ${p1.x.toFixed(2)} ${p1.y.toFixed(2)}`;
+  let d = `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`;
+  for (let i = 1; i < pts.length; i++) {
+    d += ` L ${pts[i].x.toFixed(2)} ${pts[i].y.toFixed(2)}`;
   }
   return d;
 }
@@ -286,8 +240,13 @@ function buildTrustHistorySvg(points) {
   }).join('');
 
   const coords = pts.map((p) => ({ x: xFor(p.ts), y: yFor(p.score), meta: p }));
-  // Monotone curve (no overshoot, no backtracking)
-  const pathD = _monotoneXToBezierPath(coords);
+  // Straight market-style line with subtle corner rounding for a cleaner premium look.
+  const pathD = _sharpPolylinePath(coords);
+
+  const plotX = padL;
+  const plotY = padT;
+  const plotW = (W - padL - padR);
+  const plotH = (H - padT - padB);
 
   const uid = (++_trustChartUid);
   const clipId = `trustClip_${uid}`;
@@ -337,6 +296,13 @@ function buildTrustHistorySvg(points) {
   }).join('');
 
   const circles = coords.map((c, i) => {
+    const prevX = (i > 0) ? coords[i - 1].x : plotX;
+    const nextX = (i < coords.length - 1) ? coords[i + 1].x : (plotX + plotW);
+    const leftEdge = (i > 0) ? ((prevX + c.x) / 2) : plotX;
+    const rightEdge = (i < coords.length - 1) ? ((c.x + nextX) / 2) : (plotX + plotW);
+    const hitX = Math.max(plotX, leftEdge);
+    const hitW = Math.max(18, Math.min(plotX + plotW, rightEdge) - hitX);
+
     const meta = {
       ts: c.meta.ts,
       score: c.meta.score,
@@ -347,16 +313,12 @@ function buildTrustHistorySvg(points) {
     const enc = encodeURIComponent(JSON.stringify(meta));
     return `
       <g class="pt" data-meta="${enc}">
-        <circle class="ptHalo" cx="${c.x}" cy="${c.y}" r="0"></circle>
-        <circle class="ptDot" cx="${c.x}" cy="${c.y}" r="9"></circle>
+        <rect class="ptHit" x="${hitX}" y="${plotY}" width="${hitW}" height="${plotH}"></rect>
+        <circle class="ptHalo" cx="${c.x}" cy="${c.y}" r="13"></circle>
+        <circle class="ptDot" cx="${c.x}" cy="${c.y}" r="6"></circle>
       </g>
     `;
   }).join('');
-
-  const plotX = padL;
-  const plotY = padT;
-  const plotW = (W - padL - padR);
-  const plotH = (H - padT - padB);
 
   // The plot is clipped to rounded corners. However, the line stroke and dot radius
   // extend beyond the mathematical plot area (e.g., score=100 sits exactly at padT),
@@ -425,7 +387,7 @@ function buildTrustHistorySectionHtml(item) {
             <div class="trustStatsSub">${t("ui.since_publication","Since publication")}</div>
           </div>
         </div>
-        <div class="trustChartHint">${t("ui.chart_hint","Tip: scroll/pinch or use + / − to zoom, drag to pan, then tap a dot for details")}</div>
+        <div class="trustChartHint">${t("ui.chart_hint","Tip: hover or tap anywhere on the chart for details, then scroll/pinch or use + / − to zoom")}</div>
 
         ${locked ? `
           <div class="trustLockOverlay" role="button" tabindex="0" aria-label="Get Pro">

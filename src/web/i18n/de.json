@@ -146,7 +146,8 @@
     "on_x": "Auf X teilen",
     "on_threads": "Auf Threads teilen",
     "no_thanks": "Nein, danke!",
-    "tweet_prefix": "Trust Score •"
+    "tweet_prefix": "Trust Score •",
+    "photo_hint": "Foto ziehen, um den Zuschnitt anzupassen"
   },
   "card": {
     "source_diffs": "Unterschiede zwischen Quellen",

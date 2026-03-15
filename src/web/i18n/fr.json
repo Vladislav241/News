@@ -146,7 +146,8 @@
     "on_x": "Partager sur X",
     "on_threads": "Partager sur Threads",
     "no_thanks": "Non merci !",
-    "tweet_prefix": "Score de confiance •"
+    "tweet_prefix": "Score de confiance •",
+    "photo_hint": "Faites glisser la photo pour ajuster le cadrage"
   },
   "card": {
     "source_diffs": "Différences entre les sources",

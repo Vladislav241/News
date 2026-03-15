@@ -470,14 +470,17 @@ function createPersonalRecoBanner(items) {
       const targetCountry = String(btn.getAttribute('data-target-country') || '').trim().toLowerCase();
       btn.disabled = true;
       btn.classList.add('isLoading');
+      setStoryOpenOverlay(true);
       try {
         const opened = await openPersonalRecoStoryAction(targetId, normalizedTitle, targetCountry);
         if (!opened) {
           console.warn('[feed] reco story open failed', { targetId, normalizedTitle });
         }
       } finally {
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         btn.disabled = false;
         btn.classList.remove('isLoading');
+        setStoryOpenOverlay(false);
       }
       return;
     }
@@ -541,6 +544,25 @@ function getItemId(it) {
 let __feedRequestSeq = 0;
 let __feedActiveAbortController = null;
 let __pendingStoryFocus = null;
+
+let __storyOpenOverlayCount = 0;
+
+function setStoryOpenOverlay(active) {
+  try {
+    const body = document.body;
+    if (!body) return;
+    if (active) {
+      __storyOpenOverlayCount += 1;
+      body.classList.add('story-opening');
+      return;
+    }
+    __storyOpenOverlayCount = Math.max(0, __storyOpenOverlayCount - 1);
+    if (__storyOpenOverlayCount === 0) {
+      body.classList.remove('story-opening');
+    }
+  } catch {}
+}
+
 
 function logRecoStoryDiagnostic(stage, payload = {}) {
   try {

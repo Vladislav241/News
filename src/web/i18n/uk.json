@@ -147,7 +147,8 @@
     "on_x": "Share on X",
     "on_threads": "Share on Threads",
     "no_thanks": "No thanks!",
-    "tweet_prefix": "Trust score •"
+    "tweet_prefix": "Trust score •",
+    "photo_hint": "Перетягуй фото, щоб налаштувати кадрування"
   },
   "card": {
     "source_diffs": "Відмінності між джерелами",

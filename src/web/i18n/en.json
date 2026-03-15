@@ -153,7 +153,8 @@
     "on_x": "Share on X",
     "on_threads": "Share on Threads",
     "no_thanks": "No thanks!",
-    "tweet_prefix": "Trust score •"
+    "tweet_prefix": "Trust score •",
+    "photo_hint": "Drag the photo to adjust the crop"
   },
   "card": {
     "source_diffs": "Source differences",

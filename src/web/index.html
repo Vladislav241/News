@@ -17,7 +17,6 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700&family=Jersey+25&display=swap" rel="stylesheet">
-
   <!-- Animations are inlined below (no extra CSS files). -->
 
  <style>
@@ -938,12 +937,22 @@ body.visualSearchLock{ overflow:hidden; }
     .trustChartSvg .xTick{ fill: rgba(0,0,0,0.28); font-size: 13px; }
     .trustChartSvg .gridLine{ stroke: rgba(0,0,0,0.10); stroke-width: 1; }
     .trustChartSvg .axisLine{ stroke: rgba(0,0,0,0.16); stroke-width: 1; }
-    .trustChartSvg .hoverLine{ stroke: rgba(0,0,0,0.24); stroke-width: 2; stroke-dasharray: 6 8; }
-    .trustChartSvg .line{ fill: none; stroke: #6F6F6F; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+    .trustChartSvg .hoverLine{ stroke: rgba(0,0,0,0.18); stroke-width: 2; stroke-dasharray: 0; }
+    .trustChartSvg .line{
+  fill: none;
+  stroke: #6F6F6F;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: miter;
+}
     .trustChartSvg .pt{ cursor: pointer; pointer-events: all; }
-    .trustChartSvg .ptDot{ fill: #46494E;  stroke-width: 4; }
-    .trustChartSvg .ptHalo{ fill: rgba(0,0,0,0.06); }
-    .trustChartSvg .pt.active .ptHalo{ fill: rgba(0,0,0,0.10); }
+    .trustChartSvg .ptHit{ fill: transparent; }
+    .trustChartSvg .ptDot{ fill: #46494E; opacity: 0; transition: opacity .12s ease; }
+    .trustChartSvg .ptHalo{ fill: rgba(0,0,0,0.08); opacity: 0; transition: opacity .12s ease; }
+    .trustChartSvg .pt.active .ptDot,
+    .trustChartSvg .pt:hover .ptDot{ opacity: 1; }
+    .trustChartSvg .pt.active .ptHalo,
+    .trustChartSvg .pt:hover .ptHalo{ opacity: 1; }
 
     
     /* -----------------------------
@@ -2818,6 +2827,14 @@ body.visualSearchLock{ overflow:hidden; }
   color: rgba(0,0,0,0.35);
   margin: 0 0 12px;
 }
+.sharePhotoHint{
+  margin: -2px 0 12px;
+  text-align: left;
+  font-size: 12px;
+  line-height: 1.35;
+  color: rgba(0,0,0,0.52);
+  user-select: none;
+}
 
 /* рамка под картинку */
 .sharePreviewFrame{
@@ -2827,12 +2844,49 @@ body.visualSearchLock{ overflow:hidden; }
   border: 1px solid rgba(0,0,0,0.10);
   padding: 14px;
 }
+.sharePreviewStage{
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fff;
+}
 .sharePreviewImg{
   width: 100%;
   height: auto;
   display: block;
   border-radius: 14px;
   background: #fff;
+}
+.sharePhotoDragPane{
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 44.1666667%;
+  height: 100%;
+  overflow: hidden;
+  border-top-left-radius: 14px;
+  border-bottom-left-radius: 14px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.sharePhotoDragPane.isDragging{ cursor: grabbing; }
+.sharePhotoViewport{
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.sharePhotoDragImg{
+  position: absolute;
+  left: 0;
+  top: 0;
+  max-width: none;
+  will-change: transform;
+  transform: translate(0px, 0px);
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
 }
 
 /* Кнопки */
@@ -2895,6 +2949,7 @@ body.visualSearchLock{ overflow:hidden; }
   .shareBody{ padding: 30px 20px 24px; }
   .shareHero h1{ font-size: 32px; }
   .shareHero p{ font-size: 16px; }
+  .sharePhotoHint{ font-size: 11px; }
   .shareAction{ height: 58px; font-size: 18px; border-radius: 16px; }
   .shareNoThanks{ font-size: 18px; }
 }
@@ -3534,7 +3589,8 @@ body.brand-overlay-out .brandOverlay{
   justify-content: center;
   transition: opacity 220ms cubic-bezier(0.22,1,0.36,1);
 }
-body.view-switching .viewShade{ opacity: 1; }
+body.view-switching .viewShade,
+body.story-opening .viewShade{ opacity: 1; pointer-events: auto; }
 
 /* Premium dot loader (black dots bouncing one-by-one) */
 .dotLoader{
@@ -6143,8 +6199,16 @@ body.eventMapModalOpen{overflow:hidden;}
 
       <div class="sharePanel">
         <div class="sharePanelLabel" data-i18n="share.preview_label">ARTICLE PREVIEW</div>
+        <div class="sharePhotoHint" data-i18n="share.photo_hint">Drag the photo to adjust the crop</div>
         <div class="sharePreviewFrame">
-          <img id="sharePreviewImg" class="sharePreviewImg" alt="Share preview" />
+          <div class="sharePreviewStage">
+            <img id="sharePreviewImg" class="sharePreviewImg" alt="Share preview" />
+            <div id="sharePhotoDragPane" class="sharePhotoDragPane" aria-hidden="true">
+              <div id="sharePhotoViewport" class="sharePhotoViewport">
+                <img id="sharePhotoDragImg" class="sharePhotoDragImg" alt="" />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
