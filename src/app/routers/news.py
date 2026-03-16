@@ -731,6 +731,16 @@ def _parse_dt(value):
         return None
 
 
+def _source_sort_key(s: dict[str, Any]) -> tuple[datetime, int, str]:
+    dt = _parse_dt(s.get("published_at")) or _parse_dt(s.get("inserted_at")) or datetime.max
+    try:
+        sid = int(s.get("id") or 0)
+    except Exception:
+        sid = 0
+    name = str(s.get("source_name") or "").strip().lower()
+    return (dt, sid, name)
+
+
 def _decorate_cluster_row(c: dict[str, Any], include_sources: bool = True) -> dict[str, Any]:
     cid = int(c["id"])
 
@@ -744,9 +754,12 @@ def _decorate_cluster_row(c: dict[str, Any], include_sources: bool = True) -> di
 
     if include_sources:
         sources = db.get_cluster_sources(cid)
-        primary_source = (sources[0].get("source_name") if sources else None)
 
-        # choose event image: first non-empty article image_url
+        # "First source" means the earliest article in the cluster, not the newest.
+        earliest_sources = sorted(sources, key=_source_sort_key)
+        primary_source = (earliest_sources[0].get("source_name") if earliest_sources else None)
+
+        # choose event image: first non-empty article image_url from the freshest rows
         for s in sources:
             u = (s.get("image_url") or "").strip()
             if u:
@@ -866,6 +879,7 @@ def _decorate_cluster_row(c: dict[str, Any], include_sources: bool = True) -> di
                 "url": s.get("url"),
                 "published_at": s.get("published_at"),
                 "image_url": s.get("image_url"),
+                "inserted_at": s.get("inserted_at"),
             }
             for s in sources
         ]

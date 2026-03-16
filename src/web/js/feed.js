@@ -17,8 +17,18 @@ let __feedAutoExpandObserver = null;
 let __feedVisibleLimit = (typeof FEED_PAGE_SIZE !== 'undefined' ? FEED_PAGE_SIZE : 10);
 let __feedAutoPaused = false;
 let __feedAutoExpandLatch = false;
+let __feedScrollSaveTimer = null;
+let __feedRestoreTimer = null;
+let __feedLastKnownScrollY = 0;
+let __feedLastScrollDir = 0;
+let __feedLastMagnetAt = 0;
+let __feedMagnetLock = false;
 
 const FEED_AUTO_BATCH_SIZE = 10;
+const FEED_SCROLL_STATE_KEY = 'checkne_feed_scroll_state_v3';
+const FEED_SCROLL_SAVE_THROTTLE_MS = 140;
+const FEED_SCROLL_RESTORE_WINDOW_MS = 3 * 60 * 1000;
+const FEED_LOAD_MORE_MAGNET_COOLDOWN_MS = 950;
 const VISUAL_SEARCH_SOFT_TARGET_BYTES = 900 * 1024; // stay safely below common production body limits
 const VISUAL_SEARCH_HARD_MAX_BYTES = 24 * 1024 * 1024;
 const VISUAL_SEARCH_MAX_UPLOAD_BYTES = 1024 * 1024;
@@ -757,6 +767,234 @@ function countRenderedNewsCards() {
   return cards.querySelectorAll('.newsCard').length;
 }
 
+function __feedSafeLower(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+const __COUNTRY_META = [
+  { code: 'UA', label: 'Ukraine', aliases: ['ukraine', 'ukrainian', 'kyiv', 'kiev', 'zelensky', 'zelenskyy'] },
+  { code: 'IL', label: 'Israel', aliases: ['israel', 'israeli', 'netanyahu'] },
+  { code: 'LB', label: 'Lebanon', aliases: ['lebanon', 'lebanese', 'beirut'] },
+  { code: 'DE', label: 'Germany', aliases: ['germany', 'german', 'berlin'] },
+  { code: 'FR', label: 'France', aliases: ['france', 'french', 'paris'] },
+  { code: 'GB', label: 'United Kingdom', aliases: ['united kingdom', 'britain', 'british', 'uk', 'u.k.', 'england', 'english', 'scotland', 'scottish', 'wales', 'welsh', 'london'] },
+  { code: 'US', label: 'USA', aliases: ['united states', 'united states of america', 'usa', 'u.s.', 'american', 'america', 'washington', 'white house', 'trump', 'biden'] },
+  { code: 'RU', label: 'Russia', aliases: ['russia', 'russian', 'moscow', 'kremlin', 'putin'] },
+  { code: 'CN', label: 'China', aliases: ['china', 'chinese', 'beijing', 'xi jinping'] },
+  { code: 'IR', label: 'Iran', aliases: ['iran', 'iranian', 'tehran'] },
+  { code: 'PS', label: 'Palestine', aliases: ['palestine', 'palestinian', 'gaza', 'west bank'] },
+  { code: 'SY', label: 'Syria', aliases: ['syria', 'syrian', 'damascus'] },
+  { code: 'TR', label: 'Turkey', aliases: ['turkey', 'turkish', 'ankara', 'istanbul'] },
+  { code: 'SA', label: 'Saudi Arabia', aliases: ['saudi arabia', 'saudi', 'riyadh'] },
+  { code: 'AE', label: 'UAE', aliases: ['united arab emirates', 'uae', 'abu dhabi', 'dubai'] },
+  { code: 'JP', label: 'Japan', aliases: ['japan', 'japanese', 'tokyo'] },
+  { code: 'KR', label: 'South Korea', aliases: ['south korea', 'korean', 'seoul'] },
+  { code: 'KP', label: 'North Korea', aliases: ['north korea', 'pyongyang', 'kim jong un'] },
+  { code: 'IN', label: 'India', aliases: ['india', 'indian', 'new delhi'] },
+  { code: 'PK', label: 'Pakistan', aliases: ['pakistan', 'pakistani', 'islamabad'] },
+  { code: 'AF', label: 'Afghanistan', aliases: ['afghanistan', 'afghan', 'kabul'] },
+  { code: 'IT', label: 'Italy', aliases: ['italy', 'italian', 'rome'] },
+  { code: 'ES', label: 'Spain', aliases: ['spain', 'spanish', 'madrid'] },
+  { code: 'PT', label: 'Portugal', aliases: ['portugal', 'portuguese', 'lisbon'] },
+  { code: 'NL', label: 'Netherlands', aliases: ['netherlands', 'dutch', 'amsterdam', 'hague'] },
+  { code: 'BE', label: 'Belgium', aliases: ['belgium', 'belgian', 'brussels'] },
+  { code: 'CH', label: 'Switzerland', aliases: ['switzerland', 'swiss', 'geneva', 'zurich'] },
+  { code: 'AT', label: 'Austria', aliases: ['austria', 'austrian', 'vienna'] },
+  { code: 'SE', label: 'Sweden', aliases: ['sweden', 'swedish', 'stockholm'] },
+  { code: 'NO', label: 'Norway', aliases: ['norway', 'norwegian', 'oslo'] },
+  { code: 'DK', label: 'Denmark', aliases: ['denmark', 'danish', 'copenhagen'] },
+  { code: 'FI', label: 'Finland', aliases: ['finland', 'finnish', 'helsinki'] },
+  { code: 'PL', label: 'Poland', aliases: ['poland', 'polish', 'warsaw'] },
+  { code: 'CZ', label: 'Czech Republic', aliases: ['czech republic', 'czech', 'prague'] },
+  { code: 'RO', label: 'Romania', aliases: ['romania', 'romanian', 'bucharest'] },
+  { code: 'HU', label: 'Hungary', aliases: ['hungary', 'hungarian', 'budapest'] },
+  { code: 'GR', label: 'Greece', aliases: ['greece', 'greek', 'athens'] },
+  { code: 'IE', label: 'Ireland', aliases: ['ireland', 'irish', 'dublin'] },
+  { code: 'CA', label: 'Canada', aliases: ['canada', 'canadian', 'ottawa', 'toronto'] },
+  { code: 'MX', label: 'Mexico', aliases: ['mexico', 'mexican', 'mexico city'] },
+  { code: 'BR', label: 'Brazil', aliases: ['brazil', 'brazilian', 'brasil', 'rio de janeiro', 'sao paulo'] },
+  { code: 'AR', label: 'Argentina', aliases: ['argentina', 'argentinian', 'buenos aires'] },
+  { code: 'CL', label: 'Chile', aliases: ['chile', 'chilean', 'santiago'] },
+  { code: 'CO', label: 'Colombia', aliases: ['colombia', 'colombian', 'bogota'] },
+  { code: 'VE', label: 'Venezuela', aliases: ['venezuela', 'venezuelan', 'caracas'] },
+  { code: 'AU', label: 'Australia', aliases: ['australia', 'australian', 'sydney', 'melbourne', 'canberra'] },
+  { code: 'NZ', label: 'New Zealand', aliases: ['new zealand', 'new zealander', 'wellington', 'auckland'] },
+  { code: 'ZA', label: 'South Africa', aliases: ['south africa', 'south african', 'cape town', 'johannesburg'] },
+  { code: 'EG', label: 'Egypt', aliases: ['egypt', 'egyptian', 'cairo'] },
+  { code: 'NG', label: 'Nigeria', aliases: ['nigeria', 'nigerian', 'abuja', 'lagos'] },
+  { code: 'KE', label: 'Kenya', aliases: ['kenya', 'kenyan', 'nairobi'] },
+  { code: 'ET', label: 'Ethiopia', aliases: ['ethiopia', 'ethiopian', 'addis ababa'] },
+  { code: 'SD', label: 'Sudan', aliases: ['sudan', 'sudanese', 'khartoum'] },
+  { code: 'IQ', label: 'Iraq', aliases: ['iraq', 'iraqi', 'baghdad'] },
+  { code: 'QA', label: 'Qatar', aliases: ['qatar', 'qatari', 'doha'] },
+];
+
+const __COUNTRY_BY_ALIAS = (() => {
+  const map = new Map();
+  for (const meta of __COUNTRY_META) {
+    map.set(meta.code.toLowerCase(), meta);
+    map.set(meta.label.toLowerCase(), meta);
+    for (const alias of meta.aliases) map.set(String(alias).toLowerCase(), meta);
+  }
+  map.set('fr', map.get('france'));
+  map.set('de', map.get('germany'));
+  map.set('ua', map.get('ukraine'));
+  map.set('us', map.get('usa'));
+  map.set('gb', map.get('united kingdom'));
+  map.set('uk', map.get('united kingdom'));
+  map.set('world', { code: 'WORLD', label: 'World', emoji: '🌍' });
+  map.set('global', { code: 'WORLD', label: 'World', emoji: '🌍' });
+  map.set('international', { code: 'WORLD', label: 'World', emoji: '🌍' });
+  map.set('europe', { code: 'EU', label: 'Europe', emoji: '🇪🇺' });
+  return map;
+})();
+
+function __countryFlagFromCode(code) {
+  const cc = String(code || '').trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(cc)) return '';
+  return String.fromCodePoint(...Array.from(cc).map((ch) => 127397 + ch.charCodeAt(0)));
+}
+
+function normalizeCountryDisplay(rawValue) {
+  const raw = String(rawValue || '').trim();
+  if (!raw) return { code: 'WORLD', label: 'World', emoji: '🌍' };
+  const lower = raw.toLowerCase();
+  const direct = __COUNTRY_BY_ALIAS.get(lower);
+  if (direct) {
+    return {
+      code: String(direct.code || '').toUpperCase() || 'WORLD',
+      label: String(direct.label || raw).trim() || raw,
+      emoji: direct.emoji || __countryFlagFromCode(direct.code),
+    };
+  }
+  if (/^[A-Za-z]{2}$/.test(raw)) {
+    const cc = raw.toUpperCase();
+    return { code: cc, label: cc, emoji: __countryFlagFromCode(cc) };
+  }
+  return { code: '', label: raw, emoji: '' };
+}
+
+function __escapeCountryRegex(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function __countryRegexes(meta) {
+  const patterns = [];
+  for (const alias of (meta?.aliases || [])) {
+    const norm = String(alias || '').trim();
+    if (!norm) continue;
+    const escaped = __escapeCountryRegex(norm).replace(/\s+/g, '\\s+');
+    patterns.push(new RegExp(`\\b${escaped}\\b`, 'i'));
+  }
+  if (meta?.code === 'US') {
+    patterns.push(/\bUS\b/);
+    patterns.push(/\bU\.S\.A?\.?\b/i);
+  }
+  if (meta?.code === 'GB') {
+    patterns.push(/\bUK\b/);
+    patterns.push(/\bU\.K\.\b/i);
+  }
+  return patterns;
+}
+
+function inferCountryDisplay(item) {
+  const base = normalizeCountryDisplay(item?.country || '');
+  const chunks = [
+    { text: String(item?.title || ''), weight: 12, titleBias: 3 },
+    { text: String(item?.summary || ''), weight: 5, titleBias: 0 },
+    ...(Array.isArray(item?.sources)
+      ? item.sources.slice(0, 6).map((s, idx) => ({ text: String(s?.title || ''), weight: Math.max(5 - idx, 2), titleBias: 0 }))
+      : []),
+  ].filter((x) => String(x?.text || '').trim());
+
+  const scores = new Map();
+
+  for (const meta of __COUNTRY_META) {
+    const regexes = __countryRegexes(meta);
+    let score = 0;
+    let pos = Number.POSITIVE_INFINITY;
+    for (const chunk of chunks) {
+      const raw = String(chunk?.text || '');
+      if (!raw) continue;
+      for (const rx of regexes) {
+        rx.lastIndex = 0;
+        const m = rx.exec(raw);
+        if (!m) continue;
+        score += Number(chunk?.weight || 0) + Number(chunk?.titleBias || 0);
+        if (typeof m.index === 'number') pos = Math.min(pos, m.index);
+        break;
+      }
+    }
+    if (score > 0) scores.set(meta.code, { meta, score, pos });
+  }
+
+  const baseScore = scores.get(base.code)?.score || 0;
+  let best = null;
+  for (const entry of scores.values()) {
+    if (!best || entry.score > best.score || (entry.score === best.score && entry.pos < best.pos)) {
+      best = entry;
+    }
+  }
+
+  if (best?.meta) {
+    const shouldOverrideBase = !base.code || base.code === 'WORLD' || base.code === 'EU' || baseScore === 0 || best.score >= (baseScore + 3);
+    if (shouldOverrideBase) {
+      return {
+        code: best.meta.code,
+        label: best.meta.label,
+        emoji: __countryFlagFromCode(best.meta.code),
+      };
+    }
+  }
+
+  return base;
+}
+
+function formatCountryBadge(displayCountry) {
+  const c = displayCountry || { label: 'World', emoji: '🌍' };
+  const emoji = String(c?.emoji || '').trim();
+  const label = String(c?.label || 'World').trim() || 'World';
+  return `${emoji ? `${emoji} ` : ''}${label}`;
+}
+
+function getSortedSourcesForDisplay(item) {
+  const list = Array.isArray(item?.sources) ? item.sources.slice() : [];
+  list.sort((a, b) => {
+    const ta = __sourceTimestampValue(a);
+    const tb = __sourceTimestampValue(b);
+    if (ta !== tb) return ta - tb;
+    return String(a?.source_name || '').localeCompare(String(b?.source_name || ''));
+  });
+  return list;
+}
+
+function getFirstSourceName(item) {
+  const sorted = getSortedSourcesForDisplay(item);
+  const name = String(sorted[0]?.source_name || '').trim();
+  if (name) return name;
+  return String(item?.primary_source || '').trim() || 'Unknown';
+}
+
+function getSourceDomain(rawUrl) {
+  try {
+    const u = new URL(String(rawUrl || '').trim());
+    return String(u.hostname || '').replace(/^www\./i, '').trim().toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function buildSourceLogoHtml(sourceName, rawUrl) {
+  const label = String(sourceName || 'Unknown').trim() || 'Unknown';
+  const domain = getSourceDomain(rawUrl);
+  const fallback = escapeHtml(label.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() || '').join('') || label.slice(0, 2).toUpperCase());
+  if (!domain) {
+    return `<span class="sourceLogo sourceLogoFallback" aria-hidden="true">${fallback}</span>`;
+  }
+  const logoUrl = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`;
+  return `<span class="sourceLogo" aria-hidden="true"><img class="sourceLogoImg" src="${logoUrl}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'; this.parentElement.classList.add('isFallback'); const n=this.nextElementSibling; if(n){ n.style.display='inline-flex'; }" /><span class="sourceLogoFallbackInner" style="display:none">${fallback}</span></span>`;
+}
+
 function removeLastRenderedCard() {
   const cards = qs('cards');
   if (!cards) return;
@@ -815,12 +1053,13 @@ function createCardElement(item, ctx, seen, idx) {
     ? (item.created_at || item.updated_at || item.latest_published_at)
     : (item.updated_at || item.latest_published_at || item.created_at);
   const metaAge = formatRelativeTimeFromNow(metaTime);
-  const primarySource = pickPrimarySourceName(item);
+  const firstSourceName = getFirstSourceName(item);
+  const displayCountry = inferCountryDisplay(item);
+  const countryBadge = formatCountryBadge(displayCountry);
   const metaLabel = isNew ? t('ui.new', 'New') : t('ui.updated', 'Updated');
-  const sourcePrefix = t('feed.source_prefix', 'Source');
   const outletsLabel = t('feed.outlets', 'outlets');
   const metaLine =
-    `${escapeHtml(sourcePrefix)}: ${escapeHtml(primarySource)} · ${sourcesCount} ${escapeHtml(outletsLabel)} · ${escapeHtml(item.country || 'world')} / ${escapeHtml(item.language || 'en')}` +
+    `${escapeHtml(countryBadge)} · ${sourcesCount} ${escapeHtml(outletsLabel)} · First source: ${escapeHtml(firstSourceName)}` +
     (metaAge ? ` · ${escapeHtml(metaLabel)} ${escapeHtml(metaAge)}` : '');
 
   const diffState = getSourceDiffState(item);
@@ -836,7 +1075,7 @@ function createCardElement(item, ctx, seen, idx) {
     }
   }
 
-  const sourcesHtml = (item.sources || [])
+  const sourcesHtml = getSortedSourcesForDisplay(item)
     .slice(0, 30)
     .map((s) => {
       const rawUrl = String(s.url || '').trim();
@@ -847,7 +1086,8 @@ function createCardElement(item, ctx, seen, idx) {
       const pub = s.published_at ? new Date(s.published_at).toLocaleString() : '';
       const mark = diffSourceSet.has(s.source_name) ? ` <span class="srcMark">diff</span>` : '';
       const openHref = buildSourceReaderUrl(rawUrl, titleRaw || rawUrl, srcName || 'unknown');
-      return `<div class="sourceRow">• <b>${src}</b>${mark} — <a href="${openHref}" target="_blank" rel="noopener noreferrer">${t || escapeHtml(rawUrl || '#')}</a> <span class="muted">${escapeHtml(pub)}</span></div>`;
+      const logoHtml = buildSourceLogoHtml(srcName, rawUrl);
+      return `<div class="sourceRow">${logoHtml}<div class="sourceRowBody"><div class="sourceRowHead"><b>${src}</b>${mark}</div><a href="${openHref}" target="_blank" rel="noopener noreferrer">${t || escapeHtml(rawUrl || '#')}</a> <span class="muted">${escapeHtml(pub)}</span></div></div>`;
     })
     .join('');
 
@@ -1091,7 +1331,8 @@ const showTrackingUI = state.mode === 'fav';
           <span class="chip">Outlets: <b>${sourcesCount}</b></span>
           ${unconfirmed}
           ${changeBadges}
-          <span class="chip">${escapeHtml(item.country || 'world')}/${escapeHtml(item.language || 'en')}</span>
+          <span class="chip">Country: <b>${escapeHtml(countryBadge)}</b></span>
+          <span class="chip">First source: <b>${escapeHtml(firstSourceName)}</b></span>
           <span class="chip">Latest: ${escapeHtml(item.latest_published_at ? new Date(item.latest_published_at).toLocaleString() : '')}</span>
         </div>
         ${whyHtml}
@@ -1428,9 +1669,11 @@ function renderCards(items, opts) {
   const suppressNewBadges = !!options.suppressNewBadges;
   const incremental = !!options.incremental;
   const animate = options.animate !== false;
+  const preserveScroll = !!options.preserveScroll;
 
   const cards = qs('cards');
   if (!cards) return;
+  const scrollAnchorBeforeRender = preserveScroll ? getFeedAnchorSnapshot() : null;
   if (!incremental) {
     cards.innerHTML = '';
   }
@@ -1555,8 +1798,27 @@ if (incremental && state.mode === 'feed' && newFeedEls.length) {
   }
   // Notify side widgets (best-effort)
   try { document.dispatchEvent(new CustomEvent("checkne:feedRendered")); } catch {}
+  if (scrollAnchorBeforeRender) {
+    try {
+      const anchor = scrollAnchorBeforeRender.id
+        ? document.querySelector(`.newsCard[data-id="${CSS.escape(scrollAnchorBeforeRender.id)}"]`)
+        : null;
+      if (anchor) {
+        const rect = anchor.getBoundingClientRect();
+        const absoluteTop = getCurrentScrollY() + rect.top;
+        const targetY = Math.max(0, Math.round(absoluteTop - Number(scrollAnchorBeforeRender.deltaTop || 0)));
+        window.scrollTo({ top: targetY, left: window.pageXOffset || 0, behavior: 'auto' });
+      } else if (Number.isFinite(Number(scrollAnchorBeforeRender.scrollY))) {
+        window.scrollTo({ top: Math.max(0, Math.round(Number(scrollAnchorBeforeRender.scrollY))), left: window.pageXOffset || 0, behavior: 'auto' });
+      }
+    } catch {}
+  }
   tryResolvePendingStoryFocus({ context: 'renderCards' });
   syncPersonalRecoBanner(visible);
+  if (state.mode === 'feed') {
+    window.setTimeout(() => { maybeApplyLoadMoreMagnet(); }, 24);
+    window.setTimeout(() => { saveFeedScrollState('render-complete'); }, 40);
+  }
 
 }
 
@@ -1568,6 +1830,212 @@ function resetFeedAutoLoadState() {
   clearFeedAutoExpandTimer();
   resetLoadMoreLoaderState();
 }
+
+
+function getFeedScrollableRoot() {
+  return document.scrollingElement || document.documentElement || document.body || null;
+}
+
+function getCurrentScrollY() {
+  const root = getFeedScrollableRoot();
+  return Math.max(window.pageYOffset || 0, root?.scrollTop || 0, document.documentElement?.scrollTop || 0, document.body?.scrollTop || 0);
+}
+
+function isFeedModeActiveForScrollState() {
+  return state?.mode === 'feed';
+}
+
+function getFeedAnchorSnapshot() {
+  const cards = qs('cards');
+  if (!cards) return null;
+  const viewportH = window.innerHeight || document.documentElement?.clientHeight || 0;
+  const targetBandTop = Math.max(72, Math.round(viewportH * 0.18));
+  const candidates = Array.from(cards.querySelectorAll('.newsCard[data-id]'));
+  let best = null;
+  let bestDistance = Infinity;
+  for (const el of candidates) {
+    const rect = el.getBoundingClientRect();
+    if (rect.bottom < 0 || rect.top > viewportH) continue;
+    const distance = Math.abs(rect.top - targetBandTop);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = el;
+    }
+  }
+  if (!best && candidates.length) best = candidates[0];
+  if (!best) return null;
+  const rect = best.getBoundingClientRect();
+  return {
+    id: String(best.getAttribute('data-id') || ''),
+    deltaTop: Math.round(rect.top),
+    scrollY: Math.round(getCurrentScrollY()),
+    ts: Date.now(),
+    mode: String(state?.mode || ''),
+  };
+}
+
+function saveFeedScrollState(reason = 'generic') {
+  try {
+    if (!isFeedModeActiveForScrollState()) return;
+    const snapshot = getFeedAnchorSnapshot() || {
+      id: '',
+      deltaTop: 0,
+      scrollY: Math.round(getCurrentScrollY()),
+      ts: Date.now(),
+      mode: String(state?.mode || ''),
+    };
+    snapshot.reason = String(reason || 'generic');
+    sessionStorage.setItem(FEED_SCROLL_STATE_KEY, JSON.stringify(snapshot));
+    __feedLastKnownScrollY = Number(snapshot.scrollY || 0);
+  } catch {}
+}
+
+function scheduleSaveFeedScrollState(reason = 'generic') {
+  try {
+    if (__feedScrollSaveTimer) window.clearTimeout(__feedScrollSaveTimer);
+  } catch {}
+  __feedScrollSaveTimer = window.setTimeout(() => {
+    __feedScrollSaveTimer = null;
+    saveFeedScrollState(reason);
+  }, FEED_SCROLL_SAVE_THROTTLE_MS);
+}
+
+function restoreFeedScrollFromState(opts = {}) {
+  try {
+    if (!isFeedModeActiveForScrollState()) return false;
+    const raw = sessionStorage.getItem(FEED_SCROLL_STATE_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.mode !== 'feed') return false;
+    const ts = Number(parsed.ts || 0);
+    if (!Number.isFinite(ts) || (Date.now() - ts) > FEED_SCROLL_RESTORE_WINDOW_MS) return false;
+
+    const desiredY = Number(parsed.scrollY || 0);
+    const desiredTop = Number(parsed.deltaTop || 0);
+    const anchorId = String(parsed.id || '').trim();
+    let restored = false;
+
+    if (anchorId) {
+      const anchor = document.querySelector(`.newsCard[data-id="${CSS.escape(anchorId)}"]`);
+      if (anchor) {
+        const rect = anchor.getBoundingClientRect();
+        const absoluteTop = getCurrentScrollY() + rect.top;
+        const targetY = Math.max(0, Math.round(absoluteTop - desiredTop));
+        window.scrollTo({ top: targetY, left: window.pageXOffset || 0, behavior: 'auto' });
+        restored = true;
+      }
+    }
+
+    if (!restored && Number.isFinite(desiredY)) {
+      window.scrollTo({ top: Math.max(0, Math.round(desiredY)), left: window.pageXOffset || 0, behavior: 'auto' });
+      restored = true;
+    }
+
+    if (restored && opts.persist !== true) {
+      sessionStorage.removeItem(FEED_SCROLL_STATE_KEY);
+    }
+    return restored;
+  } catch {
+    return false;
+  }
+}
+
+function queueFeedScrollRestore(reason = 'generic') {
+  try {
+    if (__feedRestoreTimer) window.clearTimeout(__feedRestoreTimer);
+  } catch {}
+  __feedRestoreTimer = window.setTimeout(() => {
+    __feedRestoreTimer = null;
+    restoreFeedScrollFromState({ reason });
+  }, 26);
+}
+
+function shouldUseLoadMoreMagnet() {
+  try {
+    return window.matchMedia ? window.matchMedia('(max-width: 900px) and (pointer: coarse)').matches : ((window.innerWidth || 0) <= 900);
+  } catch {
+    return (window.innerWidth || 0) <= 900;
+  }
+}
+
+function getLoadMoreMagnetTargetY(wrap) {
+  if (!wrap) return null;
+  const rect = wrap.getBoundingClientRect();
+  const viewportH = window.innerHeight || document.documentElement?.clientHeight || 0;
+  const targetTop = Math.round(viewportH * 0.28);
+  const absoluteTop = getCurrentScrollY() + rect.top;
+  return Math.max(0, Math.round(absoluteTop - targetTop));
+}
+
+function canApplyLoadMoreMagnet(wrap) {
+  if (!wrap || !shouldUseLoadMoreMagnet()) return false;
+  if (feedExpanded || state.mode !== 'feed' || __feedAutoPaused || __feedAutoExpandBusy) return false;
+  const now = Date.now();
+  if (__feedMagnetLock || (now - __feedLastMagnetAt) < FEED_LOAD_MORE_MAGNET_COOLDOWN_MS) return false;
+  if (__feedLastScrollDir <= 0) return false;
+
+  const rect = wrap.getBoundingClientRect();
+  const viewportH = window.innerHeight || document.documentElement?.clientHeight || 0;
+  if (rect.height <= 0 || viewportH <= 0) return false;
+
+  const triggerTopMin = Math.round(viewportH * 0.14);
+  const triggerTopMax = Math.round(viewportH * 0.62);
+  const footer = document.querySelector('footer, .footer, #footer, .siteFooter');
+  if (footer) {
+    const footerRect = footer.getBoundingClientRect();
+    if (footerRect.top < viewportH + 64) return false;
+  }
+
+  return rect.top >= triggerTopMin && rect.top <= triggerTopMax;
+}
+
+function maybeApplyLoadMoreMagnet() {
+  const wrap = document.getElementById('loadMoreWrap');
+  if (!canApplyLoadMoreMagnet(wrap)) return;
+  const targetY = getLoadMoreMagnetTargetY(wrap);
+  if (!Number.isFinite(targetY)) return;
+  const currentY = getCurrentScrollY();
+  if (Math.abs(targetY - currentY) < 18) return;
+
+  __feedMagnetLock = true;
+  __feedLastMagnetAt = Date.now();
+  window.scrollTo({ top: targetY, left: window.pageXOffset || 0, behavior: 'smooth' });
+  window.setTimeout(() => {
+    __feedMagnetLock = false;
+    saveFeedScrollState('magnet-settle');
+  }, 420);
+}
+
+function installFeedScrollPersistence() {
+  if (window.__checkneFeedScrollPersistenceInstalled) return;
+  window.__checkneFeedScrollPersistenceInstalled = true;
+
+  try {
+    if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+  } catch {}
+
+  window.addEventListener('scroll', () => {
+    const currentY = getCurrentScrollY();
+    __feedLastScrollDir = currentY > __feedLastKnownScrollY ? 1 : (currentY < __feedLastKnownScrollY ? -1 : __feedLastScrollDir);
+    __feedLastKnownScrollY = currentY;
+    scheduleSaveFeedScrollState('scroll');
+  }, { passive: true });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      saveFeedScrollState('hidden');
+      return;
+    }
+    queueFeedScrollRestore('visible');
+  });
+
+  window.addEventListener('pagehide', () => saveFeedScrollState('pagehide'));
+  window.addEventListener('beforeunload', () => saveFeedScrollState('beforeunload'));
+  window.addEventListener('pageshow', () => queueFeedScrollRestore('pageshow'));
+  window.addEventListener('focus', () => queueFeedScrollRestore('focus'));
+}
+
+installFeedScrollPersistence();
 
 function getFeedVisibleLimit(totalCount) {
   const pageSize = (typeof FEED_PAGE_SIZE !== 'undefined' ? FEED_PAGE_SIZE : 10);
@@ -1915,6 +2383,7 @@ function bindFeedAutoExpandObserver(targetEl) {
 window.addEventListener('scroll', () => {
   const wrap = document.getElementById('loadMoreWrap');
   if (!wrap || feedExpanded || state.mode !== 'feed') return;
+  maybeApplyLoadMoreMagnet();
   if (isLoadMoreZoneVisible() && isUserPinnedToFeedBottom()) scheduleFeedAutoExpand();
   else {
     __feedAutoExpandLatch = false;
@@ -1925,6 +2394,7 @@ window.addEventListener('scroll', () => {
 window.addEventListener('resize', () => {
   const wrap = document.getElementById('loadMoreWrap');
   if (!wrap || feedExpanded || state.mode !== 'feed') return;
+  maybeApplyLoadMoreMagnet();
   if (isLoadMoreZoneVisible() && isUserPinnedToFeedBottom()) scheduleFeedAutoExpand();
   else {
     __feedAutoExpandLatch = false;
@@ -2059,6 +2529,7 @@ renderCards(items, {
   suppressNewBadges,
   incremental: useIncremental,
   animate: false,
+  preserveScroll: quiet,
 });
 
   // Hero carousel under header (top stories 🔥)
@@ -2121,7 +2592,7 @@ async function fetchFavorites(opts = {}) {
 
     // Tracking page uses server-side deltas (delta_score / delta_sources_count)
     const useIncremental = !!opts.quiet && !opts.reset;
-    renderCards(items, { nowTs: Date.now(), newIds: new Set(), suppressNewBadges: true, incremental: useIncremental, animate: false });
+    renderCards(items, { nowTs: Date.now(), newIds: new Set(), suppressNewBadges: true, incremental: useIncremental, animate: false, preserveScroll: !!opts.quiet });
 
     // Hydrate trust history charts (server-side) for newly rendered cards
     if (!opts.quiet || opts.reset) hydrateTrustHistorySections();

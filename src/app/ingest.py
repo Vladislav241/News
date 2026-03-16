@@ -1568,17 +1568,22 @@ def _iter_all_feeds(sources_cfg: dict[str, Any]) -> list[dict[str, str]]:
     return uniq
 
 
-def _select_feeds_for_cycle(feeds: list[dict[str, str]], max_feeds: int) -> list[dict[str, str]]:
-    """Select feeds fairly across regions/topics instead of taking the first N.
+def _select_feeds_for_cycle(feeds: list[dict[str, str]], max_feeds: int, rotation_seed: int = 0) -> list[dict[str, str]]:
+    """Select feeds with a professional, feed-first strategy.
 
-    Production was often limited by MAX_EXTERNAL_REQUESTS_PER_CYCLE. Because the
-    config is ordered with `world` first, a simple slice starved `us/gb/de/fr`
-    completely once the world bucket alone exceeded the cap.
+    Design goals:
+    1) maximise outlet diversity in the main `world` feed, especially `world/general`;
+    2) keep enough regional/topic coverage so non-world feeds do not go stale;
+    3) rotate within every bucket from cycle to cycle so later publishers are surfaced too.
 
-    This round-robin selector preserves broad World coverage *and* guarantees
-    regional buckets get regular ingest slots every cycle.
+    Modern aggregators usually ingest every available upstream feed and only apply hard
+    ranking limits later. This project still has a per-cycle network budget, so the next
+    best strategy is to spend *most* of that budget on core world coverage and use the
+    remaining capacity to keep regional buckets warm.
     """
-    if max_feeds <= 0 or len(feeds) <= max_feeds:
+    if max_feeds <= 0:
+        return []
+    if len(feeds) <= max_feeds:
         return list(feeds)
 
     country_priority = {"world": 0, "us": 1, "gb": 2, "de": 3, "fr": 4}
@@ -1593,21 +1598,123 @@ def _select_feeds_for_cycle(feeds: list[dict[str, str]], max_feeds: int) -> list
         "entertainment": 7,
     }
 
+    def _bucket_sort_key(key: tuple[str, str]) -> tuple[int, int, str, str]:
+        return (
+            country_priority.get(key[0], 99),
+            topic_priority.get(key[1], 99),
+            key[0],
+            key[1],
+        )
+
+    def _bucket_weight(key: tuple[str, str], size: int) -> float:
+        country, topic = key
+        weight = float(size)
+        if country == "world" and topic == "general":
+            weight *= 9.0
+        elif country == "world" and topic in {"politics", "business", "technology"}:
+            weight *= 4.5
+        elif country == "world":
+            weight *= 3.2
+        elif topic == "general":
+            weight *= 2.0
+        elif topic in {"politics", "business", "technology"}:
+            weight *= 1.35
+        else:
+            weight *= 1.0
+        return weight
+
     grouped: dict[tuple[str, str], list[dict[str, str]]] = {}
     for f in feeds:
         key = ((f.get("country") or "world").lower(), (f.get("topic") or "general").lower())
         grouped.setdefault(key, []).append(f)
 
-    ordered_keys = sorted(
-        grouped.keys(),
-        key=lambda k: (country_priority.get(k[0], 99), topic_priority.get(k[1], 99), k[0], k[1]),
-    )
+    non_empty_keys = [key for key, items in grouped.items() if items]
+    if not non_empty_keys:
+        return []
+    non_empty_keys.sort(key=_bucket_sort_key)
+
+    bucket_sizes = {key: len(grouped[key]) for key in non_empty_keys}
+    allocations: dict[tuple[str, str], int] = {key: 0 for key in non_empty_keys}
+
+    # Stage 1: guarantee strong core-world coverage first.
+    world_general_key = ("world", "general")
+    world_general_size = bucket_sizes.get(world_general_key, 0)
+    if world_general_size > 0:
+        if max_feeds >= 24:
+            world_general_floor = max(12, int(round(max_feeds * 0.35)))
+        elif max_feeds >= 12:
+            world_general_floor = max(6, int(round(max_feeds * 0.25)))
+        else:
+            world_general_floor = max(1, int(round(max_feeds * 0.2)))
+        allocations[world_general_key] = min(world_general_size, world_general_floor, max_feeds)
+
+    used = sum(allocations.values())
+    remaining = max(0, max_feeds - used)
+
+    # Stage 2: keep every world bucket alive, then regional general buckets.
+    preferred_keys: list[tuple[str, str]] = []
+    preferred_keys.extend([key for key in non_empty_keys if key[0] == "world" and key != world_general_key])
+    preferred_keys.extend([key for key in non_empty_keys if key[0] != "world" and key[1] == "general"])
+    preferred_keys.extend([key for key in non_empty_keys if key not in preferred_keys and key != world_general_key])
+
+    for key in preferred_keys:
+        if remaining <= 0:
+            break
+        if allocations[key] >= bucket_sizes[key]:
+            continue
+        allocations[key] += 1
+        remaining -= 1
+
+    # Stage 3: spend the remaining budget by weighted residual capacity.
+    if remaining > 0:
+        fractional: list[tuple[float, tuple[str, str]]] = []
+        weighted_residual_total = 0.0
+        weighted_residuals: dict[tuple[str, str], float] = {}
+        for key in non_empty_keys:
+            residual = max(0, bucket_sizes[key] - allocations[key])
+            if residual <= 0:
+                continue
+            weighted = _bucket_weight(key, residual)
+            weighted_residuals[key] = weighted
+            weighted_residual_total += weighted
+
+        if weighted_residual_total > 0:
+            for key, weighted in weighted_residuals.items():
+                residual = max(0, bucket_sizes[key] - allocations[key])
+                if residual <= 0:
+                    continue
+                exact = (remaining * weighted) / weighted_residual_total
+                whole = min(residual, int(exact))
+                allocations[key] += whole
+                fractional.append((exact - whole, key))
+
+            extra_left = max_feeds - sum(allocations.values())
+            if extra_left > 0:
+                fractional.sort(key=lambda item: (-item[0], *_bucket_sort_key(item[1])))
+                for _frac, key in fractional:
+                    if extra_left <= 0:
+                        break
+                    if allocations[key] >= bucket_sizes[key]:
+                        continue
+                    allocations[key] += 1
+                    extra_left -= 1
+
+    rotated_trimmed: dict[tuple[str, str], list[dict[str, str]]] = {}
+    for idx, key in enumerate(non_empty_keys):
+        bucket = list(grouped.get(key) or [])
+        if not bucket:
+            continue
+        rot = 0
+        if len(bucket) > 1:
+            rot = (int(rotation_seed or 0) + (idx * 3)) % len(bucket)
+        rotated = bucket[rot:] + bucket[:rot]
+        rotated_trimmed[key] = rotated[: max(0, allocations.get(key, 0))]
 
     selected: list[dict[str, str]] = []
     while len(selected) < max_feeds:
         made_progress = False
-        for key in ordered_keys:
-            bucket = grouped.get(key) or []
+        for key in non_empty_keys:
+            bucket = rotated_trimmed.get(key) or []
             if not bucket:
                 continue
             selected.append(bucket.pop(0))
@@ -1617,7 +1724,20 @@ def _select_feeds_for_cycle(feeds: list[dict[str, str]], max_feeds: int) -> list
         if not made_progress:
             break
 
-    return selected
+    selection_counts = {
+        f"{country}/{topic}": allocations.get((country, topic), 0)
+        for country, topic in non_empty_keys
+        if allocations.get((country, topic), 0) > 0
+    }
+    logger.info(
+        "RSS selection summary: max_feeds=%s total_feeds=%s selected=%s buckets=%s",
+        max_feeds,
+        len(feeds),
+        len(selected[:max_feeds]),
+        selection_counts,
+    )
+
+    return selected[:max_feeds]
 
 
 def _scoped_cluster_key(country: str, base_key: str) -> str:
@@ -1655,7 +1775,7 @@ def run_ingest_cycle() -> dict[str, Any]:
 
         stats["feeds_total"] = len(feeds)
         max_feeds = max(10, int(cfg.max_external_requests_per_cycle))
-        feeds = _select_feeds_for_cycle(feeds, max_feeds)
+        feeds = _select_feeds_for_cycle(feeds, max_feeds, rotation_seed=run_id)
         stats["feeds_used"] = len(feeds)
 
         all_articles: list[dict[str, Any]] = []

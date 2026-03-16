@@ -1358,6 +1358,19 @@ body.visualSearchLock{ overflow:hidden; }
     details.accordion[open] > .accordionBody{ overflow: visible; }
     .sourcesList a { color: rgba(37,99,235,.9); text-decoration: none; }
     .newsCard.isLow .sourcesList a { color: rgba(173,207,255,.95); }
+    .sourceRow { display:flex; gap:14px; align-items:flex-start; padding: 14px 16px; border:1px solid rgba(15,23,42,.10); border-radius: 22px; background: rgba(255,255,255,.72); }
+    .sourceRow + .sourceRow { margin-top: 12px; }
+    .newsCard.isLow .sourceRow { border-color: rgba(255,255,255,.12); background: rgba(255,255,255,.06); }
+    .sourceRowBody { min-width: 0; flex: 1; display:flex; flex-direction:column; gap: 6px; }
+    .sourceRowHead { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .sourceLogo { width: 42px; height: 42px; border-radius: 12px; border:1px solid rgba(15,23,42,.10); background: rgba(255,255,255,.96); display:inline-flex; align-items:center; justify-content:center; overflow:hidden; flex: 0 0 42px; }
+    .newsCard.isLow .sourceLogo { border-color: rgba(255,255,255,.14); background: rgba(255,255,255,.10); }
+    .sourceLogo img { width: 24px; height: 24px; object-fit: contain; display:block; }
+    .sourceLogo .sourceLogoFallbackInner { display:none; align-items:center; justify-content:center; width:100%; height:100%; }
+    .sourceLogo.isFallback .sourceLogoFallbackInner { display:inline-flex; }
+    .sourceLogo.isFallback { padding: 0; }
+    .sourceLogoFallback, .sourceLogoFallbackInner { font-size: 13px; font-weight: 800; letter-spacing: .02em; color: rgba(15,23,42,.78); }
+    .newsCard.isLow .sourceLogoFallback, .newsCard.isLow .sourceLogoFallbackInner { color: rgba(255,255,255,.92); }
     .factor { border:1px solid rgba(15,23,42,.10); border-radius: 14px; padding: 10px; background: rgba(255,255,255,.65); margin-top: 8px; }
     .newsCard.isLow .factor { border-color: rgba(255,255,255,.12); background: rgba(255,255,255,.06); }
     .impact { font-weight: 800; }

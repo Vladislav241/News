@@ -1229,7 +1229,7 @@ class Database:
                     FROM cluster_articles ca2
                     JOIN articles a ON a.id = ca2.article_id
                     WHERE ca2.cluster_id = ?
-                    ORDER BY COALESCE(a.published_at, a.inserted_at) DESC, a.id DESC
+                    ORDER BY COALESCE(a.published_at, a.inserted_at) ASC, a.id ASC
                     LIMIT 1
                 ) as primary_source,
                 (

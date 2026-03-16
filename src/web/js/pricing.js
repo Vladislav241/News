@@ -1093,11 +1093,31 @@ function formatRelativeTimeFromNow(iso) {
   }
 }
 
+function __sourceTimestampValue(source) {
+  try {
+    const raw = String(source?.published_at || source?.inserted_at || '').trim();
+    if (!raw) return Number.POSITIVE_INFINITY;
+    const ts = Date.parse(raw);
+    return Number.isFinite(ts) ? ts : Number.POSITIVE_INFINITY;
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
+}
+
 function pickPrimarySourceName(item) {
-  const s = Array.isArray(item?.sources) ? item.sources : [];
-  const name = (s[0]?.source_name || "").trim();
-  const fallback = String(item?.primary_source || "").trim();
-  return name || fallback || "Unknown";
+  const s = Array.isArray(item?.sources) ? item.sources.slice() : [];
+  if (s.length) {
+    s.sort((a, b) => {
+      const ta = __sourceTimestampValue(a);
+      const tb = __sourceTimestampValue(b);
+      if (ta !== tb) return ta - tb;
+      return String(a?.source_name || '').localeCompare(String(b?.source_name || ''));
+    });
+    const name = String(s[0]?.source_name || '').trim();
+    if (name) return name;
+  }
+  const fallback = String(item?.primary_source || '').trim();
+  return fallback || 'Unknown';
 }
 
 function keywordsFromTitle(title) {
