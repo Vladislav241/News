@@ -342,6 +342,11 @@ async function refreshAuthState() {
   } catch {
     authState = { authenticated: false, user: null };
   }
+  try {
+    window.authState = authState;
+    window.__CHECKNE_AUTH_USER = authState?.user || null;
+    window.dispatchEvent(new CustomEvent('checkne:auth-state', { detail: { authenticated: !!authState?.authenticated, user: authState?.user || null, wasAuthenticated: !!wasAuthed } }));
+  } catch {}
   updateAuthUI();
 
   // Auth transition handling
@@ -362,6 +367,16 @@ async function refreshAuthState() {
 
   // Billing state depends on auth
   await refreshBillingState();
+
+  if (!wasAuthed && authState?.authenticated && authState?.user) {
+    setTimeout(() => {
+      try {
+        if (typeof window.checkneMaybeStartOnboarding === 'function') {
+          window.checkneMaybeStartOnboarding({ user: authState.user });
+        }
+      } catch {}
+    }, 140);
+  }
 }
 
 async function refreshBillingState() {
