@@ -492,6 +492,12 @@ function bindAuthModalUI() {
             body: JSON.stringify({ email, password }),
           });
           if (r.ok) {
+            closeAuthModal();
+            try {
+              if (typeof window.checkneMaybeStartOnboarding === 'function') {
+                window.checkneMaybeStartOnboarding({ force: true, allowGuest: true, reason: 'register' });
+              }
+            } catch {}
             _showAuthError('authError', 'Account created. Check your email to verify before using Tracking/saving.');
             return;
           }

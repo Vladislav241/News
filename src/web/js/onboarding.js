@@ -5,6 +5,8 @@
  */
 (function(){
   const STORAGE_KEY = 'checkne_onboarding_seen';
+  const GLOBAL_SEEN_KEY = 'checkne_onboarding_seen_device_v1';
+  const LEGACY_GLOBAL_KEYS = ['checkne_onboarding_seen', 'checkne_onboarding_seen_v2', 'checkne_onboarding_seen_v3', 'checkne_onboarding_seen_v4'];
   const INTEREST_OPTIONS = ['general','business','technology','politics','science','sports','health'];
   const REGION_OPTIONS = [
     { value: 'world', label: 'World' },
@@ -188,8 +190,35 @@
   }
 
   function getSeenKey(){ return `${STORAGE_KEY}:${getUserKey()}`; }
-  function isSeen(){ try { return localStorage.getItem(getSeenKey()) === '1'; } catch { return false; } }
-  function markSeen(){ try { localStorage.setItem(getSeenKey(), '1'); } catch {} }
+
+  function hasLegacyGlobalSeen(){
+    try {
+      return LEGACY_GLOBAL_KEYS.some((key) => localStorage.getItem(key) === '1');
+    } catch {
+      return false;
+    }
+  }
+
+  function hasDeviceSeen(){
+    try {
+      return localStorage.getItem(GLOBAL_SEEN_KEY) === '1' || hasLegacyGlobalSeen();
+    } catch {
+      return hasLegacyGlobalSeen();
+    }
+  }
+
+  function isSeen(){
+    try {
+      return localStorage.getItem(getSeenKey()) === '1' || hasDeviceSeen();
+    } catch {
+      return hasDeviceSeen();
+    }
+  }
+
+  function markSeen(){
+    try { localStorage.setItem(getSeenKey(), '1'); } catch {}
+    try { localStorage.setItem(GLOBAL_SEEN_KEY, '1'); } catch {}
+  }
 
   function clearSeen(forAll){
     try {
@@ -200,9 +229,13 @@
           if (k && k.indexOf(`${STORAGE_KEY}:`) === 0) keys.push(k);
         }
         keys.forEach((k) => localStorage.removeItem(k));
+        try { localStorage.removeItem(GLOBAL_SEEN_KEY); } catch {}
+        LEGACY_GLOBAL_KEYS.forEach((key) => { try { localStorage.removeItem(key); } catch {} });
         return;
       }
       localStorage.removeItem(getSeenKey());
+      try { localStorage.removeItem(GLOBAL_SEEN_KEY); } catch {}
+      LEGACY_GLOBAL_KEYS.forEach((key) => { try { localStorage.removeItem(key); } catch {} });
     } catch {}
   }
 
@@ -692,8 +725,9 @@ function updateCardScroll() {
   function initOnboarding(opts){
     initialized = true;
     const force = !!(opts && opts.force);
+    const allowGuest = !!(opts && opts.allowGuest);
     const authed = (typeof authState !== 'undefined' && authState) ? authState.authenticated : (window.authState && window.authState.authenticated);
-    if (!authed) {
+    if (!authed && !allowGuest) {
       pendingOpen = force;
       return;
     }
@@ -701,10 +735,29 @@ function updateCardScroll() {
     open(force);
   }
 
-  document.addEventListener('checkne:auth-ready', () => {
-    const force = pendingOpen;
-    pendingOpen = false;
-    initOnboarding({ force });
+  function maybeStartOnboarding(opts){
+    const force = !!(opts && opts.force);
+    const allowGuest = !!(opts && opts.allowGuest);
+    initOnboarding({ force, allowGuest });
+  }
+
+  document.addEventListener('checkne:auth-state', (event) => {
+    const detail = event && event.detail ? event.detail : null;
+    const authenticated = !!(detail && detail.authenticated);
+    const wasAuthenticated = !!(detail && detail.wasAuthenticated);
+    if (!authenticated) return;
+
+    try {
+      if (hasDeviceSeen() && !localStorage.getItem(getSeenKey())) {
+        localStorage.setItem(getSeenKey(), '1');
+      }
+    } catch {}
+
+    if (pendingOpen || !wasAuthenticated) {
+      const force = pendingOpen;
+      pendingOpen = false;
+      initOnboarding({ force });
+    }
   });
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -712,7 +765,8 @@ function updateCardScroll() {
   });
 
   window.initOnboarding = initOnboarding;
-  window.checkneReplayOnboarding = function(){ clearSeen(false); initOnboarding({ force: true }); };
+  window.checkneMaybeStartOnboarding = maybeStartOnboarding;
+  window.checkneReplayOnboarding = function(){ clearSeen(false); initOnboarding({ force: true, allowGuest: true }); };
   window.checkneResetOnboardingSeen = function(){ clearSeen(false); };
   window.checkneResetAllOnboardingSeen = function(){ clearSeen(true); };
 })();
