@@ -36,11 +36,18 @@ html.motion-ready .card.motion-enter, html.motion-ready .newsCard.motion-enter, 
 .accordionSummaryLabel{ min-width:0; }
 .motionDisclosureIcon{ width:22px; height:22px; position:relative; flex:0 0 22px; border-radius:999px; border:1px solid rgba(15,23,42,.12); background:linear-gradient(180deg, rgba(255,255,255,.94), rgba(255,255,255,.76)); box-shadow:0 6px 18px rgba(15,23,42,.06); }
 .newsCard.isLow .motionDisclosureIcon{ border-color:rgba(255,255,255,.14); background:linear-gradient(180deg, rgba(255,255,255,.14), rgba(255,255,255,.07)); box-shadow:none; }
-.motionDisclosureIcon__h,.motionDisclosureIcon__v{ position:absolute; left:50%; top:50%; width:10px; height:1.8px; border-radius:99px; background:rgba(15,23,42,.76); transform:translate(-50%,-50%); transition:transform var(--motion-duration-medium) var(--motion-ease-decel), opacity var(--motion-duration-fast) var(--motion-ease-standard), background-color var(--motion-duration-fast) var(--motion-ease-standard); }
+.motionDisclosureIcon__h,.motionDisclosureIcon__v{ position:absolute; left:50%; top:50%; width:10px; height:1.8px; border-radius:99px; background:rgba(15,23,42,.76); transition:transform var(--motion-duration-medium) var(--motion-ease-decel), opacity var(--motion-duration-fast) var(--motion-ease-standard), background-color var(--motion-duration-fast) var(--motion-ease-standard); }
+.motionDisclosureIcon__h{ transform:translate(-50%,-50%); }
 .newsCard.isLow .motionDisclosureIcon__h,.newsCard.isLow .motionDisclosureIcon__v{ background:rgba(255,255,255,.9); }
-.motionDisclosureIcon__v{ transform:translate(-50%,-50%) scaleY(1); }
-summary[aria-expanded="true"] .motionDisclosureIcon__v, details.is-opening > summary .motionDisclosureIcon__v{ transform:translate(-50%,-50%) scaleY(0); opacity:.08; }
-summary[aria-expanded="true"] .motionDisclosureIcon, details.is-opening > summary .motionDisclosureIcon{ box-shadow:0 10px 24px rgba(15,23,42,.08); }
+/* Closed state must be a plus: the second bar has to be truly vertical, not another horizontal dash. */
+.motionDisclosureIcon__v{ transform:translate(-50%,-50%) rotate(90deg) scaleX(1); transform-origin:50% 50%; }
+details > summary .motionDisclosureIcon__v{ transform:translate(-50%,-50%) rotate(90deg) scaleX(1); opacity:1; }
+details[open] > summary .motionDisclosureIcon__v,
+details.is-opening > summary .motionDisclosureIcon__v{ transform:translate(-50%,-50%) rotate(90deg) scaleX(0); opacity:.08; }
+details:not([open]) > summary .motionDisclosureIcon__v,
+details.is-closing > summary .motionDisclosureIcon__v{ transform:translate(-50%,-50%) rotate(90deg) scaleX(1); opacity:1; }
+details[open] > summary .motionDisclosureIcon,
+details.is-opening > summary .motionDisclosureIcon{ box-shadow:0 10px 24px rgba(15,23,42,.08); }
 .accordionBody,.newsOpenBody{ opacity:1; transform:translateY(0); transform-origin:50% 0%; will-change:height,opacity,transform; }
 .selectMenu,.sortMenu,.accountMenu,.msDropdown{ transform-origin:top center; transition:opacity var(--motion-duration-medium) var(--motion-ease-decel), transform var(--motion-duration-medium) var(--motion-ease-decel), visibility var(--motion-duration-medium) var(--motion-ease-standard); }
 .selectMenu,.sortMenu,.accountMenu,.msDropdown[aria-hidden="true"]{ opacity:0; transform:translateY(-6px) scale(.985); }

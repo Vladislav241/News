@@ -6,6 +6,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 from jose import JWTError, jwt
+
+from ..runtime import require_env
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError, InvalidHash
 
@@ -31,12 +33,7 @@ def verify_password(password: str, hashed_password: str) -> bool:
 
 
 def _secret_key() -> str:
-    # Support both names to avoid misconfiguration between local/.env and Render env vars.
-    key = (os.getenv("AUTH_SECRET_KEY") or os.getenv("JWT_SECRET_KEY") or "").strip()
-    if not key:
-        # Dev fallback only. In prod (Render) you MUST set AUTH_SECRET_KEY or JWT_SECRET_KEY.
-        key = "dev-insecure-secret-change-me-" + "x" * 24
-    return key
+    return require_env("AUTH_SECRET_KEY", "JWT_SECRET_KEY")
 
 
 def create_session_jwt(user_id: int, email: str, provider: str, minutes: int) -> str:

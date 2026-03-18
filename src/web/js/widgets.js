@@ -369,6 +369,8 @@ async function fetchJsonCached(url, ttlMs = 5 * 60 * 1000) {
 
   
 
+const MEDIA_BIAS_REQUESTS = new Map();
+
 function renderMediaBias(root, settings){
   // Widget reads the "current cluster" from the feed (set in feed.js on card open).
   const getClusterId = () => {
@@ -388,8 +390,14 @@ function renderMediaBias(root, settings){
 
   const url = `/api/widgets/media-bias?cluster_id=${encodeURIComponent(String(clusterId))}`;
 
-  fetch(url, { credentials: 'include' })
-    .then(r => r.json().catch(()=>null))
+  const cacheKey = String(clusterId);
+  const inflight = MEDIA_BIAS_REQUESTS.get(cacheKey) || apiFetchJson(url, { credentials: 'include', timeoutMs: 7000 })
+    .then(({ data }) => data)
+    .catch(() => null)
+    .finally(() => { MEDIA_BIAS_REQUESTS.delete(cacheKey); });
+  MEDIA_BIAS_REQUESTS.set(cacheKey, inflight);
+
+  inflight
     .then(payload => {
       const data = payload && payload.data;
       if (!data){

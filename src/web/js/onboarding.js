@@ -380,6 +380,18 @@
       </div>`;
   }
 
+  function setBusy(isBusy){
+    if (!root) return;
+    root.dataset.busy = isBusy ? '1' : '0';
+    root.querySelectorAll('.onboardingAction, .onboardingSkipBtn, .onboardingChip, .onboardingTopicChip, .onboardingDot').forEach((node) => {
+      if (!(node instanceof HTMLButtonElement)) return;
+      node.disabled = !!isBusy;
+    });
+    const finishBtn = root.querySelector('[data-role="finish"]');
+    if (finishBtn && isBusy) finishBtn.textContent = '...';
+    else if (finishBtn) finishBtn.textContent = t('get_started', 'Get Started');
+  }
+
   function updateControls(){
     if (!root) return;
     const total = getSlides().length;
@@ -432,6 +444,7 @@
   async function persistSelections(){
     const normalizedInterests = normalizeInterestList(selectedInterests);
     const normalizedCountry = selectedCountry || 'world';
+    setBusy(true);
     try {
       if (typeof state !== 'undefined' && state) {
         state.country = normalizedCountry;
@@ -445,17 +458,31 @@
 
       if (window.authState && window.authState.authenticated) {
         try {
-          await fetch(`${window.API_BASE || ''}/api/preferences`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({
-              interests: normalizedInterests,
-              country: normalizedCountry,
-              language: (window.state && window.state.language) ? window.state.language : 'en'
-            })
-          });
-        } catch {}
+          await (window.apiFetchJson
+            ? window.apiFetchJson(`${window.API_BASE || ''}/api/preferences`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                  interests: normalizedInterests,
+                  country: normalizedCountry,
+                  language: (window.state && window.state.language) ? window.state.language : 'en'
+                }),
+                timeoutMs: 12000
+              })
+            : fetch(`${window.API_BASE || ''}/api/preferences`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                  interests: normalizedInterests,
+                  country: normalizedCountry,
+                  language: (window.state && window.state.language) ? window.state.language : 'en'
+                })
+              }));
+        } catch (err) {
+          console.warn('[onboarding] could not persist preferences', err);
+        }
       }
 
       try {
@@ -470,7 +497,11 @@
       if (typeof fetchFeed === 'function' && modeValue === 'feed') {
         await fetchFeed({ reset: true, reason: 'onboarding-finish' });
       }
-    } catch {}
+    } catch (err) {
+      console.error('[onboarding] finish failed', err);
+    } finally {
+      setBusy(false);
+    }
   }
 
   function revealSiteUiSequentially(){

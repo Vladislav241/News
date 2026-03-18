@@ -10,20 +10,33 @@ import requests
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 
-
 router = APIRouter()
 
-# Very small disk cache to reduce repeated hotlink fetches.
-# (Works on Render/containers too; /tmp is ephemeral but helps during runtime.)
 _CACHE_DIR = os.path.join("/tmp", "checkne_img_cache")
 os.makedirs(_CACHE_DIR, exist_ok=True)
 
-# Cache TTL in seconds
 _TTL = int(os.getenv("IMAGE_PROXY_TTL_SECONDS", "86400") or 86400)
-
-# Hard safety limits
 _MAX_BYTES = int(os.getenv("IMAGE_PROXY_MAX_BYTES", str(8 * 1024 * 1024)) or (8 * 1024 * 1024))
-_TIMEOUT = float(os.getenv("IMAGE_PROXY_TIMEOUT_SECONDS", "12") or 12)
+_CONNECT_TIMEOUT = float(os.getenv("IMAGE_PROXY_CONNECT_TIMEOUT_SECONDS", "3") or 3)
+_READ_TIMEOUT = float(os.getenv("IMAGE_PROXY_READ_TIMEOUT_SECONDS", "6") or 6)
+_FAILURE_TTL = int(os.getenv("IMAGE_PROXY_FAILURE_TTL_SECONDS", "300") or 300)
+_FAIL_CACHE: dict[str, tuple[float, str]] = {}
+
+
+def _placeholder_svg(reason: str = "No image") -> Response:
+    svg = (
+        "<svg xmlns='http://www.w3.org/2000/svg' width='1200' height='800'>"
+        "<rect width='100%' height='100%' fill='#e9e9ee'/>"
+        "<text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' "
+        "fill='#8a8a96' font-family='system-ui, -apple-system, Segoe UI, Roboto, Arial' font-size='28'>"
+        + (reason or "No image")
+        + "</text></svg>"
+    )
+    return Response(
+        content=svg.encode("utf-8"),
+        media_type="image/svg+xml",
+        headers={"Cache-Control": "public, max-age=300"},
+    )
 
 
 def _is_http_url(u: str) -> bool:
@@ -34,8 +47,31 @@ def _is_http_url(u: str) -> bool:
         return False
 
 
+def _failure_key(url: str, width: Optional[int]) -> str:
+    return f"{url}|w={width or 0}"
+
+
+def _get_recent_failure(url: str, width: Optional[int]) -> Optional[str]:
+    hit = _FAIL_CACHE.get(_failure_key(url, width))
+    if not hit:
+        return None
+    ts, reason = hit
+    if (time.time() - float(ts)) > _FAILURE_TTL:
+        _FAIL_CACHE.pop(_failure_key(url, width), None)
+        return None
+    return reason or "Image unavailable"
+
+
+def _remember_failure(url: str, width: Optional[int], reason: str) -> None:
+    _FAIL_CACHE[_failure_key(url, width)] = (time.time(), reason or "Image unavailable")
+
+
+def _clear_failure(url: str, width: Optional[int]) -> None:
+    _FAIL_CACHE.pop(_failure_key(url, width), None)
+
+
 def _cache_paths(url: str, width: Optional[int]) -> Tuple[str, str]:
-    key = f"{url}|w={width or 0}".encode("utf-8", "ignore")
+    key = _failure_key(url, width).encode("utf-8", "ignore")
     h = hashlib.sha1(key).hexdigest()
     body_path = os.path.join(_CACHE_DIR, f"{h}.bin")
     meta_path = os.path.join(_CACHE_DIR, f"{h}.meta")
@@ -47,7 +83,6 @@ def _read_cache(url: str, width: Optional[int]) -> Optional[Tuple[bytes, str, st
     try:
         if not os.path.exists(body_path) or not os.path.exists(meta_path):
             return None
-        # TTL based on mtime
         if time.time() - os.path.getmtime(body_path) > _TTL:
             return None
         with open(meta_path, "r", encoding="utf-8") as f:
@@ -75,16 +110,10 @@ def _write_cache(url: str, width: Optional[int], data: bytes, content_type: str,
 
 
 def _upgrade_common_cdn(url: str, width: Optional[int]) -> str:
-    """Best-effort URL upgrade for common news CDNs.
-
-    Intentionally conservative: if we can't safely upgrade, return as-is.
-    """
-    # Remove common WordPress thumbnail suffix: -300x200.jpg -> .jpg
     try:
         base, ext = os.path.splitext(url)
         if ext.lower() in (".jpg", ".jpeg", ".png", ".webp"):
             import re
-
             m = re.search(r"-(\d{2,4})x(\d{2,4})$", base)
             if m:
                 url = base[: m.start()] + ext
@@ -98,19 +127,9 @@ def _upgrade_common_cdn(url: str, width: Optional[int]) -> str:
         host = (p.netloc or "").lower()
         q = urllib.parse.parse_qs(p.query, keep_blank_values=True)
 
-        # Guardian (i.guim.co.uk) often uses width= / quality= params
         if "i.guim.co.uk" in host:
-            # IMPORTANT:
-            # Guardian URLs are frequently *signed* (query key "s"). If we touch parameters,
-            # the CDN can start returning 4xx.
-            # So:
-            # - if the URL is signed -> return as-is
-            # - otherwise we can set width/quality/fit/dpr conservatively
             if "s" in q and q.get("s"):
                 return url
-
-            # Never drop existing query params (some variants require them).
-            # If width is already present we don't override it to avoid unexpected behavior.
             q.setdefault("width", [str(width)])
             q.setdefault("quality", ["85"])
             q.setdefault("fit", ["max"])
@@ -118,7 +137,6 @@ def _upgrade_common_cdn(url: str, width: Optional[int]) -> str:
             new_q = urllib.parse.urlencode(q, doseq=True)
             return urllib.parse.urlunparse((p.scheme, p.netloc, p.path, p.params, new_q, p.fragment))
 
-        # BBC (ichef.bbci.co.uk) paths frequently include /news/1024/ or /news/480/
         if "ichef.bbci.co.uk" in host:
             parts = p.path.split("/")
             for i, seg in enumerate(parts):
@@ -126,16 +144,13 @@ def _upgrade_common_cdn(url: str, width: Optional[int]) -> str:
                     parts[i] = str(width)
                     new_path = "/".join(parts)
                     return urllib.parse.urlunparse((p.scheme, p.netloc, new_path, p.params, p.query, p.fragment))
-            # fallback: some variants use ?w=
             q["w"] = [str(width)]
             new_q = urllib.parse.urlencode(q, doseq=True)
             return urllib.parse.urlunparse((p.scheme, p.netloc, p.path, p.params, new_q, p.fragment))
 
-        # Generic query params
         for key in ("w", "width", "resize"):
             if key in q:
                 if key == "resize":
-                    # try "WIDTH,HEIGHT" pattern
                     q[key] = [f"{width}," + q[key][0].split(",")[-1]]
                 else:
                     q[key] = [str(width)]
@@ -151,41 +166,28 @@ def proxy_image(
     u: str = Query("", description="Remote image URL"),
     w: Optional[int] = Query(None, ge=64, le=3000, description="Optional target width"),
 ):
-    """Fetch a remote image and serve it from the same origin.
-
-    This fixes:
-    - low-quality RSS thumbnails (we can request larger variants for common CDNs)
-    - broken images due to publisher hotlink/header quirks
-    - gives you stable caching on your own domain
-    """
     url = (u or "").strip()
     if not url:
         raise HTTPException(status_code=400, detail="Missing 'u' query parameter")
-
-    # Support protocol-relative URLs like //ichef.bbci.co.uk/...
     if url.startswith("//"):
         url = "https:" + url
-
     if not _is_http_url(url):
         raise HTTPException(status_code=400, detail="Invalid image URL")
 
     url = _upgrade_common_cdn(url, w)
 
+    recent_failure = _get_recent_failure(url, w)
+    if recent_failure:
+        return _placeholder_svg(recent_failure)
+
     cached = _read_cache(url, w)
     if cached:
         data, content_type, etag = cached
-        headers = {
-            "Cache-Control": f"public, max-age={_TTL}",
-            "ETag": etag,
-        }
-        return Response(content=data, media_type=content_type, headers=headers)
+        return Response(content=data, media_type=content_type, headers={"Cache-Control": f"public, max-age={_TTL}", "ETag": etag})
 
-    # Some publishers/CDNs block hotlinking or behave differently depending on headers.
-    # Use a realistic UA and a referer matching the image host (not our own site).
     try:
         p0 = urllib.parse.urlparse(url)
         host0 = (p0.netloc or "").lower()
-        # Guardian image CDN is picky about Referer; using the site origin works more reliably.
         if host0.endswith("guim.co.uk") or host0.endswith("theguardian.com"):
             referer = "https://www.theguardian.com/"
         else:
@@ -203,37 +205,17 @@ def proxy_image(
         "Referer": referer,
     }
 
-    # Do NOT send Origin for image fetches. Some CDNs treat it as a CORS fetch and block.
-
-    def _placeholder_svg(reason: str = "No image") -> Response:
-        svg = (
-            "<svg xmlns='http://www.w3.org/2000/svg' width='1200' height='800'>"
-            "<rect width='100%' height='100%' fill='#e9e9ee'/>"
-            "<text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' "
-            "fill='#8a8a96' font-family='system-ui, -apple-system, Segoe UI, Roboto, Arial' font-size='28'>"
-            + (reason or "No image")
-            + "</text></svg>"
-        )
-        return Response(
-            content=svg.encode("utf-8"),
-            media_type="image/svg+xml",
-            headers={"Cache-Control": "public, max-age=300"},
-        )
-
     def _fetch_once(fetch_url: str):
-        return requests.get(fetch_url, headers=headers, timeout=_TIMEOUT, stream=True, allow_redirects=True)
+        return requests.get(fetch_url, headers=headers, timeout=(_CONNECT_TIMEOUT, _READ_TIMEOUT), stream=True, allow_redirects=True)
 
     try:
         r = _fetch_once(url)
     except Exception:
-        # Never return a broken-image icon to the UI.
+        _remember_failure(url, w, "Image unavailable")
         return _placeholder_svg("Image unavailable")
 
-    # Guardian: if first attempt fails, try once more with the exact URL (no CDN upgrades)
-    # to avoid signature/param edge-cases.
     if r.status_code >= 400:
         try:
-            # If we upgraded, try the original input URL as a fallback.
             raw_url = (u or "").strip()
             if raw_url.startswith("//"):
                 raw_url = "https:" + raw_url
@@ -248,24 +230,30 @@ def proxy_image(
             pass
 
     if r.status_code >= 400:
-        return _placeholder_svg("Image unavailable")
-
-    content_type = (r.headers.get("Content-Type") or "").split(";")[0].strip() or "application/octet-stream"
-    if content_type.startswith("text/html"):
-        # Some CDNs return HTML blocks/challenges.
         try:
             r.close()
         except Exception:
             pass
+        _remember_failure(url, w, "Image unavailable")
+        return _placeholder_svg("Image unavailable")
+
+    content_type = (r.headers.get("Content-Type") or "").split(";")[0].strip() or "application/octet-stream"
+    if content_type.startswith("text/html"):
+        try:
+            r.close()
+        except Exception:
+            pass
+        _remember_failure(url, w, "Image blocked")
         return _placeholder_svg("Image blocked")
 
-    data = b""
+    chunks = bytearray()
     try:
         for chunk in r.iter_content(chunk_size=64 * 1024):
             if not chunk:
                 continue
-            data += chunk
-            if len(data) > _MAX_BYTES:
+            chunks.extend(chunk)
+            if len(chunks) > _MAX_BYTES:
+                _remember_failure(url, w, "Image too large")
                 raise HTTPException(status_code=413, detail="Image too large")
     finally:
         try:
@@ -273,14 +261,12 @@ def proxy_image(
         except Exception:
             pass
 
+    data = bytes(chunks)
     if not data:
+        _remember_failure(url, w, "Image unavailable")
         return _placeholder_svg("Image unavailable")
 
+    _clear_failure(url, w)
     etag = hashlib.sha1(data).hexdigest()
     _write_cache(url, w, data, content_type, etag)
-
-    headers_out = {
-        "Cache-Control": f"public, max-age={_TTL}",
-        "ETag": etag,
-    }
-    return Response(content=data, media_type=content_type, headers=headers_out)
+    return Response(content=data, media_type=content_type, headers={"Cache-Control": f"public, max-age={_TTL}", "ETag": etag})

@@ -8,6 +8,31 @@
 
 const API_BASE = ""; // same-origin
 
+async function apiFetchJson(url, options = {}) {
+  const timeoutMs = Number.isFinite(Number(options.timeoutMs)) ? Number(options.timeoutMs) : 15000;
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(new DOMException('Request timeout', 'AbortError')), timeoutMs);
+  const merged = { ...options, signal: options.signal || controller.signal };
+  try {
+    const response = await fetch(url, merged);
+    let data = null;
+    try {
+      data = await response.json();
+    } catch {}
+    if (!response.ok) {
+      const detail = (data && (data.detail || data.message)) ? String(data.detail || data.message) : `HTTP ${response.status}`;
+      const err = new Error(detail);
+      err.status = response.status;
+      err.payload = data;
+      throw err;
+    }
+    return { response, data };
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+window.apiFetchJson = apiFetchJson;
+
 function isUrlQuery(q) {
   try {
     const s = String(q || "").trim();
@@ -208,13 +233,11 @@ async function ensureItemInFeedAndOpen(clusterId) {
     const country = encodeURIComponent(state.country || "world");
     const language = "all";
     const uiLang = encodeURIComponent(state.language || "en");
-    const r = await fetch(
+    const { data: j } = await apiFetchJson(
       `${API_BASE}/api/news/by_ids?ids=${encodeURIComponent(String(clusterId))}` +
-        `&interests=${interests}&country=${country}&language=${language}&ui_lang=${uiLang}`
+        `&interests=${interests}&country=${country}&language=${language}&ui_lang=${uiLang}`,
+      { timeoutMs: 12000 }
     );
-
-    if (!r.ok) return false;
-    const j = await r.json();
     const item = (j?.items && j.items[0]) ? j.items[0] : null;
     if (!item) return false;
 

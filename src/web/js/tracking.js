@@ -145,24 +145,34 @@ function saveTrackingDeltaState(obj) {
 // --- Trust score history (server-side, per cluster) ---
 // History points are stored on the backend (PostgreSQL) so they are stable across devices.
 const TRUST_HISTORY_CACHE = new Map(); // clusterId -> { items, fetchedAt }
+const TRUST_HISTORY_INFLIGHT = new Map();
 async function fetchTrustHistory(clusterId, limit = 60) {
   const cid = Number(clusterId);
   if (!Number.isFinite(cid)) return [];
 
-  const cached = TRUST_HISTORY_CACHE.get(cid);
+  const cacheKey = `${cid}:${Number(limit) || 60}`;
+  const cached = TRUST_HISTORY_CACHE.get(cacheKey);
   // short cache (20s) to avoid spamming when user opens/closes cards
   if (cached && (Date.now() - cached.fetchedAt) < 20_000) return cached.items || [];
+  if (TRUST_HISTORY_INFLIGHT.has(cacheKey)) return await TRUST_HISTORY_INFLIGHT.get(cacheKey);
 
-  try {
+  const request = (async () => {
     const r = await fetch(`/api/trust-history/${cid}?limit=${encodeURIComponent(String(limit))}`, {
       credentials: 'include'
     });
     const data = await r.json().catch(() => ({}));
     const items = Array.isArray(data.items) ? data.items : [];
-    TRUST_HISTORY_CACHE.set(cid, { items, fetchedAt: Date.now() });
+    TRUST_HISTORY_CACHE.set(cacheKey, { items, fetchedAt: Date.now() });
     return items;
+  })();
+
+  TRUST_HISTORY_INFLIGHT.set(cacheKey, request);
+  try {
+    return await request;
   } catch {
     return cached?.items || [];
+  } finally {
+    TRUST_HISTORY_INFLIGHT.delete(cacheKey);
   }
 }
 

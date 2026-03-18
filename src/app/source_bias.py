@@ -9,11 +9,29 @@ from pathlib import Path
 from typing import Any, Optional, Tuple
 from urllib.parse import urlparse
 
-import requests
 
 from .db import db
 
 logger = logging.getLogger("news.source_bias")
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _llm_enabled() -> bool:
+    return _env_bool("MEDIA_BIAS_LLM_ENABLED", True)
+
+
+def _llm_timeout_seconds() -> float:
+    try:
+        return max(1.0, min(10.0, float(os.getenv("MEDIA_BIAS_LLM_TIMEOUT_SECONDS", "4.5") or 4.5)))
+    except Exception:
+        return 4.5
+
 
 
 def normalize_domain(url_or_domain: str) -> str:
@@ -107,7 +125,7 @@ def resolve_bias(domain: str, sample_titles: list[str] | None = None) -> tuple[s
 
 def classify_with_llm(domain: str, sample_titles: list[str]) -> tuple[str, float]:
     api_key = (os.getenv("OPENAI_API_KEY") or "").strip()
-    if not api_key:
+    if not api_key or not _llm_enabled():
         return ("unknown", 0.0)
 
     # Import lazily so dev runs without the package don't crash.
@@ -129,7 +147,7 @@ def classify_with_llm(domain: str, sample_titles: list[str]) -> tuple[str, float
     )
 
     try:
-        client = OpenAI(api_key=api_key)
+        client = OpenAI(api_key=api_key, timeout=_llm_timeout_seconds())
         resp = client.chat.completions.create(
             model=os.getenv("OPENAI_BIAS_MODEL") or "gpt-4o-mini",
             messages=[

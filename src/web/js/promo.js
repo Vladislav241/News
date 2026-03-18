@@ -5,6 +5,8 @@
   let status = null;
   let initialized = false;
   let lastDismissKey = null;
+  let configInflight = null;
+  let configLoadedAt = 0;
 
   function el(tag, cls, html){
     const n = document.createElement(tag);
@@ -33,15 +35,35 @@
     return j;
   }
 
-  async function loadConfig(){
-    cfg = await fetchJson(`${API}/api/promo/share/config`);
-    lastDismissKey = dismissKey();
-    if (isAuthed()) {
-      try { status = await fetchJson(`${API}/api/promo/share/status`); } catch { status = null; }
-    } else {
-      status = null;
+  async function loadConfig(opts){
+    const force = !!(opts && opts.force);
+    const now = Date.now();
+    if (!force && cfg && (now - configLoadedAt) < 15000) {
+      renderAll();
+      return cfg;
     }
-    renderAll();
+    if (!force && configInflight) {
+      return await configInflight;
+    }
+
+    configInflight = (async () => {
+      cfg = await fetchJson(`${API}/api/promo/share/config`);
+      lastDismissKey = dismissKey();
+      if (isAuthed()) {
+        try { status = await fetchJson(`${API}/api/promo/share/status`); } catch { status = null; }
+      } else {
+        status = null;
+      }
+      configLoadedAt = Date.now();
+      renderAll();
+      return cfg;
+    })();
+
+    try {
+      return await configInflight;
+    } finally {
+      configInflight = null;
+    }
   }
 
   function promoCopy(){
@@ -309,7 +331,7 @@
     if (typeof prev === 'function') {
       window.__setMainPage = function(page){ const out = prev(page); setTimeout(renderAll, 0); return out; };
     }
-    document.addEventListener('checkne:billingUpdated', ()=>{ loadConfig().catch(()=>{}); });
+    document.addEventListener('checkne:billingUpdated', ()=>{ loadConfig({ force:true }).catch(()=>{}); });
     document.addEventListener('click', ()=> setTimeout(updateShareHint, 0), true);
   }
 

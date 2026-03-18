@@ -20,6 +20,7 @@ from ..ingest import run_ingest_cycle, backfill_article_images, _should_refresh_
 from ..scoring import compute_importance, compute_credibility
 from ..translate import translate_feed_items
 from ..ai import extract_visual_search_signal
+from ..runtime import background_tasks_disabled
 
 import threading
 import asyncio
@@ -53,6 +54,17 @@ def _market_set_cached(key: str, value: Any) -> None:
         _market_cache[key] = (time.time(), value)
     except Exception:
         pass
+
+
+def _market_get_stale(key: str, max_age: int = 900) -> Any:
+    try:
+        now = time.time()
+        hit = _market_cache.get(key)
+        if hit and (now - float(hit[0])) < float(max_age):
+            return hit[1]
+    except Exception:
+        return None
+    return None
 
 router = APIRouter()
 
@@ -146,7 +158,7 @@ def _backfill_summaries_for_cluster_ids(cluster_ids: list[int]) -> None:
                 _SUMMARY_BACKFILL_INFLIGHT.discard(int(cid))
 
 def _queue_missing_summaries(rows: list[dict[str, Any]], background_tasks: BackgroundTasks | None, max_jobs: int = 4) -> None:
-    if background_tasks is None:
+    if background_tasks is None or background_tasks_disabled():
         return
 
     picked: list[int] = []
@@ -2492,7 +2504,7 @@ def market_fx(base: str = "EUR", symbols: str = "USD,GBP,PLN,UAH"):
     try:
         url = "https://api.exchangerate.host/latest"
         params = {"base": base_u, "symbols": ",".join(syms)}
-        r = requests.get(url, params=params, timeout=8)
+        r = requests.get(url, params=params, timeout=(2.5, 4.5))
         if not r.ok:
             raise RuntimeError(f"fx_http_{r.status_code}")
         j = r.json() or {}
@@ -2542,7 +2554,7 @@ def market_crypto(vs: str = "eur", coins: str = "bitcoin,ethereum"):
     url = "https://api.coingecko.com/api/v3/simple/price"
     params = {"ids": ",".join(ids), "vs_currencies": vs_u}
     try:
-        r = requests.get(url, params=params, timeout=8)
+        r = requests.get(url, params=params, timeout=(2.5, 4.5))
         if not r.ok:
             raise RuntimeError(f"crypto_http_{r.status_code}")
         j = r.json() or {}
@@ -2551,6 +2563,12 @@ def market_crypto(vs: str = "eur", coins: str = "bitcoin,ethereum"):
         return out
     except Exception as e:
         log_market.warning("crypto proxy failed: %s", e)
+        stale = _market_get_stale(cache_key, max_age=15 * 60)
+        if stale is not None:
+            out = dict(stale)
+            out["stale"] = True
+            out["detail"] = "crypto_stale"
+            return out
         return {"vs": vs_u, "prices": {}, "detail": "crypto_unavailable"}
 
 @router.get("/api/news/video")

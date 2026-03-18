@@ -190,6 +190,8 @@ function __applyTopicQuery(q){
   }
 }
 
+const __trendingInflight = new Map();
+
 async function loadTrendingInterests({ force } = { force: false }){
   const tagsEl = qs("tags");
   if (!tagsEl) return;
@@ -214,17 +216,30 @@ async function loadTrendingInterests({ force } = { force: false }){
   params.set("interests", (__getEffectiveInterestParams() || ["general"]).join(","));
   params.set("limit", String(TRENDING_LIMIT));
 
-  try {
+  if (__trendingInflight.has(key)) {
+    const items = await __trendingInflight.get(key);
+    renderTrendingChips(items);
+    return;
+  }
+
+  const request = (async () => {
     const r = await fetch(`${API_BASE}/api/interests/trending?${params.toString()}`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
-    const items = Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []);
-    __trendingCache = { key, ts: now, items };
+    return Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []);
+  })();
+
+  __trendingInflight.set(key, request);
+  try {
+    const items = await request;
+    __trendingCache = { key, ts: Date.now(), items };
     renderTrendingChips(items);
   } catch (e) {
     console.warn("[interests] trending failed", e);
     // do not block static interests
     renderTrendingChips([]);
+  } finally {
+    __trendingInflight.delete(key);
   }
 }
 

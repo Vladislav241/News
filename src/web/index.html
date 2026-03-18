@@ -1341,7 +1341,8 @@ body.visualSearchLock{ overflow:hidden; }
       margin-left: 10px;
       flex-shrink:0;
     }
-    details[open] > .accordionSummary::after { content:"−"; }
+    details[open] > .accordionSummary::after, .accordionSummary[aria-expanded="true"]::after { content:"−"; }
+    .accordionSummary[aria-expanded="false"]::after { content:"+"; }
     .newsCard.isLow .accordionSummary::after { border-color: rgba(255,255,255,.14); background: rgba(17,17,19,.25); color: #fff; }
 
     .accordionBody { padding: 6px 0 2px; }
@@ -6206,7 +6207,7 @@ body.eventMapModalOpen{overflow:hidden;}
 <script src="/static/js/core.js?v=2026-03-15-share-drag-restore" defer></script>
 <script src="/static/js/state.js?v=2026-02-24" defer></script>
 <script src="/static/js/mode.js?v=2026-03-06-1" defer></script>
-<link rel="stylesheet" href="/static/css/motion-system.css?v=2026-03-18-ui-fixes-2">
+<link rel="stylesheet" href="/static/css/motion-system.css?v=2026-03-18-ui-fixes-3">
 <link rel="stylesheet" href="/static/css/onboarding.css?v=2026-03-17-3">
 <script src="/static/js/tracking.js?v=2026-02-24" defer></script>
 <script src="/static/js/auth.js?v=2026-03-17-onboarding" defer></script>
@@ -6220,8 +6221,8 @@ body.eventMapModalOpen{overflow:hidden;}
 <script src="/static/js/widgets.js?v=2026-03-13-media-bias-layout-1" defer></script>
 <script src="/static/js/promo.js?v=2026-03-09-sharepromo" defer></script>
 <script src="/static/js/dropdowns.js?v=2026-02-24" defer></script>
-<script src="/static/js/motion-system.js?v=2026-03-18-ui-fixes-2" defer></script>
-<script src="/static/js/bootstrap.js?v=2026-03-18-ui-fixes-2" defer></script>
+<script src="/static/js/motion-system.js?v=2026-03-18-ui-fixes-3" defer></script>
+<script src="/static/js/bootstrap.js?v=2026-03-18-ui-fixes-3" defer></script>
 <!-- Share modal -->
 <div id="shareBackdrop" class="shareBackdrop" aria-hidden="true">
   <div class="shareModal" role="dialog" aria-modal="true" aria-labelledby="shareHeroTitle">

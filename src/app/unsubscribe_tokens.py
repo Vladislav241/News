@@ -6,13 +6,11 @@ from typing import Any, Dict, Optional
 
 from jose import JWTError, jwt
 
+from .runtime import require_env
+
 
 def _secret_key() -> str:
-    # Keep consistent with auth/security.py
-    key = (os.getenv("AUTH_SECRET_KEY") or os.getenv("JWT_SECRET_KEY") or "").strip()
-    if not key:
-        key = "dev-insecure-secret-change-me-" + "x" * 24
-    return key
+    return require_env("AUTH_SECRET_KEY", "JWT_SECRET_KEY")
 
 
 def create_unsubscribe_token(user_id: int, email: str, days: int = 365) -> str:

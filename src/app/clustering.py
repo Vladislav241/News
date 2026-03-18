@@ -443,6 +443,60 @@ def _build_candidates_texts(query: str, candidates: list[tuple[int, str]]) -> tu
     return texts, ids
 
 
+def _safe_lsa_similarity(Xw) -> np.ndarray | None:
+    """Return normalized query->candidate LSA similarities or None on degenerate inputs.
+
+    Keeps the existing logic but adds strict numeric guards so malformed or ultra-sparse
+    matrices do not emit RuntimeWarnings or poison the downstream blend.
+    """
+    try:
+        n_samples, n_features = Xw.shape
+        if n_samples < 3 or n_features < 3:
+            return None
+
+        max_components = min(n_samples - 1, n_features - 1)
+        if max_components < 2:
+            return None
+
+        requested = int(os.getenv("CLUSTER_LSA_COMPONENTS", "150"))
+        k = min(requested, max_components)
+        if k < 2:
+            return None
+
+        with np.errstate(all="ignore"):
+            svd = TruncatedSVD(n_components=k, random_state=42)
+            Z = svd.fit_transform(Xw)
+
+        Z = np.asarray(Z, dtype=np.float64)
+        if Z.ndim != 2 or Z.shape[0] < 2 or Z.shape[1] < 1:
+            return None
+        if not np.isfinite(Z).all():
+            return None
+
+        # Degenerate projections sometimes explode numerically on nearly-empty matrices.
+        max_abs = float(np.max(np.abs(Z))) if Z.size else 0.0
+        if not np.isfinite(max_abs) or max_abs > 1e8:
+            return None
+
+        norms = np.linalg.norm(Z, axis=1, keepdims=True)
+        if not np.isfinite(norms).all():
+            return None
+        if np.any(norms <= 1e-12):
+            return None
+
+        Z = Z / norms
+        if not np.isfinite(Z).all():
+            return None
+
+        sims = np.sum(Z[1:] * Z[0:1], axis=1, dtype=np.float64)
+        if sims.ndim != 1 or not np.isfinite(sims).all():
+            return None
+
+        return np.clip(sims, -1.0, 1.0)
+    except Exception:
+        return None
+
+
 def _combined_tfidf_best_match(
     query: str,
     candidates: list[tuple[int, str]],
@@ -468,21 +522,7 @@ def _combined_tfidf_best_match(
 
     # Latent Semantic Analysis (cheap "embedding-like" layer)
     # Helps reduce bad merges caused by shared buzzwords.
-    lsa_w = None
-    try:
-        n_samples, n_features = Xw.shape
-        k = min(int(os.getenv("CLUSTER_LSA_COMPONENTS", "150")), max(2, n_samples - 1), max(2, n_features - 1))
-        if k >= 2:
-            svd = TruncatedSVD(n_components=k, random_state=42)
-            Z = svd.fit_transform(Xw)
-            # L2 normalize
-            import numpy as _np
-            norms = _np.linalg.norm(Z, axis=1, keepdims=True)
-            norms[norms == 0] = 1.0
-            Z = Z / norms
-            lsa_w = (Z[1:] @ Z[0].T)
-    except Exception:
-        lsa_w = None
+    lsa_w = _safe_lsa_similarity(Xw)
 
     if lsa_w is None:
         sims = 0.65 * sim_w + 0.35 * sim_c

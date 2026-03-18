@@ -1458,29 +1458,32 @@ class Database:
         )
 
     def get_media_bias_cache(self, cache_key: str) -> Optional[str]:
-        row = self.connect().fetchone(
+        row = self._fetchone(
             """
             SELECT payload_json
             FROM media_bias_cache
             WHERE cache_key = ?
-              AND expires_at > CURRENT_TIMESTAMP
+              AND expires_at > ?
             """,
-            (cache_key,),
+            (cache_key, _utc_now_iso()),
         )
-        return row["payload_json"] if row else None
+        return str(row.get("payload_json")) if row and row.get("payload_json") is not None else None
 
     def set_media_bias_cache(self, cache_key: str, cluster_id: int, payload_json: str, ttl_seconds: int = 3 * 3600) -> None:
+        now_iso = _utc_now_iso()
+        expires_iso = (datetime.now(timezone.utc) + timedelta(seconds=max(1, int(ttl_seconds)))).replace(microsecond=0).isoformat()
         self._exec(
             """
-            INSERT INTO media_bias_cache (cache_key, cluster_id, payload_json, created_at, expires_at)
-            VALUES (?, ?, ?, CURRENT_TIMESTAMP, datetime(CURRENT_TIMESTAMP, '+' || ? || ' seconds'))
+            INSERT INTO media_bias_cache (cache_key, cluster_id, cluster_updated_at, payload_json, created_at, expires_at)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(cache_key) DO UPDATE SET
                 cluster_id=excluded.cluster_id,
+                cluster_updated_at=excluded.cluster_updated_at,
                 payload_json=excluded.payload_json,
-                created_at=CURRENT_TIMESTAMP,
-                expires_at=datetime(CURRENT_TIMESTAMP, '+' || ? || ' seconds')
+                created_at=excluded.created_at,
+                expires_at=excluded.expires_at
             """,
-            (cache_key, int(cluster_id), payload_json, int(ttl_seconds), int(ttl_seconds)),
+            (cache_key, int(cluster_id), now_iso, payload_json, now_iso, expires_iso),
         )
 
 

@@ -1402,6 +1402,21 @@ def _looks_like_html(b: bytes) -> bool:
     return head.startswith(b"<html") or b"<!doctype" in head or b"<head" in head
 
 
+def _sanitize_feed_bytes(data: bytes) -> bytes:
+    """Remove illegal XML control bytes that make some feeds bozo for no good reason."""
+    if not data:
+        return b""
+    try:
+        text = data.decode("utf-8", errors="replace")
+    except Exception:
+        try:
+            text = data.decode("latin-1", errors="replace")
+        except Exception:
+            return data
+    text = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "", text)
+    return text.encode("utf-8", errors="ignore")
+
+
 def _parse_feed_with_requests(url: str, headers: dict[str, str]) -> tuple[feedparser.FeedParserDict, dict[str, Any]]:
     """Fetch RSS/Atom with requests first (more reliable than urllib in some TLS setups),
     then parse bytes via feedparser.
@@ -1415,6 +1430,7 @@ def _parse_feed_with_requests(url: str, headers: dict[str, str]) -> tuple[feedpa
         return feedparser.parse(u, request_headers=headers), fetch_meta
 
     # Build a small-retry requests session
+    sess = None
     try:
         from requests.adapters import HTTPAdapter
         from urllib3.util.retry import Retry
@@ -1433,7 +1449,7 @@ def _parse_feed_with_requests(url: str, headers: dict[str, str]) -> tuple[feedpa
         sess.mount('http://', adapter)
         sess.mount('https://', adapter)
     except Exception:
-        sess = requests
+        sess = None
 
     h = dict(headers or {})
     h.setdefault('Accept-Language', 'en-US,en;q=0.9')
@@ -1441,21 +1457,39 @@ def _parse_feed_with_requests(url: str, headers: dict[str, str]) -> tuple[feedpa
     h.setdefault('Accept-Encoding', 'gzip, deflate')
 
     try:
-        r = sess.get(u, headers=h, timeout=15, allow_redirects=True)
-        fetch_meta['status_code'] = getattr(r, 'status_code', None)
-        fetch_meta['content_type'] = (getattr(r, 'headers', {}) or {}).get('content-type')
-        data = getattr(r, 'content', b'') or b''
+        response = None
+        if sess is not None:
+            response = sess.get(u, headers=h, timeout=15, allow_redirects=True)
+        else:
+            response = requests.get(u, headers=h, timeout=15, allow_redirects=True)
+
+        fetch_meta['status_code'] = getattr(response, 'status_code', None)
+        fetch_meta['content_type'] = (getattr(response, 'headers', {}) or {}).get('content-type')
+        data = getattr(response, 'content', b'') or b''
 
         # If server returns HTML (anti-bot / paywall), don't feed it into feedparser.
-        head = data[:200].lstrip().lower()
-        if head.startswith(b'<!doctype html') or head.startswith(b'<html'):
+        if _looks_like_html(data):
             fetch_meta['is_html'] = True
             return feedparser.parse(b''), fetch_meta
 
         if data:
-            return feedparser.parse(data), fetch_meta
+            parsed = feedparser.parse(data)
+            if int(getattr(parsed, 'bozo', 0) or 0) and len(getattr(parsed, 'entries', []) or []) == 0:
+                cleaned = _sanitize_feed_bytes(data)
+                if cleaned and cleaned != data:
+                    reparsed = feedparser.parse(cleaned)
+                    if len(getattr(reparsed, 'entries', []) or []) > 0 or not int(getattr(reparsed, 'bozo', 0) or 0):
+                        fetch_meta['sanitized'] = True
+                        return reparsed, fetch_meta
+            return parsed, fetch_meta
     except Exception as e:
         fetch_meta['error'] = str(e)
+    finally:
+        try:
+            if sess is not None:
+                sess.close()
+        except Exception:
+            pass
 
     # Last resort: let feedparser fetch it itself.
     return feedparser.parse(u, request_headers=headers), fetch_meta
