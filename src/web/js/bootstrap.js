@@ -136,284 +136,136 @@ function initCookieBanner() {
 }
 
 // ------------------------------
-// Smooth <details> animations
+// Premium motion-driven <details> animations
 // ------------------------------
-// Native <details> opens instantly. We intercept clicks on summaries and
-// animate the content container height + opacity.
 let _smoothDetailsInit = false;
+
+function _syncDisclosureState(detailsEl){
+  if (!detailsEl || detailsEl.tagName !== 'DETAILS') return;
+  const summaryEl = detailsEl.querySelector('summary');
+  if (!summaryEl) return;
+  const isOpen = !!detailsEl.open && !detailsEl.classList.contains('is-closing');
+  summaryEl.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+}
+
+function _syncAllDisclosureStates(root){
+  const scope = root && root.querySelectorAll ? root : document;
+  try { scope.querySelectorAll('details > summary.accordionSummary, details > summary.newsSummary').forEach((summaryEl) => {
+    const detailsEl = summaryEl.parentElement;
+    if (detailsEl && detailsEl.tagName === 'DETAILS') _syncDisclosureState(detailsEl);
+  }); } catch {}
+}
 
 function _animateDetails(detailsEl, contentEl, shouldOpen){
   if (!detailsEl || !contentEl) return;
 
-  // Mobile browsers sometimes adjust scroll position while a <details> element
-  // changes height (especially during animations), causing a small "jump".
-  // We lock scrollY during the animation on coarse pointers / small screens.
-  const isMobileViewport = (() => {
-    try {
-      return !!(window.matchMedia && (
-        window.matchMedia('(pointer: coarse)').matches ||
-        window.matchMedia('(max-width: 820px)').matches
-      ));
-    } catch { return false; }
-  })();
+  const motion = window.__checkneMotion || {};
+  const prefersReduced = !!(motion.reduced ? motion.reduced() : (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches));
+  const duration = Number(motion.duration?.accordion || 380);
+  const ease = String(motion.ease?.decel || 'cubic-bezier(.16,1,.3,1)');
 
-  let _lockedScrollY = null;
-  let _scrollLockRaf = 0;
-  const startScrollLock = () => {
-    if (!isMobileViewport) return;
-    try { _lockedScrollY = window.scrollY || 0; } catch { _lockedScrollY = 0; }
-    const tick = () => {
-      if (detailsEl.dataset.animating !== '1') return;
-      try {
-        const nowY = window.scrollY || 0;
-        // Keep the page stable during the height transition.
-        if (_lockedScrollY !== null && Math.abs(nowY - _lockedScrollY) > 1) {
-          window.scrollTo(0, _lockedScrollY);
-        }
-      } catch {}
-      _scrollLockRaf = requestAnimationFrame(tick);
-    };
-    _scrollLockRaf = requestAnimationFrame(tick);
+  const summaryEl = detailsEl.querySelector('summary');
+  if (!summaryEl) return;
+
+  const cancelCurrent = () => {
+    try { contentEl._motionAnim?.cancel(); } catch {}
+    try { detailsEl._motionAnim?.cancel(); } catch {}
+    contentEl._motionAnim = null;
+    detailsEl._motionAnim = null;
   };
 
-  const stopScrollLock = () => {
-    try { if (_scrollLockRaf) cancelAnimationFrame(_scrollLockRaf); } catch {}
-    _scrollLockRaf = 0;
-    _lockedScrollY = null;
-  };
-
-  const prefersReduced = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  if (prefersReduced){
-    detailsEl.open = !!shouldOpen;
+  const finish = (openState) => {
+    detailsEl.open = !!openState;
+    _syncDisclosureState(detailsEl);
+    detailsEl.dataset.animating = '';
+    detailsEl.classList.remove('is-opening','is-closing','is-animating');
     contentEl.style.height = '';
     contentEl.style.opacity = '';
     contentEl.style.transform = '';
-    contentEl.style.transition = '';
-    contentEl.style.overflow = detailsEl.open ? 'visible' : '';
-    detailsEl.dataset.animating = '';
-    try { if (detailsEl._flipAnim) detailsEl._flipAnim.cancel(); } catch {}
-    detailsEl._flipAnim = null;
+    contentEl.style.overflow = openState ? 'visible' : 'hidden';
     detailsEl.style.height = '';
     detailsEl.style.overflow = '';
-    try { detailsEl.classList.remove('is-opening','is-closing','is-animating'); } catch {}
-    try { if (contentEl._smoothRO) contentEl._smoothRO.disconnect(); } catch {}
-    contentEl._smoothRO = null;
+  };
+
+  if (prefersReduced){
+    cancelCurrent();
+    _syncDisclosureState(detailsEl);
+    finish(!!shouldOpen);
     return;
   }
 
-  // Premium feel: slightly longer + softer easing.
-  const duration = 420;
-  const ease = 'cubic-bezier(.16,1,.3,1)';
-
-  // We also animate the overall <details> height (summary + body).
-  // This eliminates the classic "teleport" at the end when summary layout
-  // changes due to [open] styles.
-  const summaryEl = detailsEl.querySelector('summary');
-
-  // If an animation is in-flight, cancel it and continue from the current visual state.
-  // This prevents "snaps" when the user taps fast (open->close->open).
-  const cancelInFlight = () => {
-    try {
-      if (contentEl._smoothOnEnd) contentEl.removeEventListener('transitionend', contentEl._smoothOnEnd);
-    } catch {}
-    contentEl._smoothOnEnd = null;
-
-    try { if (contentEl._smoothRO) contentEl._smoothRO.disconnect(); } catch {}
-    contentEl._smoothRO = null;
-
-    // Freeze current height so the next animation starts smoothly.
-    try {
-      const h = contentEl.getBoundingClientRect ? contentEl.getBoundingClientRect().height : contentEl.scrollHeight;
-      contentEl.style.transition = 'none';
-      contentEl.style.height = `${Math.max(0, Math.round(h))}px`;
-      contentEl.style.opacity = getComputedStyle(contentEl).opacity || '1';
-      // Use a deterministic transform baseline
-      contentEl.style.transform = 'translateY(0)';
-      void contentEl.offsetHeight;
-      contentEl.style.transition = '';
-    } catch {}
-
-    try { if (detailsEl._flipAnim) detailsEl._flipAnim.cancel(); } catch {}
-    detailsEl._flipAnim = null;
-    // Keep current overall height as the new baseline.
-    try {
-      const dh = detailsEl.getBoundingClientRect().height;
-      detailsEl.style.height = `${Math.max(0, Math.round(dh))}px`;
-      detailsEl.style.overflow = 'hidden';
-      void detailsEl.offsetHeight;
-    } catch {}
-  };
-
-  if (detailsEl.dataset.animating === '1') {
-    cancelInFlight();
-  }
-
+  cancelCurrent();
+  summaryEl.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
   detailsEl.dataset.animating = '1';
+  detailsEl.classList.toggle('is-opening', !!shouldOpen);
+  detailsEl.classList.toggle('is-closing', !shouldOpen);
+  detailsEl.classList.add('is-animating');
+
+  const currentDetailsHeight = Math.max(0, detailsEl.getBoundingClientRect().height || 0);
+  const currentBodyHeight = Math.max(0, contentEl.getBoundingClientRect().height || 0);
+
+  detailsEl.style.overflow = 'hidden';
+  detailsEl.style.height = `${currentDetailsHeight}px`;
   contentEl.style.overflow = 'hidden';
+  contentEl.style.height = `${currentBodyHeight}px`;
+  contentEl.style.opacity = shouldOpen ? '0' : '1';
+  contentEl.style.transform = shouldOpen ? 'translateY(-8px)' : 'translateY(0)';
 
-  // Freeze the overall height so layout changes can't snap.
-  const freezeDetailsHeight = () => {
+  if (shouldOpen) detailsEl.open = true;
+
+  const targetBodyHeight = Math.max(0, contentEl.scrollHeight || 0);
+  const targetSummaryHeight = Math.max(0, summaryEl.getBoundingClientRect().height || 0);
+  const targetDetailsHeight = shouldOpen ? (targetSummaryHeight + targetBodyHeight) : targetSummaryHeight;
+
+  requestAnimationFrame(() => {
+    const bodyFrames = shouldOpen
+      ? [
+          { height: `${currentBodyHeight}px`, opacity: 0, transform: 'translateY(-8px)' },
+          { height: `${targetBodyHeight}px`, opacity: 1, transform: 'translateY(0)' }
+        ]
+      : [
+          { height: `${currentBodyHeight}px`, opacity: 1, transform: 'translateY(0)' },
+          { height: '0px', opacity: 0, transform: 'translateY(-8px)' }
+        ];
+
+    const detailsFrames = [
+      { height: `${currentDetailsHeight}px` },
+      { height: `${targetDetailsHeight}px` }
+    ];
+
     try {
-      const h = detailsEl.getBoundingClientRect().height;
-      detailsEl.style.height = `${Math.max(0, Math.round(h))}px`;
-      detailsEl.style.overflow = 'hidden';
-      void detailsEl.offsetHeight; // reflow
-    } catch {}
-  };
+      contentEl._motionAnim = contentEl.animate(bodyFrames, { duration, easing: ease, fill: 'forwards' });
+      detailsEl._motionAnim = detailsEl.animate(detailsFrames, { duration, easing: ease, fill: 'forwards' });
+    } catch {
+      contentEl.style.transition = `height ${duration}ms ${ease}, opacity ${duration}ms ${ease}, transform ${duration}ms ${ease}`;
+      detailsEl.style.transition = `height ${duration}ms ${ease}`;
+      contentEl.style.height = shouldOpen ? `${targetBodyHeight}px` : '0px';
+      contentEl.style.opacity = shouldOpen ? '1' : '0';
+      contentEl.style.transform = shouldOpen ? 'translateY(0)' : 'translateY(-8px)';
+      detailsEl.style.height = `${targetDetailsHeight}px`;
+    }
 
-  const animateDetailsHeight = (toPx) => {
-    try {
-      const fromH = detailsEl.getBoundingClientRect().height;
-      const toH = Math.max(0, Math.round(toPx));
-      if (!Number.isFinite(fromH) || !Number.isFinite(toH)) return;
-      try { if (detailsEl._flipAnim) detailsEl._flipAnim.cancel(); } catch {}
-      detailsEl._flipAnim = detailsEl.animate(
-        [{ height: `${fromH}px` }, { height: `${toH}px` }],
-        { duration, easing: ease }
-      );
-      detailsEl._flipAnim.onfinish = () => { detailsEl._flipAnim = null; };
-      detailsEl._flipAnim.oncancel = () => { detailsEl._flipAnim = null; };
-    } catch {}
-  };
-
-  // Apple-like smoothness: content (especially images) can change height mid-animation.
-  // Keep the target height in sync while opening.
-  const startResizeWatch = () => {
-    if (!('ResizeObserver' in window)) return;
-    try {
-      const ro = new ResizeObserver(() => {
-        if (detailsEl.dataset.animating !== '1') return;
-        if (!detailsEl.open) return;
-        contentEl.style.height = `${contentEl.scrollHeight}px`;
-      });
-      ro.observe(contentEl);
-      contentEl._smoothRO = ro;
-    } catch {}
-  };
-
-  const cleanup = () => {
-    detailsEl.dataset.animating = '';
-    contentEl.style.height = '';
-    contentEl.style.opacity = '';
-    contentEl.style.transform = '';
-    contentEl.style.transition = '';
-    try { if (contentEl._smoothRO) contentEl._smoothRO.disconnect(); } catch {}
-    contentEl._smoothRO = null;
-    if (detailsEl.open) contentEl.style.overflow = 'visible';
-
-    try { if (detailsEl._flipAnim) detailsEl._flipAnim.cancel(); } catch {}
-    detailsEl._flipAnim = null;
-    detailsEl.style.height = '';
-    detailsEl.style.overflow = '';
-    try { detailsEl.classList.remove('is-opening','is-closing','is-animating'); } catch {}
-
-    // Release mobile scroll lock if any.
-    stopScrollLock();
-  };
-
-  const setTransition = () => {
-    contentEl.style.transition = `height ${duration}ms ${ease}, opacity ${duration}ms ${ease}, transform ${duration}ms ${ease}`;
-  };
-
-  const raf2 = (fn) => requestAnimationFrame(() => requestAnimationFrame(fn));
-
-  if (shouldOpen){
-    try {
-      detailsEl.classList.remove('is-closing');
-      detailsEl.classList.add('is-opening','is-animating');
-    } catch {}
-
-    // Freeze BEFORE toggling open, so we can animate the overall height.
-    freezeDetailsHeight();
-    detailsEl.open = true;
-
-    // Prevent small scroll jumps on mobile during the height animation.
-    startScrollLock();
-
-    // Start state
-    contentEl.style.height = '0px';
-    contentEl.style.opacity = '0';
-    contentEl.style.transform = 'translateY(-6px)';
-
-    // End state
-    const endH = contentEl.scrollHeight;
-    startResizeWatch();
-
-    // Animate <details> height too (summary + body)
-    raf2(() => {
-      const sumH = summaryEl ? summaryEl.getBoundingClientRect().height : 0;
-      animateDetailsHeight(sumH + endH);
-    });
-
-    raf2(() => {
-      setTransition();
-      contentEl.style.height = `${endH}px`;
-      contentEl.style.opacity = '1';
-      contentEl.style.transform = 'translateY(0)';
-    });
-
-    const onEnd = (e) => {
-      if (e && e.target !== contentEl) return;
-      contentEl.removeEventListener('transitionend', onEnd);
-      contentEl._smoothOnEnd = null;
-      cleanup();
+    const cleanupAndFinish = () => {
+      cancelCurrent();
+      if (!shouldOpen) detailsEl.open = false;
+      finish(!!shouldOpen);
     };
-    contentEl._smoothOnEnd = onEnd;
-    contentEl.addEventListener('transitionend', onEnd);
-  } else {
-    // Closing
-    try {
-      detailsEl.classList.remove('is-opening');
-      detailsEl.classList.add('is-closing','is-animating');
-    } catch {}
 
-    // Freeze BEFORE summary layout switches back.
-    freezeDetailsHeight();
-
-    // Prevent small scroll jumps on mobile during the height animation.
-    startScrollLock();
-
-    try { if (contentEl._smoothRO) contentEl._smoothRO.disconnect(); } catch {}
-    contentEl._smoothRO = null;
-
-    const startH = contentEl.scrollHeight;
-    contentEl.style.height = `${startH}px`;
-    contentEl.style.opacity = '1';
-    contentEl.style.transform = 'translateY(0)';
-
-    // Animate towards the summary height (with closing layout applied)
-    raf2(() => {
-      const sumH = summaryEl ? summaryEl.getBoundingClientRect().height : 0;
-      animateDetailsHeight(sumH);
-    });
-
-    raf2(() => {
-      setTransition();
-      contentEl.style.height = '0px';
-      contentEl.style.opacity = '0';
-      contentEl.style.transform = 'translateY(-6px)';
-    });
-
-    const onEnd = (e) => {
-      if (e && e.target !== contentEl) return;
-      contentEl.removeEventListener('transitionend', onEnd);
-      contentEl._smoothOnEnd = null;
-      detailsEl.open = false;
-      cleanup();
-    };
-    contentEl._smoothOnEnd = onEnd;
-    contentEl.addEventListener('transitionend', onEnd);
-  }
+    if (contentEl._motionAnim) {
+      contentEl._motionAnim.onfinish = cleanupAndFinish;
+      contentEl._motionAnim.oncancel = () => {};
+    } else {
+      window.setTimeout(cleanupAndFinish, duration + 32);
+    }
+  });
 }
 
-// Expose for programmatic opens (deep links etc.)
 try { window.__checkneAnimateDetails = _animateDetails; } catch {}
 
 function initSmoothDetails(){
   if (_smoothDetailsInit) return;
   _smoothDetailsInit = true;
 
-  // Use capture so we can prevent the native toggle before it happens.
   document.addEventListener('click', (e) => {
     const sum = e.target && e.target.closest ? e.target.closest('summary.accordionSummary, summary.newsSummary') : null;
     if (!sum) return;
@@ -421,36 +273,16 @@ function initSmoothDetails(){
     const detailsEl = sum.parentElement;
     if (!detailsEl || detailsEl.tagName !== 'DETAILS') return;
 
-    // Ignore clicks on interactive elements inside the summary (buttons/links etc.)
     if (sum.classList.contains('newsSummary')){
       if (e.target.closest('button, a, input, textarea, select, .trackToggle, .shareBtn, .iconBtn')) return;
-
-      // Guest-locked feed cards must NOT start the smooth <details> animation.
-      // On mobile that animation temporarily scroll-locks the page, so if we let it
-      // start and then open the auth modal afterwards, the page can remain jerky or
-      // appear frozen after closing the modal.
       const lockedCard = detailsEl.closest && detailsEl.closest('[data-locked="1"]');
       const isGuest = !(window.authState && window.authState.authenticated);
       if (lockedCard && isGuest){
         e.preventDefault();
         e.stopPropagation();
-        try { detailsEl.open = false; } catch {}
-        try { detailsEl.dataset.animating = ''; } catch {}
-        try { detailsEl.style.height = ''; detailsEl.style.overflow = ''; } catch {}
-        try {
-          const body = detailsEl.querySelector('.newsOpenBody');
-          if (body){
-            body.style.height = '';
-            body.style.opacity = '';
-            body.style.transform = '';
-            body.style.transition = '';
-            body.style.overflow = '';
-          }
-        } catch {}
         try { if (typeof window.openAuthModal === 'function') window.openAuthModal('paywall'); } catch {}
         return;
       }
-
       const body = detailsEl.querySelector('.newsOpenBody');
       if (!body) return;
       e.preventDefault();
@@ -469,6 +301,21 @@ function initSmoothDetails(){
   }, true);
 }
 
+initSmoothDetails();
+_syncAllDisclosureStates(document);
+try {
+  const disclosureObserver = new MutationObserver((mutations) => {
+    for (const mutation of mutations){
+      for (const node of mutation.addedNodes || []){
+        if (node && node.nodeType === 1) _syncAllDisclosureStates(node);
+      }
+      if (mutation.target && mutation.target.nodeType === 1 && mutation.type === 'attributes' && mutation.target.tagName === 'DETAILS'){
+        _syncDisclosureState(mutation.target);
+      }
+    }
+  });
+  disclosureObserver.observe(document.body, { childList:true, subtree:true, attributes:true, attributeFilter:['open'] });
+} catch {}
 
 requestAnimationFrame(updateFooterShadeGap);
 initSmoothDetails();

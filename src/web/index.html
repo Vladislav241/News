@@ -1252,7 +1252,7 @@ body.visualSearchLock{ overflow:hidden; }
     .expandGlyph { width: 24px; height: 24px; border-radius: 8px; border: 1px solid rgba(15,23,42,.12); position: relative; background: rgba(255,255,255,.8); }
     .expandGlyph::before, .expandGlyph::after { content:""; position:absolute; left: 50%; top: 50%; width: 12px; height: 2px; background: rgba(15,23,42,.75); transform: translate(-50%,-50%); border-radius: 99px; }
     .expandGlyph::after { width: 2px; height: 12px; }
-    details[open] > .newsSummary .expandGlyph::after { display:none; }
+    .newsSummary[aria-expanded="true"] .expandGlyph::after { display:none; }
     .newsCard.isLow .expandGlyph { background: rgba(17,17,19,.25); border-color: rgba(255,255,255,.18); }
     .newsCard.isLow .expandGlyph::before, .newsCard.isLow .expandGlyph::after { background: rgba(255,255,255,.88); }
 
@@ -1325,7 +1325,7 @@ body.visualSearchLock{ overflow:hidden; }
 
     .accordion { margin-top: 12px; border-top: 1px solid rgba(15,23,42,.08); padding-top: 12px; }
     .newsCard.isLow .accordion { border-top-color: rgba(255,255,255,.08); }
-    .accordionSummary { list-style:none; cursor:pointer; display:flex; align-items:center; justify-content:space-between; font-weight: 700; padding: 8px 0; }
+    .accordionSummary { list-style:none; cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap: 12px; min-width:0; font-weight: 700; padding: 8px 0; }
     .accordionSummary::-webkit-details-marker { display:none; }
     .accordionSummary::after {
       content:"+";
@@ -1382,6 +1382,12 @@ body.visualSearchLock{ overflow:hidden; }
     .evTag { font-size: 12px; color: rgba(15,23,42,.60); margin-right: 6px; }
     .newsCard.isLow .evTag { color: rgba(255,255,255,.70); }
     .miniList { margin-top: 6px; display:flex; flex-direction:column; gap: 6px; }
+
+    .accordionBody, .accordionBody .muted, .factor, .diffItem, .evLine, .miniList > div, .sourceRowBody {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
     .splitSmall { height:1px; background: rgba(15,23,42,.08); margin: 10px 0; }
     .newsCard.isLow .splitSmall { background: rgba(255,255,255,.08); }
 
@@ -4645,17 +4651,20 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
       color: var(--black);
       background: #fff;
     }/* Widget modal (picker + settings) */
-.widgetModal{ position: fixed; inset: 0; z-index: 80; display:none; }
+.widgetModal{ position: fixed; inset: 0; z-index: 80; display:none; padding: 16px; box-sizing:border-box; }
 .widgetModal.isOpen{ display:block; }
 .widgetModal .backdrop{ position:absolute; inset:0; background: rgba(0,0,0,.32); }
 
 .widgetModal .sheet{
-  position:absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%,-50%);
+  position:relative;
+  inset:auto;
+  left:auto;
+  top:auto;
+  transform:none;
   width: min(560px, calc(100vw - 32px));
-  max-height: min(86vh, 760px);
+  max-width: 100%;
+  max-height: min(calc(100vh - 32px), 760px);
+  margin: 0 auto;
   background: #fff;
   border-radius: 26px;
   overflow: hidden;
@@ -4675,9 +4684,14 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
   background: #fff;
 }
 .widgetModal .sheetTitle{
-  font-size: 28px;
+  font-size: clamp(22px, 3vw, 28px);
   font-weight: 900;
   letter-spacing: .01em;
+  line-height: 1.08;
+  text-align:center;
+  padding: 0 52px;
+  max-width:100%;
+  overflow-wrap:anywhere;
 }
 .widgetModal .sheetHeader .iconBtn{ position:absolute; right: 14px; top: 14px; }
 
@@ -4688,6 +4702,7 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
 #widgetModalBody{
   padding: 22px 22px 18px;
   overflow: auto;
+  min-width:0;
 }
 
 /* Picker layout (1:1 with provided screenshot) */
@@ -4705,6 +4720,8 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
 }
 
 .widgetPickV2{
+  min-width:0;
+
   width: 100%;
   text-align: left;
   border: none;
@@ -4744,9 +4761,9 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
 }
 .widgetPickIcon img{ width: 50px; height: 50px; display:block; margin-top: 5px;}
 
-.widgetPickMeta{ flex: 1 1 auto; min-width: 0; }
-.widgetPickNameV2{ font-weight: 900; font-size: 18px; margin-bottom: 8px; }
-.widgetPickDescV2{ font-size: 14px; line-height: 1.25; color: rgba(17,17,19,.52); }
+.widgetPickMeta{ flex: 1 1 auto; min-width: 0; overflow:hidden; }
+.widgetPickNameV2{ font-weight: 900; font-size: 18px; margin-bottom: 8px; line-height:1.08; overflow-wrap:anywhere; word-break:break-word; }
+.widgetPickDescV2{ font-size: 14px; line-height: 1.25; color: rgba(17,17,19,.52); overflow-wrap:anywhere; word-break:break-word; }
 .widgetPickV2.isPro .widgetPickDescV2{ color: rgba(255,255,255,.62); }
 
 .widgetPickRadio{
@@ -6189,6 +6206,7 @@ body.eventMapModalOpen{overflow:hidden;}
 <script src="/static/js/core.js?v=2026-03-15-share-drag-restore" defer></script>
 <script src="/static/js/state.js?v=2026-02-24" defer></script>
 <script src="/static/js/mode.js?v=2026-03-06-1" defer></script>
+<link rel="stylesheet" href="/static/css/motion-system.css?v=2026-03-18-ui-fixes-2">
 <link rel="stylesheet" href="/static/css/onboarding.css?v=2026-03-17-3">
 <script src="/static/js/tracking.js?v=2026-02-24" defer></script>
 <script src="/static/js/auth.js?v=2026-03-17-onboarding" defer></script>
@@ -6202,7 +6220,8 @@ body.eventMapModalOpen{overflow:hidden;}
 <script src="/static/js/widgets.js?v=2026-03-13-media-bias-layout-1" defer></script>
 <script src="/static/js/promo.js?v=2026-03-09-sharepromo" defer></script>
 <script src="/static/js/dropdowns.js?v=2026-02-24" defer></script>
-<script src="/static/js/bootstrap.js?v=2026-02-24" defer></script>
+<script src="/static/js/motion-system.js?v=2026-03-18-ui-fixes-2" defer></script>
+<script src="/static/js/bootstrap.js?v=2026-03-18-ui-fixes-2" defer></script>
 <!-- Share modal -->
 <div id="shareBackdrop" class="shareBackdrop" aria-hidden="true">
   <div class="shareModal" role="dialog" aria-modal="true" aria-labelledby="shareHeroTitle">

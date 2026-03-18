@@ -14,7 +14,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 
 from .ai import summarize_cluster
-from .clustering import canonical_cluster_key, match_cluster, normalize_title_for_key
+from .clustering import canonical_cluster_key, match_cluster, normalize_title_for_key, begin_llm_budget_window, get_llm_budget_stats
 from .db import db
 from .video_report import prefetch_video_reports_for_clusters
 from .scoring import compute_credibility
@@ -188,7 +188,13 @@ def _should_refresh_summary(cluster_id: int, sources: list[dict[str, Any]], min_
     created_at = _parse_iso_utc(existing.get("created_at"))
     now = datetime.now(timezone.utc)
 
-    if (existing.get("status") or "").strip().lower() != "success":
+    current_status = (existing.get("status") or "").strip().lower()
+    if current_status == "pending":
+        if created_at and (now - created_at).total_seconds() < max(600, min_interval_seconds // 3):
+            return False, "pending", fingerprint, source_count
+        return True, "pending_stale", fingerprint, source_count
+
+    if current_status != "success":
         if not created_at or (now - created_at).total_seconds() >= max(300, min_interval_seconds // 4):
             return True, "retry_failed", fingerprint, source_count
         return False, "recent_failed", fingerprint, source_count
@@ -2088,12 +2094,15 @@ def run_ingest_cycle() -> dict[str, Any]:
             stats["errors"] += 1
             logger.exception("cleanup failed")
 
+        stats.update(get_llm_budget_stats())
+        stats["ai_usage_24h"] = db.get_recent_ai_usage_summary(hours=24)
         stats["finished_at"] = _utc_now_iso()
         db.finish_ingest_run(run_id, "success", stats)
         return stats
 
     except Exception:
         stats["errors"] += 1
+        stats.update(get_llm_budget_stats())
         stats["finished_at"] = _utc_now_iso()
         logger.exception("Ingest cycle failed")
         db.finish_ingest_run(run_id, "failed", stats)

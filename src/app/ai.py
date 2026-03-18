@@ -5,7 +5,10 @@ import base64
 import logging
 import os
 import re
+import time
 from typing import Any, Optional, Tuple
+
+from .db import db
 
 logger = logging.getLogger("news.ai")
 
@@ -245,18 +248,55 @@ def summarize_cluster(
         f"Sources (title + description):\n{context}\n"
     )
 
-    def _call(messages: list[dict[str, str]]) -> str:
+    def _call(messages: list[dict[str, str]]) -> tuple[str, dict[str, Any]]:
         client = OpenAI(api_key=api_key)
+        started = time.perf_counter()
         resp = client.chat.completions.create(
             model=model,
             messages=messages,
-            temperature=0.1,
+            temperature=0,
             max_tokens=320,
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "cluster_summary",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "brief": {"type": "string"},
+                            "key_facts": {"type": "array", "items": {"type": "string"}},
+                            "diffs": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "sources": {"type": "array", "items": {"type": "string"}},
+                                        "difference": {"type": "string"}
+                                    },
+                                    "required": ["sources", "difference"],
+                                    "additionalProperties": False
+                                }
+                            },
+                            "uncertainties": {"type": "array", "items": {"type": "string"}}
+                        },
+                        "required": ["brief", "key_facts", "diffs", "uncertainties"],
+                        "additionalProperties": False
+                    }
+                }
+            },
         )
-        return (resp.choices[0].message.content or "").strip()
+        usage = getattr(resp, "usage", None)
+        meta = {
+            "latency_ms": int((time.perf_counter() - started) * 1000),
+            "prompt_tokens": int(getattr(usage, "prompt_tokens", 0) or 0),
+            "completion_tokens": int(getattr(usage, "completion_tokens", 0) or 0),
+            "total_tokens": int(getattr(usage, "total_tokens", 0) or 0),
+        }
+        return (resp.choices[0].message.content or "").strip(), meta
 
     try:
-        raw1 = _call(
+        raw1, usage_meta = _call(
             [
                 {"role": "system", "content": "Return only valid JSON. No markdown."},
                 {"role": "user", "content": prompt},
@@ -268,37 +308,45 @@ def summarize_cluster(
             obj1["diffs"] = (obj1.get("diffs") or [])[:5]
             obj1["uncertainties"] = (obj1.get("uncertainties") or [])[:4]
             brief = (obj1.get("brief") or "").strip()
+            try:
+                db.log_ai_usage(
+                    feature="cluster_summary",
+                    model=model,
+                    status="success",
+                    cache_hit=False,
+                    latency_ms=usage_meta.get("latency_ms"),
+                    prompt_tokens=usage_meta.get("prompt_tokens"),
+                    completion_tokens=usage_meta.get("completion_tokens"),
+                    total_tokens=usage_meta.get("total_tokens"),
+                    meta={"sources": len(sources or []), "lang": lang_n},
+                )
+            except Exception:
+                pass
             return brief, json.dumps(obj1, ensure_ascii=False), "success", raw1
 
-        raw2 = _call(
-            [
-                {"role": "system", "content": "Return only valid JSON. No markdown."},
-                {"role": "user", "content": prompt},
-                {"role": "assistant", "content": raw1},
-                {
-                    "role": "user",
-                    "content": (
-                        "Your output did not match the required JSON format/rules.\n"
-                        "Fix it: return STRICT valid JSON in the exact schema.\n"
-                        "Each diffs item: sources must have at least 2 names and ONLY from allowed list; "
-                        "difference must be concrete and reference those sources.\n"
-                    ),
-                },
-            ]
-        )
-        obj2 = _parse_json(raw2)
-        if obj2 and _validate(obj2, sources):
-            obj2["key_facts"] = (obj2.get("key_facts") or [])[:6]
-            obj2["diffs"] = (obj2.get("diffs") or [])[:5]
-            obj2["uncertainties"] = (obj2.get("uncertainties") or [])[:4]
-            brief = (obj2.get("brief") or "").strip()
-            return brief, json.dumps(obj2, ensure_ascii=False), "success", raw2
-
-        logger.warning("AI output invalid after retry; storing raw text only")
-        return None, None, "failed", raw2 or raw1
+        logger.warning("AI summary output invalid; storing raw text only")
+        try:
+            db.log_ai_usage(
+                feature="cluster_summary",
+                model=model,
+                status="invalid_output",
+                cache_hit=False,
+                latency_ms=usage_meta.get("latency_ms"),
+                prompt_tokens=usage_meta.get("prompt_tokens"),
+                completion_tokens=usage_meta.get("completion_tokens"),
+                total_tokens=usage_meta.get("total_tokens"),
+                meta={"sources": len(sources or []), "lang": lang_n},
+            )
+        except Exception:
+            pass
+        return None, None, "failed", raw1
 
     except Exception:
         logger.exception("AI summary failed")
+        try:
+            db.log_ai_usage(feature="cluster_summary", model=model, status="exception", cache_hit=False, meta={"sources": len(sources or []), "lang": lang_n})
+        except Exception:
+            pass
         return None, None, "failed", None
 
 

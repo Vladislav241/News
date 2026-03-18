@@ -83,6 +83,8 @@ def _should_queue_summary_backfill(row: dict[str, Any]) -> bool:
         return False
     if status in {"skipped", "locked"}:
         return False
+    if status == "pending":
+        return False
     if score < 70:
         return False
     if sources_count < 2:
@@ -163,6 +165,20 @@ def _queue_missing_summaries(rows: list[dict[str, Any]], background_tasks: Backg
             if cid in _SUMMARY_BACKFILL_INFLIGHT:
                 continue
             _SUMMARY_BACKFILL_INFLIGHT.add(cid)
+        try:
+            existing = db.get_summary(cid) or {}
+            db.upsert_summary(
+                cluster_id=cid,
+                summary_text=existing.get("summary_text"),
+                summary_json=existing.get("summary_json"),
+                raw_text=existing.get("raw_text"),
+                model=(existing.get("model") or os.getenv("OPENAI_SUMMARY_MODEL", "") or os.getenv("OPENAI_MODEL", "gpt-4.1-mini")),
+                status="pending",
+                source_fingerprint=existing.get("source_fingerprint"),
+                source_count=int(existing.get("source_count") or 0),
+            )
+        except Exception:
+            pass
         picked.append(cid)
 
     if picked:
@@ -1307,7 +1323,6 @@ async def get_news(
             limit=limit_n,
         )
 
-        _queue_missing_summaries(clusters[:12], background_tasks, max_jobs=4)
 
         # Paywall: guests get full details only for the first 3 items.
         is_guest = user is None
@@ -1975,7 +1990,6 @@ async def news_visual_search(
         if len(dedup_rows) >= 700:
             break
 
-    _queue_missing_summaries(dedup_rows[:12], background_tasks, max_jobs=4)
 
     is_guest = user is None
     decorated: list[dict[str, Any]] = []

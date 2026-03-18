@@ -1129,6 +1129,7 @@ function createCardElement(item, ctx, seen, idx) {
 
   const unconfirmed = sourcesCount <= 1 ? `<span class="chip chipDanger">${t("ui.unconfirmed","Unconfirmed")}</span>` : '';
   const changeBadges = '';
+  const disclosureIcon = '<span class="motionDisclosureIcon" aria-hidden="true"><span class="motionDisclosureIcon__h"></span><span class="motionDisclosureIcon__v"></span></span>';
 
   // --- Why this score?
   const whyState = getWhyScoreState(item);
@@ -1139,7 +1140,7 @@ function createCardElement(item, ctx, seen, idx) {
       : `<div class="muted">${t("score.limited","Score explanation is limited due to insufficient data")}</div>`;
     whyHtml = `
         <details class="accordion">
-          <summary class="accordionSummary">${t("ui.why_score","Why this score?")}</summary>
+          <summary class="accordionSummary"><span class="accordionSummaryLabel">${t("ui.why_score","Why this score?")}</span>${disclosureIcon}</summary>
           <div class="accordionBody">
             ${expl}
             <div class="factors">${factorsHtml || '<div class="muted">${t("score.limited","Score explanation is limited due to insufficient data")}</div>'}</div>
@@ -1148,7 +1149,7 @@ function createCardElement(item, ctx, seen, idx) {
   } else if (whyState.status === 'empty' && whyState.text) {
     whyHtml = `
         <details class="accordion">
-          <summary class="accordionSummary">${t("ui.why_score","Why this score?")}</summary>
+          <summary class="accordionSummary"><span class="accordionSummaryLabel">${t("ui.why_score","Why this score?")}</span>${disclosureIcon}</summary>
           <div class="accordionBody"><div class="muted">${escapeHtml(whyState.text)}</div></div>
         </details>`;
   }
@@ -1163,7 +1164,7 @@ function createCardElement(item, ctx, seen, idx) {
       const mapLabel = escapeHtml(String(mapLoc?.label || 'Mapped location'));
       eventMapHtml = `
         <details class="accordion" open>
-          <summary class="accordionSummary">Event map</summary>
+          <summary class="accordionSummary"><span class="accordionSummaryLabel">Event map</span>${disclosureIcon}</summary>
           <div class="accordionBody">
             <div class="muted" style="margin-bottom:12px;">${mapLabel}</div>
             <div class="eventMapMini" data-cluster-id="${idStr}"></div>
@@ -1206,7 +1207,7 @@ function createCardElement(item, ctx, seen, idx) {
 
     diffsSectionHtml = `
         <details class="accordion">
-          <summary class="accordionSummary">Source differences</summary>
+          <summary class="accordionSummary"><span class="accordionSummaryLabel">Source differences</span>${disclosureIcon}</summary>
           <div class="accordionBody">
             ${topMsg}
             ${diffsHtml}
@@ -1340,7 +1341,7 @@ const showTrackingUI = state.mode === 'fav';
         ${diffsSectionHtml}
 
         <details class="accordion">
-          <summary class="accordionSummary">Sources</summary>
+          <summary class="accordionSummary"><span class="accordionSummaryLabel">Sources</span>${disclosureIcon}</summary>
           <div class="accordionBody">
             <div class="sourcesList">${sourcesHtml || '<div class="muted">Not enough sources yet.</div>'}</div>
           </div>

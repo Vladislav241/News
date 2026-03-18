@@ -489,6 +489,40 @@ class Database:
 
             conn.execute(
                 """
+                CREATE TABLE IF NOT EXISTS llm_pair_cache (
+                    cache_key TEXT PRIMARY KEY,
+                    cache_kind TEXT NOT NULL,
+                    model TEXT,
+                    payload_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL
+                );
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_llm_pair_cache_expires ON llm_pair_cache(expires_at);")
+
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS ai_usage_events (
+                    id BIGSERIAL PRIMARY KEY,
+                    created_at TEXT NOT NULL,
+                    feature TEXT NOT NULL,
+                    model TEXT,
+                    status TEXT NOT NULL,
+                    cache_hit BOOLEAN NOT NULL DEFAULT FALSE,
+                    latency_ms INTEGER,
+                    prompt_tokens INTEGER,
+                    completion_tokens INTEGER,
+                    total_tokens INTEGER,
+                    meta_json TEXT
+                );
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_usage_events_created ON ai_usage_events(created_at);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_usage_events_feature_created ON ai_usage_events(feature, created_at);")
+
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS favorites (
                     device_id TEXT NOT NULL,
                     cluster_id BIGINT NOT NULL,
@@ -1529,6 +1563,127 @@ class Database:
 
     def get_summary(self, cluster_id: int) -> Optional[dict[str, Any]]:
         return self._fetchone("SELECT * FROM article_summaries WHERE cluster_id=?", (cluster_id,))
+
+    def get_llm_pair_cache(self, cache_key: str, cache_kind: str) -> Optional[dict[str, Any]]:
+        row = self._fetchone(
+            "SELECT * FROM llm_pair_cache WHERE cache_key=? AND cache_kind=?",
+            (str(cache_key), str(cache_kind)),
+        )
+        if not row:
+            return None
+        exp = _parse_iso_dt_simple(row.get("expires_at"))
+        now = datetime.now(timezone.utc)
+        if exp and exp < now:
+            try:
+                self._exec("DELETE FROM llm_pair_cache WHERE cache_key=? AND cache_kind=?", (str(cache_key), str(cache_kind)))
+            except Exception:
+                pass
+            return None
+        payload_raw = row.get("payload_json")
+        if isinstance(payload_raw, str):
+            try:
+                row["payload"] = json.loads(payload_raw)
+            except Exception:
+                row["payload"] = None
+        else:
+            row["payload"] = None
+        return row
+
+    def set_llm_pair_cache(self, cache_key: str, cache_kind: str, model: str, payload: dict[str, Any], ttl_seconds: int = 6 * 60 * 60) -> None:
+        now = _utc_now_iso()
+        expires_at = (datetime.now(timezone.utc) + timedelta(seconds=max(60, int(ttl_seconds or 0)))).replace(microsecond=0).isoformat()
+        self._exec(
+            """
+            INSERT INTO llm_pair_cache(cache_key, cache_kind, model, payload_json, created_at, expires_at)
+            VALUES(?, ?, ?, ?, ?, ?)
+            ON CONFLICT (cache_key) DO UPDATE SET
+                cache_kind=excluded.cache_kind,
+                model=excluded.model,
+                payload_json=excluded.payload_json,
+                created_at=excluded.created_at,
+                expires_at=excluded.expires_at
+            """,
+            (str(cache_key), str(cache_kind), str(model or ""), json.dumps(payload, ensure_ascii=False), now, expires_at),
+        )
+
+    def log_ai_usage(
+        self,
+        *,
+        feature: str,
+        model: str,
+        status: str,
+        cache_hit: bool = False,
+        latency_ms: int | None = None,
+        prompt_tokens: int | None = None,
+        completion_tokens: int | None = None,
+        total_tokens: int | None = None,
+        meta: Optional[dict[str, Any]] = None,
+    ) -> None:
+        try:
+            self._exec(
+                """
+                INSERT INTO ai_usage_events(
+                    created_at, feature, model, status, cache_hit, latency_ms,
+                    prompt_tokens, completion_tokens, total_tokens, meta_json
+                )
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    _utc_now_iso(),
+                    str(feature or "unknown"),
+                    str(model or ""),
+                    str(status or "unknown"),
+                    bool(cache_hit),
+                    int(latency_ms) if latency_ms is not None else None,
+                    int(prompt_tokens) if prompt_tokens is not None else None,
+                    int(completion_tokens) if completion_tokens is not None else None,
+                    int(total_tokens) if total_tokens is not None else None,
+                    json.dumps(meta or {}, ensure_ascii=False),
+                ),
+            )
+        except Exception:
+            pass
+
+    def get_recent_ai_usage_summary(self, hours: int = 24) -> dict[str, Any]:
+        try:
+            since = (datetime.now(timezone.utc) - timedelta(hours=max(1, int(hours or 24)))).replace(microsecond=0).isoformat()
+            rows = self._fetchall(
+                """
+                SELECT feature, model,
+                       COUNT(*) AS calls,
+                       SUM(CASE WHEN cache_hit THEN 1 ELSE 0 END) AS cache_hits,
+                       SUM(COALESCE(total_tokens, 0)) AS total_tokens,
+                       AVG(COALESCE(latency_ms, 0)) AS avg_latency_ms
+                FROM ai_usage_events
+                WHERE created_at >= ?
+                GROUP BY feature, model
+                ORDER BY calls DESC, total_tokens DESC
+                LIMIT 20
+                """,
+                (since,),
+            )
+            total = self._fetchone(
+                "SELECT COUNT(*) AS calls, SUM(COALESCE(total_tokens, 0)) AS total_tokens FROM ai_usage_events WHERE created_at >= ?",
+                (since,),
+            ) or {}
+            return {
+                "since": since,
+                "calls": int(total.get("calls") or 0),
+                "total_tokens": int(total.get("total_tokens") or 0),
+                "top": [
+                    {
+                        "feature": r.get("feature"),
+                        "model": r.get("model"),
+                        "calls": int(r.get("calls") or 0),
+                        "cache_hits": int(r.get("cache_hits") or 0),
+                        "total_tokens": int(r.get("total_tokens") or 0),
+                        "avg_latency_ms": float(r.get("avg_latency_ms") or 0.0),
+                    }
+                    for r in rows
+                ],
+            }
+        except Exception:
+            return {"since": None, "calls": 0, "total_tokens": 0, "top": []}
 
     # --------- favorites ----------
     def upsert_favorites(self, device_id: str, cluster_ids: list[int]) -> None:

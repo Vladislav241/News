@@ -137,6 +137,12 @@ def status() -> dict[str, Any]:
         # The site can run without DB for email config, but keep it honest
         pass
 
+    ai_usage = {"since": None, "calls": 0, "total_tokens": 0, "top": []}
+    try:
+        ai_usage = db.get_recent_ai_usage_summary(hours=24)
+    except Exception:
+        ai_usage = {"since": None, "calls": 0, "total_tokens": 0, "top": []}
+
     return {
         "generated_at": generated_at,
         "services": {

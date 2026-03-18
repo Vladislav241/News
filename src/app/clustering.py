@@ -22,6 +22,8 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.decomposition import TruncatedSVD
 
+from .db import db
+
 logger = logging.getLogger("news.clustering")
 _log = logger  # backwards-compat alias
 if not logger.handlers:
@@ -40,6 +42,30 @@ _LLM_DECISION_CACHE_TTL_SEC = int(os.getenv("CLUSTER_LLM_CACHE_TTL_SEC", str(6 *
 _LLM_WINDOW_START = 0.0
 _LLM_CALLS_IN_WINDOW = 0
 _LLM_MAX_CALLS_PER_MIN = int(os.getenv("CLUSTER_LLM_MAX_CALLS_PER_MIN", "12"))
+_LLM_MAX_CALLS_PER_RUN = int(os.getenv("CLUSTER_LLM_MAX_CALLS_PER_RUN", "18"))
+_LLM_RUN_CALLS = 0
+_LLM_RUN_CACHE_HITS = 0
+_LLM_RUN_SKIPPED = 0
+_LLM_MIN_BORDERLINE_SIM = float(os.getenv("CLUSTER_LLM_MIN_BORDERLINE_SIM", "0.60"))
+_LLM_MAX_BORDERLINE_SIM = float(os.getenv("CLUSTER_LLM_MAX_BORDERLINE_SIM", "0.86"))
+
+def begin_llm_budget_window() -> None:
+    global _LLM_WINDOW_START, _LLM_CALLS_IN_WINDOW, _LLM_RUN_CALLS, _LLM_RUN_CACHE_HITS, _LLM_RUN_SKIPPED
+    _LLM_WINDOW_START = 0.0
+    _LLM_CALLS_IN_WINDOW = 0
+    _LLM_RUN_CALLS = 0
+    _LLM_RUN_CACHE_HITS = 0
+    _LLM_RUN_SKIPPED = 0
+
+
+def get_llm_budget_stats() -> dict[str, int]:
+    return {
+        "llm_calls": int(_LLM_RUN_CALLS),
+        "llm_cache_hits": int(_LLM_RUN_CACHE_HITS),
+        "llm_skipped": int(_LLM_RUN_SKIPPED),
+        "llm_max_calls_per_run": int(_LLM_MAX_CALLS_PER_RUN),
+        "llm_max_calls_per_min": int(_LLM_MAX_CALLS_PER_MIN),
+    }
 
 def _llm_allow_call() -> bool:
     """
@@ -64,10 +90,17 @@ def _llm_allow_call() -> bool:
         _LLM_WINDOW_START = now
         _LLM_CALLS_IN_WINDOW = 0
 
+    global _LLM_RUN_CALLS, _LLM_RUN_SKIPPED
+
     if _LLM_CALLS_IN_WINDOW >= _LLM_MAX_CALLS_PER_MIN:
+        _LLM_RUN_SKIPPED += 1
+        return False
+    if _LLM_RUN_CALLS >= _LLM_MAX_CALLS_PER_RUN:
+        _LLM_RUN_SKIPPED += 1
         return False
 
     _LLM_CALLS_IN_WINDOW += 1
+    _LLM_RUN_CALLS += 1
     return True
 
 def _llm_cache_get(h: str) -> tuple[bool | None, float, str] | None:
@@ -200,35 +233,86 @@ def _llm_same_event_cached(key: str) -> tuple[bool | None, float, str]:
 
 
 def llm_same_event(snippet_a: str, snippet_b: str) -> tuple[bool | None, float, str]:
-    """Public wrapper: builds a stable cache key and calls the cached arbiter."""
+    """Public wrapper with process + DB cache and telemetry."""
+    global _LLM_RUN_CACHE_HITS
+
     a = (snippet_a or "").strip()
     b = (snippet_b or "").strip()
     if not a or not b:
         return (None, 0.0, "llm_empty_input")
-    # order-normalize
     if a > b:
         a, b = b, a
-    # Keep size bounded to control cost + latency
     a = a[:1200]
     b = b[:1200]
-    prompt = f"A:\n{a}\n\nB:\n{b}\n\nReturn JSON."
+    prompt = f"""A:
+{a}
+
+B:
+{b}
+
+Return JSON."""
     h = hashlib.sha1(prompt.encode("utf-8", errors="ignore")).hexdigest()
 
-    # 1) Fast in-process memoization (prevents spam + repeated costs)
     cached = _llm_cache_get(h)
     if cached is not None:
+        _LLM_RUN_CACHE_HITS += 1
+        try:
+            db.log_ai_usage(feature="cluster_match", model=_OPENAI_MODEL, status="cache_hit_memory", cache_hit=True, meta={"cache_key": h[:12]})
+        except Exception:
+            pass
         return cached
 
-    # 2) Simple rate-limit (protects your OpenAI budget + avoids log floods)
-    if not _llm_allow_call():
-        out = (None, 0.0, "llm_rate_limited")
+    try:
+        row = db.get_llm_pair_cache(h, "cluster_match")
+    except Exception:
+        row = None
+    if row and isinstance(row.get("payload"), dict):
+        payload = row.get("payload") or {}
+        out = (
+            payload.get("same_event"),
+            float(payload.get("confidence") or 0.0),
+            str(payload.get("reason") or "db_cache"),
+        )
         _llm_cache_set(h, out)
+        _LLM_RUN_CACHE_HITS += 1
+        try:
+            db.log_ai_usage(feature="cluster_match", model=_OPENAI_MODEL, status="cache_hit_db", cache_hit=True, meta={"cache_key": h[:12]})
+        except Exception:
+            pass
         return out
 
-    # Only log on cache-miss.
+    if not _llm_allow_call():
+        out = (None, 0.0, "llm_budget_limited")
+        _llm_cache_set(h, out)
+        try:
+            db.log_ai_usage(feature="cluster_match", model=_OPENAI_MODEL, status="budget_limited", cache_hit=False, meta={"cache_key": h[:12]})
+        except Exception:
+            pass
+        return out
+
     _log.info("[LLM] ARBITER TRIGGERED key=%s", h[:8])
+    started = time.perf_counter()
     out = _llm_same_event_cached(prompt)
+    latency_ms = int((time.perf_counter() - started) * 1000)
     _llm_cache_set(h, out)
+    try:
+        db.set_llm_pair_cache(
+            h,
+            "cluster_match",
+            _OPENAI_MODEL,
+            {"same_event": out[0], "confidence": out[1], "reason": out[2]},
+            ttl_seconds=_LLM_DECISION_CACHE_TTL_SEC,
+        )
+        db.log_ai_usage(
+            feature="cluster_match",
+            model=_OPENAI_MODEL,
+            status="success" if out[0] is not None else "failed",
+            cache_hit=False,
+            latency_ms=latency_ms,
+            meta={"cache_key": h[:12], "reason": out[2]},
+        )
+    except Exception:
+        pass
     return out
 
 # Common prefixes / tails used by many feeds
@@ -560,8 +644,18 @@ def match_cluster(
                 debug={**dbg, "threshold": thr, "ov": ov, "j": j, "ent_q": sorted(list(entity_q))[:20], "ent_c": sorted(list(entity_c))[:20]},
             )
 
-        # Only trigger for the grey zone: not super-high similarity AND weak lexical/entity evidence.
-        if sim < max(0.84, thr + 0.22) and (ov < 4 or j < 0.22 or ent_ov == 0):
+        # Cheap deterministic reject for very weak borderline matches.
+        low_signal_floor = max(_LLM_MIN_BORDERLINE_SIM, thr + 0.12)
+        if sim < low_signal_floor and (ov < 3 or j < 0.18 or ent_ov == 0):
+            return ClusterMatch(
+                cluster_id=None,
+                similarity=sim,
+                method="borderline_low_signal_rejected",
+                debug={**dbg, "threshold": thr, "ov": ov, "j": j, "ent_ov": ent_ov, "low_signal_floor": low_signal_floor},
+            )
+
+        # Only trigger for the grey zone: similarity is reasonably close, but lexical/entity evidence is still weak.
+        if low_signal_floor <= sim <= max(_LLM_MAX_BORDERLINE_SIM, thr + 0.18) and (ov < 4 or j < 0.22 or ent_ov == 0):
             need_llm = True
 
         if need_llm:
@@ -583,12 +677,16 @@ def match_cluster(
                     method="llm_rejected",
                     debug={**dbg, "threshold": thr, "ov": ov, "j": j, "ent_ov": ent_ov, "llm_conf": conf, "llm_reason": rat},
                 )
-            # If LLM fails (same is None), we fall back to the deterministic checks above.
+            # Safety rule: when an arbiter was required but unavailable, do not auto-merge.
             if same is True:
                 dbg = {**dbg, "llm_conf": conf, "llm_reason": rat, "ent_ov": ent_ov}
             else:
-                dbg = {**dbg, "llm": "skipped_or_failed", "ent_ov": ent_ov}
-
+                return ClusterMatch(
+                    cluster_id=None,
+                    similarity=sim,
+                    method="llm_unavailable_rejected",
+                    debug={**dbg, "threshold": thr, "ov": ov, "j": j, "ent_ov": ent_ov, "llm_reason": rat},
+                )
 
         return ClusterMatch(cluster_id=cid, similarity=sim, method="tfidf_blend", debug={**dbg, "threshold": thr, "ov": ov, "j": j})
 

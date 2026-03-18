@@ -1,0 +1,65 @@
+:root{
+  --motion-ease-standard:cubic-bezier(.22,1,.36,1);
+  --motion-ease-decel:cubic-bezier(.16,1,.3,1);
+  --motion-ease-accelerate:cubic-bezier(.32,0,.12,1);
+  --motion-ease-emphasized:cubic-bezier(.2,.9,.22,1);
+  --motion-duration-instant:120ms;
+  --motion-duration-fast:180ms;
+  --motion-duration-medium:260ms;
+  --motion-duration-slow:420ms;
+  --motion-duration-accordion:380ms;
+  --motion-lift-hover:-2px;
+  --motion-lift-press:0px;
+  --motion-scale-hover:1.015;
+  --motion-scale-press:.985;
+  --motion-shadow-hover:0 18px 40px rgba(2,6,23,.10);
+  --motion-shadow-float:0 22px 50px rgba(2,6,23,.16);
+}
+html.motion-ready body{ backface-visibility:hidden; }
+html.motion-ready *{ -webkit-tap-highlight-color: transparent; }
+@media (prefers-reduced-motion: reduce){
+  :root{ --motion-duration-instant:1ms; --motion-duration-fast:1ms; --motion-duration-medium:1ms; --motion-duration-slow:1ms; --motion-duration-accordion:1ms; }
+  html.motion-ready *, html.motion-ready *::before, html.motion-ready *::after{ animation-duration:1ms !important; animation-iteration-count:1 !important; transition-duration:1ms !important; scroll-behavior:auto !important; }
+}
+@media (hover:hover) and (pointer:fine){
+  .btn,.iconBtn,.topNavBtn,.reportBtn,.shareBtn,.openBtn,.accountMenu button,.selectBtn,.sortBtn,.selectItem,.sortItem,.sortChoice,.widgetPickV2,.eventMapOpenBtn,.visualSearchBtn,.visualSearchGhostBtn,.visualSearchModal__close,.visualResultModal__close,.reportClose,.shareClose,.authClose,.eventMapCloseBtn,.eventMapWindowBtn,.trackToggle,.newsSummary,.accordionSummary{ transition:transform var(--motion-duration-fast) var(--motion-ease-standard), box-shadow var(--motion-duration-medium) var(--motion-ease-standard), background-color var(--motion-duration-medium) var(--motion-ease-standard), border-color var(--motion-duration-medium) var(--motion-ease-standard), color var(--motion-duration-fast) var(--motion-ease-standard), opacity var(--motion-duration-fast) var(--motion-ease-standard); }
+  .btn:hover,.iconBtn:hover,.topNavBtn:hover,.reportBtn:hover,.shareBtn:hover,.openBtn:hover,.accountMenu button:hover,.selectBtn:hover,.sortBtn:hover,.selectItem:hover,.sortItem:hover,.sortChoice:hover,.widgetPickV2:hover,.eventMapOpenBtn:hover,.visualSearchBtn:hover,.visualSearchGhostBtn:hover,.visualSearchModal__close:hover,.visualResultModal__close:hover,.reportClose:hover,.shareClose:hover,.authClose:hover,.eventMapCloseBtn:hover,.eventMapWindowBtn:hover,.trackToggle:hover{ transform:translateY(var(--motion-lift-hover)) scale(var(--motion-scale-hover)); }
+  .btn:active,.iconBtn:active,.topNavBtn:active,.reportBtn:active,.shareBtn:active,.openBtn:active,.accountMenu button:active,.selectBtn:active,.sortBtn:active,.selectItem:active,.sortItem:active,.sortChoice:active,.widgetPickV2:active,.eventMapOpenBtn:active,.visualSearchBtn:active,.visualSearchGhostBtn:active,.visualSearchModal__close:active,.visualResultModal__close:active,.reportClose:active,.shareClose:active,.authClose:active,.eventMapCloseBtn:active,.eventMapWindowBtn:active,.trackToggle:active{ transform:translateY(var(--motion-lift-press)) scale(var(--motion-scale-press)); }
+}
+.card,.newsCard,.personalRecoItem,.widgetPickV2{ transform-origin:50% 32%; }
+html.motion-ready .card.motion-enter, html.motion-ready .newsCard.motion-enter, html.motion-ready .personalRecoItem.motion-enter, html.motion-ready .widgetPickV2.motion-enter{ animation:motionCardEnter var(--motion-duration-slow) var(--motion-ease-decel) both; }
+@keyframes motionCardEnter{ from{ opacity:0; transform:translateY(14px) scale(.985); } to{ opacity:1; transform:translateY(0) scale(1); } }
+.newsSummary,.accordionSummary{ transform:none; will-change:background-color; backface-visibility:hidden; }
+.accordion{ contain:layout style; }
+.accordionSummary{ position:relative; gap:14px; }
+.accordionSummary::after{ display:none !important; content:none !important; }
+.accordionSummaryLabel{ min-width:0; }
+.motionDisclosureIcon{ width:22px; height:22px; position:relative; flex:0 0 22px; border-radius:999px; border:1px solid rgba(15,23,42,.12); background:linear-gradient(180deg, rgba(255,255,255,.94), rgba(255,255,255,.76)); box-shadow:0 6px 18px rgba(15,23,42,.06); }
+.newsCard.isLow .motionDisclosureIcon{ border-color:rgba(255,255,255,.14); background:linear-gradient(180deg, rgba(255,255,255,.14), rgba(255,255,255,.07)); box-shadow:none; }
+.motionDisclosureIcon__h,.motionDisclosureIcon__v{ position:absolute; left:50%; top:50%; width:10px; height:1.8px; border-radius:99px; background:rgba(15,23,42,.76); transform:translate(-50%,-50%); transition:transform var(--motion-duration-medium) var(--motion-ease-decel), opacity var(--motion-duration-fast) var(--motion-ease-standard), background-color var(--motion-duration-fast) var(--motion-ease-standard); }
+.newsCard.isLow .motionDisclosureIcon__h,.newsCard.isLow .motionDisclosureIcon__v{ background:rgba(255,255,255,.9); }
+.motionDisclosureIcon__v{ transform:translate(-50%,-50%) scaleY(1); }
+summary[aria-expanded="true"] .motionDisclosureIcon__v, details.is-opening > summary .motionDisclosureIcon__v{ transform:translate(-50%,-50%) scaleY(0); opacity:.08; }
+summary[aria-expanded="true"] .motionDisclosureIcon, details.is-opening > summary .motionDisclosureIcon{ box-shadow:0 10px 24px rgba(15,23,42,.08); }
+.accordionBody,.newsOpenBody{ opacity:1; transform:translateY(0); transform-origin:50% 0%; will-change:height,opacity,transform; }
+.selectMenu,.sortMenu,.accountMenu,.msDropdown{ transform-origin:top center; transition:opacity var(--motion-duration-medium) var(--motion-ease-decel), transform var(--motion-duration-medium) var(--motion-ease-decel), visibility var(--motion-duration-medium) var(--motion-ease-standard); }
+.selectMenu,.sortMenu,.accountMenu,.msDropdown[aria-hidden="true"]{ opacity:0; transform:translateY(-6px) scale(.985); }
+.selectMenu.open,.sortMenu.open,.accountMenu.open,.msDropdown[aria-hidden="false"]{ opacity:1; transform:translateY(0) scale(1); }
+.selectItem,.sortItem,.sortChoice,.accountMenu button{ border-radius:16px; }
+.authBackdrop,.shareBackdrop,.reportBackdrop,.widgetModal,.ckModal,.eventMapModal,.visualSearchModal,.visualResultModal,.uiModal{ opacity:0; visibility:hidden; pointer-events:none; transition:opacity var(--motion-duration-medium) var(--motion-ease-standard), visibility var(--motion-duration-medium) var(--motion-ease-standard); }
+.authBackdrop.isOpen,.shareBackdrop.isOpen,.reportBackdrop.isOpen,.widgetModal.isOpen,.ckModal.is-open,.eventMapModal.isOpen,.visualSearchModal.isOpen,.visualResultModal.isOpen,.uiModal.isOpen,.authBackdrop[aria-hidden="false"],.shareBackdrop[aria-hidden="false"],.reportBackdrop[aria-hidden="false"],.widgetModal[aria-hidden="false"],.ckModal[aria-hidden="false"],.eventMapModal[aria-hidden="false"],.visualSearchModal[aria-hidden="false"],.visualResultModal[aria-hidden="false"],.uiModal[aria-hidden="false"]{ opacity:1; visibility:visible; pointer-events:auto; }
+.authBackdrop,.shareBackdrop,.reportBackdrop,.widgetModal,.ckModal,.eventMapModal,.visualSearchModal,.visualResultModal,.uiModal{ display:grid !important; place-items:center; }
+.widgetModal{ z-index:80; }
+.authBackdrop{ z-index:9999; }
+.ckModal{ z-index:1000; }
+.eventMapModal,.visualSearchModal,.visualResultModal,.reportBackdrop,.shareBackdrop,.uiModal{ z-index:10000; }
+.authModal,.shareModal,.reportModal,.widgetModal .sheet,.ckModal__card,.eventMapModal__sheet,.visualSearchModal__dialog,.visualResultModal__dialog,.uiModalSheet{ opacity:0; transform:translateY(18px) scale(.985); transform-origin:50% 24%; transition:opacity var(--motion-duration-slow) var(--motion-ease-decel), transform var(--motion-duration-slow) var(--motion-ease-decel), box-shadow var(--motion-duration-slow) var(--motion-ease-standard); }
+.authBackdrop.isOpen .authModal,.shareBackdrop.isOpen .shareModal,.reportBackdrop.isOpen .reportModal,.widgetModal.isOpen .sheet,.ckModal.is-open .ckModal__card,.eventMapModal.isOpen .eventMapModal__sheet,.visualSearchModal.isOpen .visualSearchModal__dialog,.visualResultModal.isOpen .visualResultModal__dialog,.uiModal.isOpen .uiModalSheet,.authBackdrop[aria-hidden="false"] .authModal,.shareBackdrop[aria-hidden="false"] .shareModal,.reportBackdrop[aria-hidden="false"] .reportModal,.widgetModal[aria-hidden="false"] .sheet,.ckModal[aria-hidden="false"] .ckModal__card,.eventMapModal[aria-hidden="false"] .eventMapModal__sheet,.visualSearchModal[aria-hidden="false"] .visualSearchModal__dialog,.visualResultModal[aria-hidden="false"] .visualResultModal__dialog,.uiModal[aria-hidden="false"] .uiModalSheet{ opacity:1; transform:translateY(0) scale(1); }
+.ckModal__backdrop,.widgetModal .backdrop,.eventMapModal__backdrop,.visualSearchModal__backdrop,.visualResultModal__backdrop,.uiModalBackdrop{ transition:opacity var(--motion-duration-medium) var(--motion-ease-standard); }
+@media (hover:none), (pointer:coarse){
+  .btn:hover,.iconBtn:hover,.topNavBtn:hover,.reportBtn:hover,.shareBtn:hover,.openBtn:hover,.newsSummary:hover,.accordionSummary:hover,.selectBtn:hover,.sortBtn:hover,.selectItem:hover,.sortItem:hover,.sortChoice:hover,.accountMenu button:hover,.eventMapWindowBtn:hover,.eventMapOpenBtn:hover,.widgetPickV2:hover,.trackToggle:hover{ transform:none; }
+  .authModal,.shareModal,.reportModal,.widgetModal .sheet,.ckModal__card,.eventMapModal__sheet,.visualSearchModal__dialog,.visualResultModal__dialog,.uiModalSheet{ transform-origin:50% 100%; }
+}
+
+.newsSummary:hover,.accordionSummary:hover,.newsSummary:active,.accordionSummary:active{ transform:none !important; }
+.accordionSummaryLabel,.newsSummaryText{ min-width:0; }
