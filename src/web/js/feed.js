@@ -36,7 +36,7 @@ const VISUAL_SEARCH_MAX_DIMENSION = 2200;
 const VISUAL_SEARCH_MIN_DIMENSION = 900;
 const PERSONAL_RECO_INSERT_AFTER = 5;
 const PERSONAL_RECO_MAX_ITEMS = 4;
-const PERSONAL_RECO_ENDPOINT_LIMIT = 18;
+const PERSONAL_RECO_ENDPOINT_LIMIT = 120;
 
 const PERSONAL_RECO_MIN_SCORE = 70;
 const PERSONAL_RECO_FALLBACK_MIN_SCORE = 60;
@@ -87,20 +87,34 @@ function computePersonalRecoRank(item, profile) {
 }
 
 function pickPersonalRecoItems(fetched, currentIds, profile) {
-  const base = (Array.isArray(fetched) ? fetched : []).filter((it) => {
+  const all = Array.isArray(fetched) ? fetched : [];
+  const base = all.filter((it) => {
     const id = getItemId(it);
     return !!id && !currentIds.has(id);
   });
-  const pool = base.length ? base : (Array.isArray(fetched) ? fetched : []).filter((it) => !!getItemId(it));
+  const pool = base.length ? base : all.filter((it) => !!getItemId(it));
   if (!pool.length) return [];
 
-  const sorted = [...pool].sort((a, b) => {
-    const ra = computePersonalRecoRank(a, profile);
-    const rb = computePersonalRecoRank(b, profile);
-    if (ra !== rb) return rb - ra;
+  const pickThreshold = (items) => {
+    const thresholds = [PERSONAL_RECO_MIN_SCORE, 68, 65, PERSONAL_RECO_FALLBACK_MIN_SCORE];
+    for (const threshold of thresholds) {
+      if (items.some((it) => getPersonalRecoStoryScore(it) >= threshold)) return threshold;
+    }
+    return null;
+  };
+
+  const activeThreshold = pickThreshold(pool);
+  const eligible = activeThreshold == null
+    ? [...pool]
+    : pool.filter((it) => getPersonalRecoStoryScore(it) >= activeThreshold);
+
+  const sorted = eligible.sort((a, b) => {
     const sa = getPersonalRecoStoryScore(a);
     const sb = getPersonalRecoStoryScore(b);
     if (sa !== sb) return sb - sa;
+    const ra = computePersonalRecoRank(a, profile);
+    const rb = computePersonalRecoRank(b, profile);
+    if (ra !== rb) return rb - ra;
     const ia = getPersonalRecoStoryImportance(a);
     const ib = getPersonalRecoStoryImportance(b);
     if (ia !== ib) return ib - ia;
@@ -110,14 +124,7 @@ function pickPersonalRecoItems(fetched, currentIds, profile) {
     return getPersonalRecoStoryFreshnessHours(a) - getPersonalRecoStoryFreshnessHours(b);
   });
 
-  let picked = sorted.filter((it) => getPersonalRecoStoryScore(it) >= PERSONAL_RECO_MIN_SCORE);
-  if (!picked.length) {
-    picked = sorted.filter((it) => getPersonalRecoStoryScore(it) >= PERSONAL_RECO_FALLBACK_MIN_SCORE);
-  }
-  if (!picked.length) {
-    picked = sorted;
-  }
-  return picked.slice(0, PERSONAL_RECO_MAX_ITEMS);
+  return sorted.slice(0, PERSONAL_RECO_MAX_ITEMS);
 }
 
 let __personalRecoCache = {

@@ -247,12 +247,16 @@ async function ensureItemInFeedAndOpen(clusterId) {
   if (openCardInDOM(clusterId)) return true;
 
   // 2) If the story already exists in the fetched feed but is hidden below the current
-  // visible slice, promote it into view before doing another request.
+  // visible slice, reveal that part of the feed first, then open it.
   try {
     const idStr = String(clusterId ?? '').trim();
     const existingItems = Array.isArray(lastFeedItems) ? lastFeedItems : [];
     const existingIndex = existingItems.findIndex((it) => String(it?.cluster_id ?? it?.event_id ?? '') === idStr);
     if (existingIndex >= 0) {
+      if (typeof window.ensureStoryVisibleInFeedById === 'function') {
+        try { window.ensureStoryVisibleInFeedById(idStr); } catch {}
+      }
+
       const story = existingItems[existingIndex];
       const reordered = existingItems.filter((_, idx) => idx !== existingIndex);
       const preferredInsertIndex = (typeof getPersonalRecoInsertIndex === 'function')
