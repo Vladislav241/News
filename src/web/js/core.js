@@ -33,6 +33,25 @@ async function apiFetchJson(url, options = {}) {
 }
 window.apiFetchJson = apiFetchJson;
 
+const CHECKNE_SUPPORTED_COUNTRIES = new Set(['world', 'gb', 'de', 'fr']);
+
+function checkneNormalizeCountrySelection(value, fallback = 'world') {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (CHECKNE_SUPPORTED_COUNTRIES.has(normalized)) return normalized;
+  const normalizedFallback = String(fallback || 'world').trim().toLowerCase();
+  return CHECKNE_SUPPORTED_COUNTRIES.has(normalizedFallback) ? normalizedFallback : 'world';
+}
+window.checkneNormalizeCountrySelection = checkneNormalizeCountrySelection;
+
+function checkneCountryLabel(value) {
+  const normalized = checkneNormalizeCountrySelection(value, 'world');
+  if (normalized === 'de') return 'Germany';
+  if (normalized === 'fr') return 'France';
+  if (normalized === 'gb') return 'United Kingdom';
+  return 'World';
+}
+window.checkneCountryLabel = checkneCountryLabel;
+
 function isUrlQuery(q) {
   try {
     const s = String(q || "").trim();
@@ -227,7 +246,35 @@ async function ensureItemInFeedAndOpen(clusterId) {
   // 1) If already rendered -> open
   if (openCardInDOM(clusterId)) return true;
 
-  // 2) Try to fetch this single item and inject into current feed
+  // 2) If the story already exists in the fetched feed but is hidden below the current
+  // visible slice, promote it into view before doing another request.
+  try {
+    const idStr = String(clusterId ?? '').trim();
+    const existingItems = Array.isArray(lastFeedItems) ? lastFeedItems : [];
+    const existingIndex = existingItems.findIndex((it) => String(it?.cluster_id ?? it?.event_id ?? '') === idStr);
+    if (existingIndex >= 0) {
+      const story = existingItems[existingIndex];
+      const reordered = existingItems.filter((_, idx) => idx !== existingIndex);
+      const preferredInsertIndex = (typeof getPersonalRecoInsertIndex === 'function')
+        ? getPersonalRecoInsertIndex(reordered)
+        : 0;
+      reordered.splice(Math.max(0, preferredInsertIndex), 0, story);
+      lastFeedItems = reordered;
+      if (typeof renderCards === 'function') {
+        renderCards(reordered, {
+          nowTs: Date.now(),
+          newIds: new Set(),
+          suppressNewBadges: true,
+          incremental: false,
+          animate: false,
+        });
+      }
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      if (openCardInDOM(clusterId)) return true;
+    }
+  } catch {}
+
+  // 3) Try to fetch this single item and inject into current feed
   try {
     const interests = encodeURIComponent((state.interests || []).join(","));
     const country = encodeURIComponent(state.country || "world");

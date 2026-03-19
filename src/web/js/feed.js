@@ -38,6 +38,88 @@ const PERSONAL_RECO_INSERT_AFTER = 5;
 const PERSONAL_RECO_MAX_ITEMS = 4;
 const PERSONAL_RECO_ENDPOINT_LIMIT = 18;
 
+const PERSONAL_RECO_MIN_SCORE = 70;
+const PERSONAL_RECO_FALLBACK_MIN_SCORE = 60;
+
+function getPersonalRecoStoryScore(item) {
+  return Number(item?.score ?? item?.credibility_score ?? item?.credibility ?? item?.trust_score ?? item?.rating ?? 0) || 0;
+}
+
+function getPersonalRecoStoryImportance(item) {
+  return Number(item?.importance ?? 0) || 0;
+}
+
+function getPersonalRecoStoryOutlets(item) {
+  if (Number.isFinite(Number(item?.sources_count))) return Number(item.sources_count) || 0;
+  if (Number.isFinite(Number(item?.outlets_count))) return Number(item.outlets_count) || 0;
+  if (Array.isArray(item?.sources)) return item.sources.length;
+  return 0;
+}
+
+function getPersonalRecoStoryFreshnessHours(item) {
+  const raw = item?.latest_published_at ?? item?.published_at ?? item?.created_at ?? item?.updated_at ?? null;
+  const ts = raw ? Date.parse(raw) : NaN;
+  if (!Number.isFinite(ts)) return 9999;
+  return Math.max(0, (Date.now() - ts) / 3600000);
+}
+
+function computePersonalRecoRank(item, profile) {
+  const score = getPersonalRecoStoryScore(item);
+  const importance = getPersonalRecoStoryImportance(item);
+  const outlets = getPersonalRecoStoryOutlets(item);
+  const freshnessHours = getPersonalRecoStoryFreshnessHours(item);
+  const interests = Array.isArray(state?.interests) ? state.interests.map((x) => String(x || '').trim().toLowerCase()).filter(Boolean) : [];
+  const topic = String(item?.topic || item?.category || '').trim().toLowerCase();
+  const itemCountry = String(item?.country || '').trim().toLowerCase();
+  const browserCountry = String(profile?.country || '').trim().toLowerCase();
+
+  let rank = 0;
+  rank += score * 1.8;
+  rank += importance * 0.9;
+  rank += Math.min(outlets, 8) * 7;
+  rank += Math.max(0, 36 - Math.min(freshnessHours, 36));
+  if (topic && interests.includes(topic)) rank += 22;
+  if (itemCountry && browserCountry && itemCountry === browserCountry) rank += 12;
+  if (score < PERSONAL_RECO_MIN_SCORE) rank -= (PERSONAL_RECO_MIN_SCORE - score) * 6;
+  if (score < PERSONAL_RECO_FALLBACK_MIN_SCORE) rank -= 60;
+  if (outlets <= 1) rank -= 12;
+  return rank;
+}
+
+function pickPersonalRecoItems(fetched, currentIds, profile) {
+  const base = (Array.isArray(fetched) ? fetched : []).filter((it) => {
+    const id = getItemId(it);
+    return !!id && !currentIds.has(id);
+  });
+  const pool = base.length ? base : (Array.isArray(fetched) ? fetched : []).filter((it) => !!getItemId(it));
+  if (!pool.length) return [];
+
+  const sorted = [...pool].sort((a, b) => {
+    const ra = computePersonalRecoRank(a, profile);
+    const rb = computePersonalRecoRank(b, profile);
+    if (ra !== rb) return rb - ra;
+    const sa = getPersonalRecoStoryScore(a);
+    const sb = getPersonalRecoStoryScore(b);
+    if (sa !== sb) return sb - sa;
+    const ia = getPersonalRecoStoryImportance(a);
+    const ib = getPersonalRecoStoryImportance(b);
+    if (ia !== ib) return ib - ia;
+    const oa = getPersonalRecoStoryOutlets(a);
+    const ob = getPersonalRecoStoryOutlets(b);
+    if (oa !== ob) return ob - oa;
+    return getPersonalRecoStoryFreshnessHours(a) - getPersonalRecoStoryFreshnessHours(b);
+  });
+
+  let picked = sorted.filter((it) => getPersonalRecoStoryScore(it) >= PERSONAL_RECO_MIN_SCORE);
+  if (!picked.length) {
+    picked = sorted.filter((it) => getPersonalRecoStoryScore(it) >= PERSONAL_RECO_FALLBACK_MIN_SCORE);
+  }
+  if (!picked.length) {
+    picked = sorted;
+  }
+  return picked.slice(0, PERSONAL_RECO_MAX_ITEMS);
+}
+
 let __personalRecoCache = {
   key: '',
   items: [],
@@ -146,13 +228,7 @@ async function ensurePersonalRecoItems(currentItems) {
     })
     .then((data) => {
       const fetched = Array.isArray(data?.items) ? data.items : [];
-      let picked = fetched.filter((it) => {
-        const id = getItemId(it);
-        if (!id) return false;
-        return !currentIds.has(id);
-      });
-      if (!picked.length) picked = fetched.slice();
-      picked = picked.slice(0, PERSONAL_RECO_MAX_ITEMS);
+      const picked = pickPersonalRecoItems(fetched, currentIds, profile);
       __personalRecoCache = {
         key: cacheKey,
         items: picked,

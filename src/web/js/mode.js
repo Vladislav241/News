@@ -256,7 +256,7 @@ function loadPrefs() {
           return core.length ? core : ['general'];
         });
     state.interests = normalize(ints);
-    state.country = p.country || state.country;
+    state.country = (typeof window.checkneNormalizeCountrySelection === 'function') ? window.checkneNormalizeCountrySelection(p.country, state.country) : (p.country || state.country);
     state.language = p.language || state.language;
   } catch {}
 }
@@ -333,7 +333,7 @@ function applyPrefsObject(p, { persistLocal = true } = {}){
           });
       state.interests = normalize(ints);
     }
-    if (p && typeof p.country === 'string' && p.country) state.country = p.country;
+    if (p && typeof p.country === 'string' && p.country) state.country = (typeof window.checkneNormalizeCountrySelection === 'function') ? window.checkneNormalizeCountrySelection(p.country, state.country) : p.country;
     if (p && typeof p.language === 'string' && p.language) state.language = p.language;
   }catch{}
 
@@ -372,7 +372,7 @@ function savePrefs() {
   const interests = normalize(state.interests || ['general']);
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
     interests,
-    country: state.country,
+    country: (typeof window.checkneNormalizeCountrySelection === 'function') ? window.checkneNormalizeCountrySelection(state.country, 'world') : state.country,
     language: state.language,
   }));
 
@@ -388,7 +388,7 @@ function savePrefs() {
           method:'POST',
           headers:{ 'Content-Type':'application/json' },
           credentials:'include',
-          body: JSON.stringify({ interests, country: state.country, language: state.language })
+          body: JSON.stringify({ interests, country: (typeof window.checkneNormalizeCountrySelection === 'function') ? window.checkneNormalizeCountrySelection(state.country, 'world') : state.country, language: state.language })
         });
       }catch{}
     }, 300);
@@ -436,7 +436,7 @@ function requestSaveUiPrefs(){
           method:'POST',
           headers:{ 'Content-Type':'application/json' },
           credentials:'include',
-          body: JSON.stringify({ interests, country: state.country, language: state.language, ui })
+          body: JSON.stringify({ interests, country: (typeof window.checkneNormalizeCountrySelection === 'function') ? window.checkneNormalizeCountrySelection(state.country, 'world') : state.country, language: state.language, ui })
         });
       }catch{}
     }, 350);

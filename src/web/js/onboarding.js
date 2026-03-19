@@ -263,14 +263,26 @@
 
   function detectRegion(){
     try {
+      const normalize = (typeof window.checkneNormalizeCountrySelection === 'function')
+        ? window.checkneNormalizeCountrySelection
+        : ((value, fallback = 'world') => {
+            const normalized = String(value || '').trim().toLowerCase();
+            return ['world','gb','de','fr'].includes(normalized) ? normalized : fallback;
+          });
       const current = String(((typeof state !== 'undefined' && state && state.country) ? state.country : (window.state && window.state.country)) || '').trim().toLowerCase();
-      if (current) return current;
+      const currentNormalized = normalize(current, '');
+      if (currentNormalized) return currentNormalized;
+      const timeZone = String(Intl.DateTimeFormat().resolvedOptions().timeZone || '').toLowerCase();
+      if (/europe\/berlin|europe\/busingen/.test(timeZone)) return 'de';
+      if (/europe\/paris/.test(timeZone)) return 'fr';
+      if (/europe\/london/.test(timeZone)) return 'gb';
       const locale = String(Intl.DateTimeFormat().resolvedOptions().locale || navigator.language || '').toLowerCase();
       const match = locale.match(/[-_]([a-z]{2})\b/);
-      if (match && match[1]) return match[1];
+      return normalize(match && match[1] ? match[1] : '', 'world');
     } catch {}
     return 'world';
   }
+
 
   function normalizeInterestList(list){
     const set = new Set((Array.isArray(list) ? list : []).map((x) => String(x || '').trim().toLowerCase()).filter(Boolean));
@@ -583,7 +595,9 @@
     onboardingLang = detectLanguage();
     ensureRoot();
     if (!force && isSeen()) return;
-    selectedCountry = String((((typeof state !== 'undefined' && state) ? state.country : (window.state && window.state.country)) || detectRegion()) || 'world').toLowerCase();
+    selectedCountry = (typeof window.checkneNormalizeCountrySelection === 'function')
+      ? window.checkneNormalizeCountrySelection(String((((typeof state !== 'undefined' && state) ? state.country : (window.state && window.state.country)) || detectRegion()) || 'world').toLowerCase(), 'world')
+      : String((((typeof state !== 'undefined' && state) ? state.country : (window.state && window.state.country)) || detectRegion()) || 'world').toLowerCase();
     selectedInterests = normalizeInterestList(((typeof state !== 'undefined' && state && state.interests) ? state.interests : (window.state && window.state.interests)) || ['general']);
     currentIndex = 0;
     render();
