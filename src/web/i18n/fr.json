@@ -206,6 +206,9 @@
       "conf_low": "Faible",
       "show_sources": "Afficher les sources",
       "hide_sources": "Masquer les sources",
+      "coverage": "Couverture",
+      "unknown": "Inconnu",
+      "partial": "Classification partielle",
       "not_enough": "Pas assez de données pour estimer le biais médiatique de cette actualité.",
       "unavailable": "Les données de biais ne sont pas encore disponibles.",
       "aria": "Répartition du biais médiatique"

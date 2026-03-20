@@ -213,6 +213,9 @@
       "conf_low": "Low",
       "show_sources": "Show sources",
       "hide_sources": "Hide sources",
+      "coverage": "Coverage",
+      "unknown": "Unknown",
+      "partial": "Partial classification",
       "not_enough": "Not enough data to estimate media bias for this story.",
       "unavailable": "Bias data is not available yet.",
       "aria": "Media bias distribution"

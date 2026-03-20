@@ -206,6 +206,9 @@
       "conf_low": "Niedrig",
       "show_sources": "Quellen anzeigen",
       "hide_sources": "Quellen ausblenden",
+      "coverage": "Abdeckung",
+      "unknown": "Unbekannt",
+      "partial": "Teilweise klassifiziert",
       "not_enough": "Nicht genügend Daten, um den Medien-Bias für diese Story zu schätzen.",
       "unavailable": "Bias-Daten sind noch nicht verfügbar.",
       "aria": "Verteilung des Medien-Bias"

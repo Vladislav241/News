@@ -5306,6 +5306,19 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
 .mbSrcDomain{ margin-left:auto; font-size: 11px; color: rgba(15,23,42,.55); max-width: 55%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .mbMeta{
   margin-top:12px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  align-items:flex-start;
+}
+.mbMeta .chip{
+  display:inline-flex;
+  align-items:center;
+  min-height:32px;
+  max-width:100%;
+  white-space:normal;
+  overflow-wrap:anywhere;
+  line-height:1.25;
 }
 
 
@@ -6300,7 +6313,7 @@ body.eventMapModalOpen{overflow:hidden;}
 <script src="/static/js/feed.js?v=personal-reco-2" defer></script>
 <script src="/static/js/news-map.js?v=2026-03-06-eventmap2" defer></script>
 <script src="/static/js/report.js?v=2026-03-01" defer></script>
-<script src="/static/js/widgets.js?v=2026-03-13-media-bias-layout-1" defer></script>
+<script src="/static/js/widgets.js?v=2026-03-20-media-bias-chip-wrap-2" defer></script>
 <script src="/static/js/promo.js?v=2026-03-09-sharepromo" defer></script>
 <script src="/static/js/dropdowns.js?v=2026-02-24" defer></script>
 <script src="/static/js/motion-system.js?v=2026-03-18-ui-fixes-3" defer></script>

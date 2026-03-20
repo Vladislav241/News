@@ -421,6 +421,10 @@ function renderMediaBias(root, settings){
       const leftC = Number(data.left?.count || 0) || 0;
       const centerC = Number(data.center?.count || 0) || 0;
       const rightC = Number(data.right?.count || 0) || 0;
+      const unknownC = Number(data.unknown?.count || 0) || 0;
+      const classifiedSources = Number(data.classified_sources || (leftC + centerC + rightC) || 0) || 0;
+      const totalSources = Number(data.total_sources || (classifiedSources + unknownC) || classifiedSources || 0) || 0;
+      const coveragePct = clamp(Number(data.coverage || 0), 0, 100);
 
       const conf = String(data.confidence || '').toLowerCase();
       const confLabel = conf ? conf.charAt(0).toUpperCase() + conf.slice(1) : '';
@@ -463,6 +467,9 @@ function renderMediaBias(root, settings){
           ${stats}
           <div class="mbMeta">
             ${confLabel ? `<span class="chip">${escapeHtml(wt("widgets.media_bias.confidence", "Confidence"))}: <b>${escapeHtml(wt(`widgets.media_bias.conf_${conf}`, confLabel))}</b></span>` : ''}
+            ${totalSources > 0 ? `<span class="chip">${escapeHtml(wt("widgets.media_bias.coverage", "Coverage"))}: <b>${classifiedSources}/${totalSources}</b></span>` : ''}
+            ${unknownC > 0 ? `<span class="chip">${escapeHtml(wt("widgets.media_bias.unknown", "Unknown"))}: <b>${unknownC}</b></span>` : ''}
+            ${data.is_partial ? `<span class="chip">${escapeHtml(wt("widgets.media_bias.partial", "Partial classification"))} · <b>${coveragePct}%</b></span>` : ''}
           </div>
           <div class="mbActions">${toggleBtn}</div>
           ${detailsWrap}
@@ -485,6 +492,7 @@ function renderMediaBias(root, settings){
         const leftList = renderSourceList(data.left?.sources || []);
         const centerList = renderSourceList(data.center?.sources || []);
         const rightList = renderSourceList(data.right?.sources || []);
+        const unknownList = renderSourceList(data.unknown?.sources || []);
 
         return `
           <div class="mbGroup">
@@ -499,6 +507,11 @@ function renderMediaBias(root, settings){
             <div class="mbGroupTitle"><span class="mbDot mbRight"></span>${escapeHtml(wt("widgets.media_bias.right", "Right"))}</div>
             ${rightList}
           </div>
+          ${unknownC > 0 ? `
+          <div class="mbGroup">
+            <div class="mbGroupTitle"><span class="mbDot"></span>${escapeHtml(wt("widgets.media_bias.unknown", "Unknown"))}</div>
+            ${unknownList}
+          </div>` : ''}
         `;
       }
 

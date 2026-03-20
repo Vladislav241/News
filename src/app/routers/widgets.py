@@ -304,6 +304,8 @@ def media_bias_widget(cluster_id: int):
         data["confidence"] = conf_label
         data["coverage"] = int(round(coverage * 100))
         data["is_partial"] = known_total < total_unique
+        data["classified_sources"] = known_total
+        data["total_sources"] = total_unique
 
         payload = {"data": data, "reason": None}
         _store_payload(cache_key, cid, payload, cluster_updated_at=str(updated_at))
