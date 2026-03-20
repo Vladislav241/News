@@ -107,6 +107,11 @@
     // Navigate to pricing with optional preselection.
     // plan: free | pro | analyst
     // checkout: if true, pricing page will immediately start checkout.
+    if (!(typeof authState !== 'undefined' && authState && authState.authenticated)) {
+      try { if (typeof window.toast === 'function') window.toast('Please sign in first to continue.', 'info'); } catch {}
+      try { if (typeof window.openAuthModal === 'function') window.openAuthModal('login'); } catch {}
+      return false;
+    }
     return goPricingWith({ plan: 'pro', checkout: false });
   }
 
@@ -2602,7 +2607,7 @@ function renderPicker(){
         const uiLang = encodeURIComponent((state && state.language) ? state.language : 'en');
 
         const url = `${API_BASE}/api/news/by_ids?ids=${encodeURIComponent(topIds.join(','))}` +
-          `&interests=${interests}&country=${country}&language=all&ui_lang=${uiLang}`;
+          `&interests=${interests}&country=${country}&language=all&ui_lang=${uiLang}${(typeof window.__checkneBuildGuestPreviewIdsQuery === 'function' ? window.__checkneBuildGuestPreviewIdsQuery() : '')}`;
         const r = await fetch(url);
         const j = await r.json().catch(() => ({}));
         const items = Array.isArray(j.items) ? j.items : [];
@@ -2945,7 +2950,7 @@ function _truncateList(arr, max){
       const country = encodeURIComponent((state && state.country) ? state.country : 'world');
       const uiLang = encodeURIComponent((state && state.language) ? state.language : 'en');
       const url = `${API_BASE}/api/news/by_ids?ids=${encodeURIComponent(String(cid))}` +
-        `&interests=${interests}&country=${country}&language=all&ui_lang=${uiLang}`;
+        `&interests=${interests}&country=${country}&language=all&ui_lang=${uiLang}${(typeof window.__checkneBuildGuestPreviewIdsQuery === 'function' ? window.__checkneBuildGuestPreviewIdsQuery() : '')}`;
       const r = await fetch(url, { credentials: 'include' });
       const j = await r.json().catch(() => ({}));
       const items = Array.isArray(j.items) ? j.items : [];

@@ -679,6 +679,8 @@ if (mainBtn) {
       return;
     }
 
+    if (selectedPlan !== 'free' && requireAuthForCheckout()) return;
+
     // дальше твоя логика
     if (selectedPlan === 'free') {
       toast("Free plan enabled (no payment).");
@@ -745,6 +747,17 @@ function setBillingInterval(interval) {
 }
 
 function pt(key, fallback){ try { return (typeof t === "function") ? t(key, fallback) : fallback; } catch(_) { return fallback; } }
+
+function requireAuthForCheckout() {
+  try {
+    if (authState?.authenticated) return false;
+    if (typeof window.toast === 'function') window.toast('Please sign in first to continue.', 'info');
+    if (typeof window.openAuthModal === 'function') window.openAuthModal('login');
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function updatePricingUI() {
   // Highlight current plan + update CTA text
@@ -848,12 +861,15 @@ function updateProfileUI(){
       btnResume.onclick = async ()=>{
         try{
           btnResume.disabled = true;
-          const r = await fetch(`${API_BASE}/api/billing/resume`, { method:'POST' });
+          const r = await fetch(`${API_BASE}/api/billing/resume`, { method:'POST', credentials:'same-origin' });
           const j = await r.json().catch(()=> ({}));
           if(!r.ok) throw new Error(j?.detail || `HTTP ${r.status}`);
           await refreshBillingState();
         }catch(e){
-          try{ toast(String(e?.message || e || pt('profile.failed_resume','Failed to resume subscription')), 'error'); }catch{}
+          try{
+            if (typeof window.toast === 'function') window.toast(String(e?.message || e || pt('profile.failed_resume','Failed to resume subscription')), 'error');
+            else alert(String(e?.message || e || pt('profile.failed_resume','Failed to resume subscription')));
+          }catch{}
         }finally{
           btnResume.disabled = false;
         }
@@ -869,16 +885,28 @@ function updateProfileUI(){
       btnCancel.style.display = '';
       btnCancel.disabled = false;
       btnCancel.onclick = async ()=>{
-        const ok = (typeof uiConfirm==='function') ? await uiConfirm(pt('profile.cancel_confirm_body','Cancel at period end? You will keep access until the end of the current billing period.'), {title:pt('profile.cancel_subscription','Cancel subscription'), okText:pt('profile.yes_cancel','Yes, cancel'), cancelText:pt('profile.keep','Keep')}) : (toast && toast('Confirm dialog unavailable', 'error'), false);
+        const ok = (typeof window.uiConfirm === 'function')
+          ? await window.uiConfirm(
+              pt('profile.cancel_confirm_body','Cancel at period end? You will keep access until the end of the current billing period.'),
+              {
+                title: pt('profile.cancel_subscription','Cancel subscription'),
+                okText: pt('profile.yes_cancel','Yes, cancel'),
+                cancelText: pt('profile.keep','Keep')
+              }
+            )
+          : window.confirm(pt('profile.cancel_confirm_body','Cancel at period end? You will keep access until the end of the current billing period.'));
         if(!ok) return;
         try{
           btnCancel.disabled = true;
-          const r = await fetch(`${API_BASE}/api/billing/cancel`, { method:'POST' });
+          const r = await fetch(`${API_BASE}/api/billing/cancel`, { method:'POST', credentials:'same-origin' });
           const j = await r.json().catch(()=> ({}));
           if(!r.ok) throw new Error(j?.detail || `HTTP ${r.status}`);
           await refreshBillingState();
         }catch(e){
-          try{ toast(String(e?.message || e || pt('profile.failed_cancel','Failed to cancel subscription')), 'error'); }catch{}
+          try{
+            if (typeof window.toast === 'function') window.toast(String(e?.message || e || pt('profile.failed_cancel','Failed to cancel subscription')), 'error');
+            else alert(String(e?.message || e || pt('profile.failed_cancel','Failed to cancel subscription')));
+          }catch{}
         }finally{
           btnCancel.disabled = false;
         }
@@ -889,6 +917,7 @@ function updateProfileUI(){
 
 async function startCheckout(plan, interval) {
   try {
+    if (plan !== 'free' && requireAuthForCheckout()) return;
     if (plan === 'free') {
       await fetch(`${API_BASE}/api/billing/set-free`, { method: 'POST' });
       await refreshBillingState();

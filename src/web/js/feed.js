@@ -38,6 +38,40 @@ const PERSONAL_RECO_INSERT_AFTER = 5;
 const PERSONAL_RECO_MAX_ITEMS = 4;
 const PERSONAL_RECO_ENDPOINT_LIMIT = 120;
 
+
+function getGuestPreviewIds() {
+  try {
+    const items = Array.isArray(lastFeedItems) ? lastFeedItems : [];
+    if (!items.length) return [];
+    const ids = [];
+    for (const it of items) {
+      const id = String(getItemId(it) || '').trim();
+      if (!id) continue;
+      if (it?.guest_locked) continue;
+      ids.push(id);
+      if (ids.length >= 3) break;
+    }
+    return ids;
+  } catch {
+    return [];
+  }
+}
+
+function buildGuestPreviewIdsQuery() {
+  try {
+    if (authState?.authenticated) return '';
+    const ids = getGuestPreviewIds();
+    return ids.length ? `&guest_preview_ids=${encodeURIComponent(ids.join(','))}` : '';
+  } catch {
+    return '';
+  }
+}
+
+try {
+  window.__checkneGetGuestPreviewIds = getGuestPreviewIds;
+  window.__checkneBuildGuestPreviewIdsQuery = buildGuestPreviewIdsQuery;
+} catch {}
+
 const PERSONAL_RECO_MIN_SCORE = 70;
 const PERSONAL_RECO_FALLBACK_MIN_SCORE = 60;
 
@@ -315,7 +349,7 @@ async function fetchPersonalRecoStoryById(targetId, opts = {}) {
     const uiLang = encodeURIComponent(state.language || 'en');
     const res = await fetch(
       `${API_BASE}/api/news/by_ids?ids=${encodeURIComponent(id)}` +
-      `&interests=${interests}&country=${country}&language=all&ui_lang=${uiLang}`
+      `&interests=${interests}&country=${country}&language=all&ui_lang=${uiLang}${buildGuestPreviewIdsQuery()}`
     );
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
@@ -3249,6 +3283,19 @@ function renderVisualPreview(file){
   if (visualRunBtnEl) visualRunBtnEl.disabled = false;
 }
 
+function requireLoginForVisualSearch() {
+  try {
+    if (authState?.authenticated) return false;
+    if (typeof window.toast === 'function') {
+      window.toast('Please sign in first to use image search.', 'info');
+    }
+    if (typeof window.openAuthModal === 'function') window.openAuthModal('login');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function openVisualModal(){
   if (!visualModalEl) return;
   visualModalEl.classList.add('isOpen');
@@ -3463,19 +3510,21 @@ function attachVisualFile(file){
 
 if (visualBtnEl && visualInputEl) {
   visualBtnEl.onclick = () => {
+    if (requireLoginForVisualSearch()) return;
     closeVisualResultModal();
     openVisualModal();
   };
   visualInputEl.addEventListener('change', async () => {
+    if (requireLoginForVisualSearch()) { clearVisualInputValue(); return; }
     const file = visualInputEl.files && visualInputEl.files[0] ? visualInputEl.files[0] : null;
     attachVisualFile(file);
   });
 }
-if (visualChooseBtnEl) visualChooseBtnEl.onclick = () => { try { visualInputEl.click(); } catch {} };
-if (visualReplaceBtnEl) visualReplaceBtnEl.onclick = () => { try { visualInputEl.click(); } catch {} };
-if (visualRunBtnEl) visualRunBtnEl.onclick = () => { runVisualSearch(visualSelectedFile); };
+if (visualChooseBtnEl) visualChooseBtnEl.onclick = () => { if (requireLoginForVisualSearch()) return; try { visualInputEl.click(); } catch {} };
+if (visualReplaceBtnEl) visualReplaceBtnEl.onclick = () => { if (requireLoginForVisualSearch()) return; try { visualInputEl.click(); } catch {} };
+if (visualRunBtnEl) visualRunBtnEl.onclick = () => { if (requireLoginForVisualSearch()) return; runVisualSearch(visualSelectedFile); };
 if (visualCloseBtnEl) visualCloseBtnEl.onclick = () => closeVisualModal();
-if (visualPasteBtnEl) visualPasteBtnEl.onclick = () => pickVisualClipboardImage();
+if (visualPasteBtnEl) visualPasteBtnEl.onclick = () => { if (requireLoginForVisualSearch()) return; pickVisualClipboardImage(); };
 if (visualModalEl) {
   visualModalEl.addEventListener('click', (e) => {
     if (e.target && e.target.closest('[data-visual-close="1"]')) closeVisualModal();
@@ -3528,6 +3577,7 @@ document.addEventListener('keydown', (e) => {
 });
 document.addEventListener('paste', (e) => {
   if (!visualModalEl || !visualModalEl.classList.contains('isOpen')) return;
+  if (requireLoginForVisualSearch()) return;
   const items = Array.from(e.clipboardData?.items || []);
   const imgItem = items.find((it) => String(it.type || '').startsWith('image/'));
   if (!imgItem) return;
@@ -3787,6 +3837,7 @@ async function runVisualSearch(file){
 
     const minEl = qs('scoreMin');
     const maxEl = qs('scoreMax');
+    const resetBtn = qs('sortResetBtn');
     let __filtersCommitT = null;
     const commit = (immediate=false)=>{
       if (__filtersCommitT) clearTimeout(__filtersCommitT);
@@ -3803,6 +3854,20 @@ async function runVisualSearch(file){
       maxEl.addEventListener('input', ()=>commit(false));
       maxEl.addEventListener('change', ()=>commit(true));
       maxEl.addEventListener('blur', ()=>commit(true));
+    }
+    if (resetBtn) {
+      resetBtn.addEventListener('click', ()=>{
+        const newest = document.querySelector('input[name="sortOrder"][value="newest"]');
+        const onlyConfirmedEl = qs('onlyConfirmed');
+        const onlyAiSummaryEl = qs('onlyAiSummary');
+        if (newest) newest.checked = true;
+        if (minEl) minEl.value = '0';
+        if (maxEl) maxEl.value = '100';
+        if (onlyConfirmedEl) onlyConfirmedEl.checked = false;
+        if (onlyAiSummaryEl) onlyAiSummaryEl.checked = false;
+        applyFiltersUIToState();
+        render();
+      });
     }
   }
 

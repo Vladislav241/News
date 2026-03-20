@@ -23,7 +23,7 @@ def _env_bool(name: str, default: bool = False) -> bool:
 
 
 def _llm_enabled() -> bool:
-    return _env_bool("MEDIA_BIAS_LLM_ENABLED", True)
+    return _env_bool("MEDIA_BIAS_LLM_ENABLED", False)
 
 
 def _llm_timeout_seconds() -> float:
@@ -149,7 +149,7 @@ def classify_with_llm(domain: str, sample_titles: list[str]) -> tuple[str, float
     try:
         client = OpenAI(api_key=api_key, timeout=_llm_timeout_seconds())
         resp = client.chat.completions.create(
-            model=os.getenv("OPENAI_BIAS_MODEL") or "gpt-4o-mini",
+            model=(os.getenv("OPENAI_BIAS_MODEL") or os.getenv("OPENAI_CLUSTER_MATCH_MODEL") or "gpt-4.1-nano"),
             messages=[
                 {"role": "system", "content": "You are a careful media bias classifier. If unsure, answer unknown with low confidence."},
                 {"role": "user", "content": prompt},

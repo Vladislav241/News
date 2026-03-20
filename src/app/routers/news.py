@@ -933,6 +933,123 @@ def _redact_item_for_guest(it: dict[str, Any]) -> dict[str, Any]:
     return it
 
 
+def _parse_guest_preview_ids(raw: str | None) -> list[int]:
+    ids: list[int] = []
+    for part in str(raw or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            cid = int(part)
+        except Exception:
+            continue
+        if cid > 0:
+            ids.append(cid)
+    return list(dict.fromkeys(ids))[:3]
+
+
+def _resolve_guest_visible_cluster_ids(
+    *,
+    interests: str,
+    country: str,
+    language: str,
+    ui_lang: str,
+    guest_preview_ids: str | None,
+    fallback_limit: int,
+) -> set[int]:
+    """Return the exact guest-visible cluster ids for the current feed snapshot.
+
+    Source of truth priority:
+    1) explicit guest_preview_ids from the current client feed
+    2) same snapshot cache payload that /api/news already built for guests
+    3) deterministic server-side fallback using the same decoration/sort/cutoff pipeline
+    """
+    explicit_ids = {cid for cid in _parse_guest_preview_ids(guest_preview_ids) if cid > 0}
+    if explicit_ids:
+        return explicit_ids
+
+    interests_norm = ",".join(_normalize_interest_selection([x.strip().lower() for x in (interests or "").split(",") if x.strip()]))
+    country_norm = (country or "world").strip().lower()
+    language_norm = (language or "all").strip().lower()
+    ui_lang_norm = (ui_lang or "en").strip().lower()
+    bucket = _snapshot_bucket()
+    _max_limit_for_plan, keep_days = _feed_limits_for_plan("free")
+    cache_key = _feed_cache_key(
+        interests=interests_norm,
+        country=country_norm,
+        language=language_norm,
+        ui_lang=ui_lang_norm,
+        since=None,
+        q=None,
+        limit=max(1, min(_max_limit_for_plan, int(fallback_limit or _max_limit_for_plan))),
+        bucket=bucket,
+        variant="guest",
+        keep_days=keep_days,
+    )
+
+    now = time.time()
+    with _FEED_CACHE_LOCK:
+        cached = _FEED_CACHE.get(cache_key)
+        if cached and cached[0] > now:
+            payload = cached[1] or {}
+            items = payload.get("items") or []
+            cached_ids = {
+                int(it.get("cluster_id") or it.get("id") or 0)
+                for it in items
+                if not bool(it.get("guest_locked")) and int(it.get("cluster_id") or it.get("id") or 0) > 0
+            }
+            if cached_ids:
+                return cached_ids
+
+    interests_list = [x.strip().lower() for x in (interests or "").split(",") if x.strip()]
+    guest_rows = db.query_clusters(
+        interests=interests_list,
+        country=country_norm,
+        language=language_norm,
+        since_iso=None,
+        limit=max(120, int(fallback_limit or 120)),
+    )
+    guest_feed = [_decorate_cluster_row(r, include_sources=True) for r in guest_rows]
+
+    guest_cutoff = _days_ago_iso(keep_days)
+    guest_feed = [
+        it for it in guest_feed
+        if (it.get("latest_published_at") or it.get("updated_at") or "") >= guest_cutoff
+    ]
+    guest_feed.sort(
+        key=lambda x: (
+            x.get("latest_published_at") or "",
+            int(x.get("importance") or 0),
+            int(x.get("credibility_score") or 0),
+            int(x.get("sources_count") or 0),
+            int(x.get("cluster_id") or 0),
+        ),
+        reverse=True,
+    )
+    return {
+        int(it.get("cluster_id") or it.get("id") or 0)
+        for it in guest_feed[:3]
+        if int(it.get("cluster_id") or it.get("id") or 0) > 0
+    }
+
+
+def _apply_guest_visibility(items: list[dict[str, Any]], allow_ids: set[int]) -> list[dict[str, Any]]:
+    visible = {int(cid) for cid in (allow_ids or set()) if int(cid) > 0}
+    out: list[dict[str, Any]] = []
+    for it in items:
+        try:
+            cid = int(it.get("cluster_id") or it.get("id") or 0)
+        except Exception:
+            cid = 0
+        if cid > 0 and cid in visible:
+            copy = dict(it)
+            copy["guest_locked"] = False
+            out.append(copy)
+        else:
+            out.append(_redact_item_for_guest(it))
+    return out
+
+
 def _is_url(s: str) -> bool:
     try:
         ss = (s or "").strip().lower()
@@ -1335,23 +1452,13 @@ async def get_news(
             limit=limit_n,
         )
 
-
-        # Paywall: guests get full details only for the first 3 items.
-        is_guest = user is None
-        items: list[dict[str, Any]] = []
-        for idx, c in enumerate(clusters):
-            if (not is_guest) or idx < 3:
-                items.append(_decorate_cluster_row(c, include_sources=True))
-            else:
-                it = _decorate_cluster_row(c, include_sources=False)
-                # redact details
-                it.pop("summary_facts", None)
-                it.pop("summary_diffs", None)
-                it.pop("summary_uncertainties", None)
-                it["summary"] = ""
-                it["credibility_explanation"] = "Create an account to view full details."
-                it["guest_locked"] = True
-                items.append(it)
+        # Build the final visible feed first, then apply guest redaction.
+        # Otherwise a guest may see a card in the top 3, but opening that same
+        # card via /api/news/by_ids can still be treated as locked because the
+        # server compared against a different pre-filter/pre-sort list.
+        items: list[dict[str, Any]] = [
+            _decorate_cluster_row(c, include_sources=True) for c in clusters
+        ]
 
         cutoff = _days_ago_iso(keep_days_for_plan)
         items = [
@@ -1403,6 +1510,17 @@ async def get_news(
             ),
             reverse=True,
         )
+
+        # Paywall: guests get full details only for the first 3 *visible* items.
+        if user is None:
+            guest_items: list[dict[str, Any]] = []
+            for idx, it in enumerate(items):
+                if idx < 3:
+                    it["guest_locked"] = False
+                    guest_items.append(it)
+                else:
+                    guest_items.append(_redact_item_for_guest(it))
+            items = guest_items
 
         # UI-language translation (content only). Never affects clustering/summary generation.
     # Translate for ANY ui_lang (including EN), but translate_feed_items will skip items
@@ -2076,6 +2194,7 @@ async def news_by_ids(
     interests: str = "",
     country: str = "world",
     language: str = "all",
+    guest_preview_ids: str = "",
 ) -> dict[str, Any]:
     db.ensure_schema()
 
@@ -2094,35 +2213,17 @@ async def news_by_ids(
     _queue_missing_summaries(rows, background_tasks, max_jobs=6)
     items = [_decorate_cluster_row(r, include_sources=True) for r in rows]
 
-    # Apply paywall for guests.
-    # Guests may see FULL details only for the current feed's top-3 items.
+    # Apply paywall for guests using the same source of truth as /api/news.
     if user is None:
-        interests_list = [x.strip().lower() for x in (interests or "").split(",") if x.strip()]
-        country = (country or "world").strip().lower()
-        language = (language or "all").strip().lower()
-
-        top3 = db.query_clusters(
-            interests=interests_list,
+        allow_ids = _resolve_guest_visible_cluster_ids(
+            interests=interests,
             country=country,
             language=language,
-            since_iso=None,
-            limit=3,
+            ui_lang=ui_lang,
+            guest_preview_ids=guest_preview_ids,
+            fallback_limit=max(120, len(id_list) + 20),
         )
-        allow_ids = {int(r["id"]) for r in top3}
-
-        redacted: list[dict[str, Any]] = []
-        for it in items:
-            try:
-                cid = int(it.get("cluster_id") or it.get("id") or 0)
-            except Exception:
-                cid = 0
-
-            if cid in allow_ids:
-                redacted.append(it)
-            else:
-                redacted.append(_redact_item_for_guest(it))
-
-        items = redacted
+        items = _apply_guest_visibility(items, allow_ids)
 
     pos = {cid: i for i, cid in enumerate(id_list)}
     items.sort(key=lambda x: pos.get(int(x["cluster_id"]), 10**9))

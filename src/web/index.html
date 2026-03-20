@@ -2038,18 +2038,18 @@ body.visualSearchLock{ overflow:hidden; }
   gap: 16px;
   align-items: stretch;
 }
-.planCard{
-  border: 1px solid rgba(15,23,42,.16);
-  border-radius: 22px;
-  background:#fff;
-  overflow:hidden;
-}
+
 .planCard .planTop{
   padding: 22px 22px 18px;
   border-bottom: 1px solid rgba(15,23,42,.10);
   text-align:center;
 }
-.planName{ font-size: 22px; font-weight: 650; margin: 0 0 6px; }
+.planName{
+  min-height:52px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
 .planPrice{ font-size: 38px; font-weight: 700; margin: 0; }
 .planSub{ margin-top: 6px; color: rgba(15,23,42,.55); font-size: 14px; }
 
@@ -2080,7 +2080,7 @@ body.visualSearchLock{ overflow:hidden; }
   font-size: 13px;
   font-weight: 600;
 }
-.planCard.current{ outline: 2px solid rgba(17,17,19,.20); }
+
 
 .currentPlanNote{ text-align:center; margin-top: 14px; color: rgba(15,23,42,.65); }
 
@@ -2207,204 +2207,201 @@ body.visualSearchLock{ overflow:hidden; }
 @media (max-width:980px){.profileGrid{grid-template-columns:1fr;}}
 
 /* ===== Pricing page (standalone view) ===== */
-.pricingPage{max-width:1040px;margin:64px auto 0;padding:0 18px 64px;}
-.pricingHero{text-align:center;margin:26px 0 35px;}
-.pricingHero h2{margin:0 0 10px;font-size:32px;font-weight:400;letter-spacing:-0.02em;}
-.pricingHero p{margin:0;color:#111;font-size:23px;line-height:1.5;}
-.billingToggle{display:flex;justify-content:center;margin:18px 0 50px;}
-.togglePill{background:#fff;border:1px solid rgba(0,0,0,0.18);border-radius:999px;padding:4px;display:flex;gap:4px;}
-.togglePill button{border:0;background:transparent;padding:8px 16px;border-radius:999px;font-weight:600;cursor:pointer;}
+.pricingPage{max-width:1220px;margin:32px auto 0;padding:0 18px 80px;}
+.pricingHero,.pricingTrust{display:none;}
+.billingToggle{display:flex;justify-content:center;margin:12px 0 42px;}
+.togglePill{background:#fff;border:1px solid rgba(0,0,0,0.18);border-radius:999px;padding:4px;display:inline-flex;align-items:center;gap:4px;flex-wrap:nowrap;max-width:100%;}
+.togglePill button{border:0;background:transparent;padding:8px 16px;border-radius:999px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;flex:0 0 auto;min-width:0;}
 .togglePill button.on{background:#111;color:#fff;}
-.pricingGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;align-items:stretch;margin:0 auto;}
-.planCard{position:relative;border:1px solid rgba(0,0,0,0.22);border-radius:18px;background:#fff;overflow:hidden;cursor:pointer;transition:transform .12s ease,box-shadow .12s ease,border-color .12s ease;}
-.planCard:hover{transform:translateY(-1px);}
-.planCard.isSelected{border-color:rgba(0,0,0,0.55);box-shadow:0 0 0 1px rgba(0,0,0,0.55) inset;}
-.planBadge{position:absolute;left:50%;top:-14px;transform:translateX(-50%);background:#111;color:#fff;padding:6px 18px;border-radius:999px;font-size:13px;font-weight:700;}
-.planHead{text-align:center;padding:28px 18px 18px;border-bottom:1px solid rgba(0,0,0,0.14);}
-.planName{font-size:22px;font-weight:700;margin-bottom:8px;}
-.planPriceBig{font-size:44px;font-weight:400;letter-spacing:-0.02em;padding: 17px;}
-.planBody{padding:30px 18px 22px;}
-.planBody ul{list-style:none;padding:0;;margin:0;text-align:center;display:flex;flex-direction:column;gap:30px;color:rgba(0,0,0,0.72);}
-.planBody b{color:#111;font-weight:750;}
-.pricingCtaRow{display:flex;justify-content:center;margin:18px 0 34px;}
-.pricingMainBtn{background:#111;color:#fff;border:0;border-radius:12px;padding:12px 22px;min-width:220px;font-size:16px;font-weight:700;cursor:pointer;}
-.pricingMainBtn:active{transform:translateY(1px);}
-.pricingTrust{margin:34px 0 14px;text-align:center;letter-spacing:0.34em;color:rgba(0,0,0,0.55);font-size:20px;}
-.pricingCompareWrap{border:1px solid rgba(0,0,0,0.18);border-radius:12px;overflow:hidden;}
-.pricingTable{width:100%;border-collapse:collapse;background:#fff;}
-.pricingTable th,.pricingTable td{padding:14px 16px;border-bottom:1px solid rgba(0,0,0,0.10);text-align:center;}
-.pricingTable th{background:rgba(0,0,0,0.03);font-weight:700;}
-.pricingTable tbody td:first-child{text-align:left;font-weight:500;}
-.pricingTable tbody tr:last-child td{border-bottom:0;}
-@media (max-width:980px){.pricingGrid{grid-template-columns:1fr;}.planHead{padding-top:30px;}}
-/* REMOVE checkmarks in pricing cards */
-.pricingPage .planBody li::before{
-  content: "" !important;
-  display: none !important;
-}
-/* Make pricing cards taller */
-.pricingPage .planCard{
-  min-height: 530px;   /* увеличивай: 520 / 600 / 650 */
-}
-.pricingPage .planCard{
-  display: flex;
-  flex-direction: column;
-   overflow: visible;
-}
-
-.pricingPage .planBody{
-  flex: 1;   /* растягивает середину */
-}
-/* ===== Pricing table: make it look like Figma (photo 2) ===== */
-
-.pricingCompareWrap{
-  border: 1px solid rgba(0,0,0,0.35);
-  border-radius: 34px;
-  overflow: hidden;        /* важно для скругления */
-  background: #fff;
-}
-
-/* чтобы работал border-radius + внутренние линии */
-.pricingTable{
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  background: #fff;
-}
-
-/* общие ячейки */
-.pricingTable th,
-.pricingTable td{
-   padding: 16px 28px;
-  border-bottom: 1px solid rgba(0,0,0,0.25);
-  text-align: center;
-  vertical-align: middle;
-}
-
-/* вертикальные линии между колонками */
-.pricingTable th:not(:last-child),
-.pricingTable td:not(:last-child){
-  border-right: 1px solid rgba(0,0,0,0.25);
-}
-
-/* шапка */
-.pricingTable thead th{
-  background: transparent;   /* убрать серый фон */
-  font-weight: 400;
-  font-size: 34px;
-}
-
-/* первая колонка (названия строк) */
-.pricingTable tbody td:first-child,
-.pricingTable thead th:first-child{
-  text-align: left;
-}
-
-/* названия строк (Track events / Trust score changes...) */
-.pricingTable tbody td:first-child{
-  font-size: 24px;
-  font-weight: 200;
-}
-
-/* значения внутри (3 / 20 / ✓ / × / Limited...) */
-.pricingTable tbody td{
-  font-size: 18px;  
-  font-weight: 200;
-}
-
-/* последняя строка без нижней линии */
-.pricingTable tbody tr:last-child td{
-  border-bottom: 0;
-}
-/* === FIX: сделать заголовки таблицы НЕ жирными === */
-.pricingTable th{
-  font-weight: 300 !important;      /* перебивает твои 700 */
-  font-synthesis-weight: none;      /* чтобы браузер не "додумывал" жирность */
-}
-/* Если нужно увеличить воздух под кнопкой */
-.pricingCtaRow{
-  margin-bottom: 130px !important;
-}
-.saveTag{
-  font-size: 13px;
-  margin-left: 8px;
-  color: rgba(0,0,0,0.45);
-  font-weight: 400;
-}
-
-/* ===== Mobile plan switch (no JS) for pricing comparison ===== */
-.pricingCompareMobile{display:none;}
-.pricingCompareDesktop{display:block;}
-
-.planSwitch{
+.togglePill .saveTag{display:inline-block;white-space:nowrap;}
+.pricingGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;align-items:stretch;margin:0 auto;max-width:1080px;}
+.planCard{
+  position:relative;
   display:flex;
-  gap:8px;
-  justify-content:center;
-  padding:14px 14px 8px;
-}
-.pricingCompareMobile > .planSel{position:absolute;opacity:0;pointer-events:none;}
-.planSwitch label{
-  user-select:none;
-  border:1px solid rgba(0,0,0,0.22);
-  border-radius:999px;
-  padding:8px 14px;
-  font-weight:650;
-  font-size:14px;
-  cursor:pointer;
+  flex-direction:column;
+  min-height:548px;
+  border:2px solid rgba(0,0,0,.18);
+  border-radius:28px;
   background:#fff;
-  color:#111;
-  line-height:1;
+  overflow:visible;
+  cursor:pointer;
+  transition:border-color .18s ease, transform .12s ease, box-shadow .12s ease;
 }
 
-/* active pill */
-#planSelFree:checked ~ .planSwitch label[for="planSelFree"],
-#planSelPro:checked ~ .planSwitch label[for="planSelPro"],
-#planSelAnalyst:checked ~ .planSwitch label[for="planSelAnalyst"]{
-  background:#111;
-  color:#fff;
+.planCard:hover{
+  border-color: rgba(0,0,0,.32);
+}
+
+.planCard.isSelected{
   border-color:#111;
 }
-
-.pricingOne{width:100%;border-collapse:separate;border-spacing:0;background:#fff;}
-.pricingOne th,.pricingOne td{
-  padding:14px 16px;
-  border-bottom:1px solid rgba(0,0,0,0.20);
-  font-size:16px;
+.planBadge{
+  position:absolute;
+  left:50%;
+  top:-24px;
+  transform:translateX(-50%);
+  background:#000;
+  padding:12px 36px;
+  font-size:18px;
+  font-weight:500;
+  line-height:1;
+  white-space:nowrap;
+  z-index:10;
 }
+.planHead{
+  text-align:center;
+  padding:34px 24px 26px;
+  border-bottom:1.5px solid #111;
+  min-height:240px;   /* было меньше */
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+}
+.planName{font-size:41px;font-weight:400;line-height:1.05;margin-bottom:20px;color:#000;}
+.planPriceBig{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  min-height:128px;   /* фиксируем блок цены */
+  text-align:center;
+}
+
+.oldPrice,
+.priceWas{
+  display:block;
+  margin:0;
+  font-size:18px;
+  line-height:1;
+  color:rgba(0,0,0,.35);
+  text-decoration:line-through;
+  text-align:center;
+}
+
+.newPrice,
+.priceNow{
+  display:block;
+  margin:0;
+  font-size:64px;
+  line-height:1;
+  font-weight:400;
+  letter-spacing:-0.03em;
+  color:#000;
+  text-align:center;
+}
+
+.priceSave{
+  display:block;
+  margin:0;
+  font-size:14px;
+  line-height:1.1;
+  font-weight:600;
+  color:rgba(0,0,0,.6);
+  text-align:center;
+}
+
+.planCard[data-plan="free"] .oldPrice,
+.planCard[data-plan="free"] .priceWas,
+.planCard[data-plan="free"] .priceSave{
+  display:none;
+}
+.planBody{
+  flex:1;
+  padding:30px 28px 30px 34px;
+  background:#fff;
+  border-radius:0 0 26px 26px;
+}
+.planCard[data-plan="pro"] .planBody,
+.planCard[data-plan="analyst"] .planBody{
+  background:#000;
+  color:#fff;
+  margin: -2px -2px -2px -2px;
+  border-radius: 0 0 28px 28px;
+}
+.planBody ul{
+  list-style:disc;
+  padding-left:24px;
+  text-align:left;
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  color:inherit;
+}
+.planBody li{font-size:17px;line-height:1.48;color:inherit;}
+.planBody li::marker{color:currentColor;}
+.planBody b{font-weight:700;color:inherit;}
+.pricingCtaRow{display:flex;justify-content:center;margin:20px 0 44px;}
+.pricingMainBtn{background:#111;color:#fff;border:0;border-radius:14px;padding:16px 34px;min-width:240px;font-size:19px;font-weight:500;cursor:pointer;line-height:1;}
+.pricingMainBtn:active{transform:translateY(1px);}
+.pricingCompareWrap{
+  max-width:1128px;
+  margin:0 auto;
+  border:2px solid #111;
+  border-radius:28px;
+  overflow:hidden;
+  background:#fff;
+}
+.pricingTable{width:100%;border-collapse:separate;border-spacing:0;background:#fff;}
+.pricingTable th,.pricingTable td{
+  padding:18px 24px;
+  border-bottom:1.5px solid #111;
+  border-right:1.5px solid #111;
+  text-align:center;
+  vertical-align:middle;
+}
+.pricingTable tr > *:last-child{border-right:0;}
+.pricingTable tbody tr:last-child td{border-bottom:0;}
+.pricingTable thead th{
+  background:#000;
+  color:#fff;
+  font-size:26px;
+  font-weight:400;
+  line-height:1.1;
+}
+.pricingTable thead th:first-child{
+  background:#fff;
+  color:#111;
+  text-align:left;
+}
+.pricingTable tbody td:first-child{
+  text-align:left;
+  font-size:24px;
+  font-weight:400;
+  color:#111;
+}
+.pricingTable tbody td{
+  font-size:21px;
+  font-weight:400;
+  color:#111;
+}
+.pricingMark{font-size:26px;font-weight:500;line-height:1;}
+.pricingCompareMobile{display:none;}
+.pricingCompareDesktop{display:block;}
+.planSwitch{display:flex;gap:8px;justify-content:center;padding:16px 14px 10px;}
+.pricingCompareMobile > .planSel{position:absolute;opacity:0;pointer-events:none;}
+.planSwitch label{user-select:none;border:1px solid rgba(0,0,0,0.22);border-radius:999px;padding:8px 14px;font-weight:650;font-size:14px;cursor:pointer;background:#fff;color:#111;line-height:1;}
+#planSelFree:checked ~ .planSwitch label[for="planSelFree"],
+#planSelPro:checked ~ .planSwitch label[for="planSelPro"],
+#planSelAnalyst:checked ~ .planSwitch label[for="planSelAnalyst"]{background:#111;color:#fff;border-color:#111;}
+.pricingOne{width:100%;border-collapse:separate;border-spacing:0;background:#fff;}
+.pricingOne th,.pricingOne td{padding:14px 16px;border-bottom:1px solid rgba(0,0,0,0.20);font-size:16px;}
 .pricingOne th{width:58%;text-align:left;font-weight:500;color:#111;}
 .pricingOne td{text-align:right;font-weight:450;color:rgba(0,0,0,0.80);}
 .pricingOne tr:last-child th,.pricingOne tr:last-child td{border-bottom:0;}
-
 .onePlan{display:none;padding:0 0 8px;}
 #planSelFree:checked ~ .onePlanFree{display:block;}
 #planSelPro:checked ~ .onePlanPro{display:block;}
 #planSelAnalyst:checked ~ .onePlanAnalyst{display:block;}
-
+@media (max-width:980px){
+  .pricingGrid{grid-template-columns:1fr;max-width:540px;}
+  .planCard{min-height:auto;}
+}
 @media (max-width:720px){
-  /* hide wide table entirely */
   .pricingCompareDesktop{display:none;}
   .pricingCompareMobile{display:block;}
-
-  /* tighten table wrapper on mobile */
   .pricingCompareWrap{border-radius:26px;}
-  .pricingTrust{letter-spacing:0.22em;font-size:18px;}
-}
-.planPriceBig{
-  display: flex;
-  justify-content: center;
-  align-items: baseline;
-  gap: 10px;
-}
-
-.oldPrice{
-  font-size: 18px;
-  color: rgba(0,0,0,0.35);
-  text-decoration: line-through;
-}
-
-.newPrice{
-  font-size: 44px;
-  font-weight: 400;
+  .sortMenu{left:0;right:auto;transform-origin:top left;width:min(280px,calc(100vw - 32px));}
 }
 /* ===== Account dropdown ===== */
 .accountWrap{
@@ -3778,18 +3775,16 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
 .sortMenu{
   position:absolute;
   right:0;
-  top: calc(100% + 8px);
-  width: 210px;
+  top: calc(100% + 10px);
+  width: 236px;
   background:#fff;
-  border:1px solid rgba(15,23,42,.18);
-  border-radius: 12px;
-  padding: 10px 10px 12px;
-  box-shadow: 0 10px 30px rgba(2,6,23,.12);
+  border:1.5px solid rgba(15,23,42,.18);
+  border-radius: 22px;
+  padding: 14px 14px 14px;
+  box-shadow: 0 20px 48px rgba(2,6,23,.14);
   z-index: 50;
-
-  /* premium open/close (no jerky hidden toggle) */
   opacity: 0;
-  transform: translateY(-10px) scale(.985);
+  transform: translateY(-8px) scale(.985);
   pointer-events: none;
   transform-origin: top right;
   will-change: transform, opacity;
@@ -3805,32 +3800,99 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
   transform: translateY(-10px) scale(.985);
   pointer-events: none;
 }
-.sortMenuDivider{ height:1px; background: rgba(15,23,42,.10); margin: 10px 2px 8px; }
-.checkSection{ display:flex; flex-direction:column; gap:10px; padding: 2px 2px 2px; }
-.checkRow{ display:flex; align-items:center; gap:10px; font-size:14px; color: rgba(15,23,42,.9); cursor:pointer; user-select:none; }
-.checkRow input{ width:14px; height:14px; accent-color:#111113; }
+.sortMenuDivider{ height:1px; background: rgba(15,23,42,.12); margin: 14px 0 16px; }
+.checkSection{ display:flex; flex-direction:column; gap:12px; padding: 0; }
+.checkRow{ display:flex; align-items:flex-start; gap:12px; font-size:16px; line-height:1.2; color:#1b2136; cursor:pointer; user-select:none; }
+.checkRow input{ width:16px; height:16px; accent-color:#111113; margin-top:2px; flex:0 0 auto; }
 
 @media (prefers-reduced-motion: reduce){
   .sortMenu{ transition:none; }
   .sortMenu.open{ animation:none; }
 }
-.sortMenuSection{ display:flex; flex-direction:column; gap:10px; padding: 2px 2px 8px; }
-.radioRow{ display:flex; align-items:center; gap:10px; font-size:14px; color: rgba(15,23,42,.9); cursor:pointer; user-select:none; }
-.radioRow input{ width: 14px; height: 14px; accent-color: #111113; }
-
-.rangeRow{ display:flex; align-items:center; justify-content:center; gap:10px; padding-top: 6px; }
-.pillInput{
-  width: 62px;
-  height: 30px;
-  border-radius: 999px;
-  border: 1px solid rgba(15,23,42,.22);
-  background:#fff;
-  text-align:center;
-  font-weight:600;
-  outline:none;
+.sortMenuSection{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  padding:0;
 }
-.pillInput:focus{ border-color: rgba(15,23,42,.45); }
-.rangeSep{ font-size:14px; color: rgba(15,23,42,.7); }
+
+.radioRow{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  font-size:14px;
+  line-height:1.1;
+  color:#1b2136;
+  cursor:pointer;
+  user-select:none;
+}
+
+.rangeRow{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  padding-top: 4px;
+}
+
+.pillInput{
+  width: 72px;
+  height: 38px;
+  border-radius: 999px;
+  border:1.5px solid rgba(15,23,42,.16);
+  outline:none;
+  text-align:center;
+  font-weight:700;
+  font-size:14px;
+  color:#111;
+}
+
+.rangeSep{
+  color: rgba(15,23,42,.72);
+  font-size:14px;
+  line-height:1;
+}
+
+.sortMenuDivider{
+  height:1px;
+  background: rgba(15,23,42,.12);
+  margin: 10px 0 12px;
+}
+
+.checkSection{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  padding:0;
+}
+
+.checkRow{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  font-size:14px;
+  line-height:1.15;
+  color:#1b2136;
+  cursor:pointer;
+  user-select:none;
+}
+
+.sortResetBtn{
+  display:block;
+  width: 100%;
+  min-width: 0;
+  margin: 14px auto 0;
+  padding: 11px 16px;
+  border:0;
+  border-radius:999px;
+  background:#000;
+  color:#fff;
+  font-size:15px;
+  font-weight:500;
+  line-height:1;
+  cursor:pointer;
+}
+.sortResetBtn:active{ transform: translateY(1px); }
 
 .filtersBtn{
   display:inline-flex;
@@ -3947,7 +4009,12 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
   .filtersRow .fieldLanguage{ order: 2; }
   .sortWrap{ margin-left: 0; order: 3; flex: 1 1 100%; width: 100%; }
   .sortBtn{ justify-content: flex-start; }
-  .sortMenu{ left: 0; right: auto; transform-origin: top left; }
+.sortMenu{
+  left:0;
+  right:auto;
+  width: 236px;
+  transform-origin: top left;
+}
 }
 /* ===== Filters dot hover pulse (premium) ===== */
 @keyframes filterPulse {
@@ -5694,6 +5761,7 @@ border:1px solid #000;
                 <span>Only with AI summary</span>
               </label>
             </div>
+            <button id="sortResetBtn" class="sortResetBtn" type="button">Reset to defolt</button>
           </div>
         </div>
       </div>
@@ -5804,62 +5872,66 @@ border:1px solid #000;
     <div class="pricingGrid" role="list">
       <div class="planCard" data-plan="free" role="listitem" tabindex="0">
         <div class="planHead">
-          <div class="planName" data-i18n="pricing.plan_free">Free</div>
-          <div class="planPrice planPriceBig" data-monthly="0.00" data-yearly="0.00">
-  <span class="oldPrice"></span>
-  <span class="newPrice">$0.00</span>
-</div>
-
+          <div class="planName">Free</div>
+          <div class="planPrice planPriceBig" data-price-monthly="$0.00" data-price-yearly="$0.00">
+            <span class="priceWas"></span>
+            <span class="priceNow">$0.00</span>
+            <span class="priceSave"></span>
+          </div>
         </div>
         <div class="planBody">
           <ul>
-            <li><span data-i18n-html="pricing.feature_access_200">Access to <b>200</b> trending news <br>stories per day</span></li>
-            <li><span data-i18n-html="pricing.feature_hot_3">Up to <b>3</b> hot stories</span></li>
-            <li><span data-i18n-html="pricing.feature_track_1">Track <b>1</b> event at a time</span></li>
-            <li><span data-i18n="pricing.feature_cannot_change_day">Cannot be changed during the day</span></li>
-            <li><span data-i18n="pricing.feature_view_trust">View current trust score</span></li>
+            <li>News feed capacity <b>120 news</b></li>
+            <li>Track up to <b>3 events</b></li>
+            <li>View current trust score</li>
+            <li>Real-time trust score updates</li>
+            <li>Access to all news sources</li>
           </ul>
         </div>
       </div>
 
       <div class="planCard popular" data-plan="pro" role="listitem" tabindex="0">
-        <div class="planBadge" data-i18n="pricing.most_popular">Most popular</div>
+        <div class="planBadge">Most popular</div>
         <div class="planHead">
-          <div class="planName" data-i18n="pricing.plan_pro">Pro</div>
-          <div class="planPrice planPriceBig" data-monthly="4.99" data-yearly="49.99">
-  <span class="oldPrice"></span>
-  <span class="newPrice">$4.99</span>
-</div>
-
-
+          <div class="planName">Pro</div>
+          <div class="planPrice planPriceBig" data-price-monthly="$4.99" data-price-yearly="$49.99">
+            <span class="priceWas"></span>
+            <span class="priceNow">$4.99</span>
+            <span class="priceSave"></span>
+          </div>
         </div>
         <div class="planBody">
           <ul>
-            <li><span data-i18n-html="pricing.feature_access_200">Access to <b>200</b> trending news <br>stories per day</span></li>
-            <li><span data-i18n-html="pricing.feature_hot_3">Up to <b>3</b> hot stories</span></li>
-            <li><span data-i18n-html="pricing.feature_track_1">Track <b>1</b> event at a time</span></li>
-            <li><span data-i18n="pricing.feature_cannot_change_day">Cannot be changed during the day</span></li>
-            <li><span data-i18n="pricing.feature_view_trust">View current trust score</span></li>
+            <li>News feed capacity <b>300 news</b></li>
+            <li>Track up to <b>30 events</b></li>
+            <li>Access to <b>6</b> advanced analytics widgets</li>
+            <li>Trust score graph</li>
+            <li>Email alerts</li>
+            <li>Real-time trust score updates</li>
+            <li>Access to all news sources</li>
           </ul>
         </div>
       </div>
 
       <div class="planCard" data-plan="analyst" role="listitem" tabindex="0">
         <div class="planHead">
-          <div class="planName" data-i18n="pricing.plan_analyst">Analyst</div>
-          <div class="planPrice planPriceBig" data-monthly="15.99" data-yearly="159.99">
-  <span class="oldPrice"></span>
-  <span class="newPrice">$15.99</span>
-</div>
-
+          <div class="planName">Analyst</div>
+          <div class="planPrice planPriceBig" data-price-monthly="$15.99" data-price-yearly="$159.99">
+            <span class="priceWas"></span>
+            <span class="priceNow">$15.99</span>
+            <span class="priceSave"></span>
+          </div>
         </div>
         <div class="planBody">
           <ul>
-            <li><span data-i18n-html="pricing.feature_access_200">Access to <b>200</b> trending news <br>stories per day</span></li>
-            <li><span data-i18n-html="pricing.feature_hot_3">Up to <b>3</b> hot stories</span></li>
-            <li><span data-i18n-html="pricing.feature_track_1">Track <b>1</b> event at a time</span></li>
-            <li><span data-i18n="pricing.feature_cannot_change_day">Cannot be changed during the day</span></li>
-            <li><span data-i18n="pricing.feature_view_trust">View current trust score</span></li>
+            <li>News feed capacity <b>400 news</b></li>
+            <li><b>Unlimited</b> event tracking</li>
+            <li>Access to <b>6</b> advanced analytics widgets</li>
+            <li>Trust score graph</li>
+            <li>All advanced widgets</li>
+            <li>Email alerts</li>
+            <li>Real-time trust score updates</li>
+            <li>Access to all news sources</li>
           </ul>
         </div>
       </div>
@@ -5875,98 +5947,105 @@ border:1px solid #000;
 
       <!-- Mobile: show ONE plan at a time (no JS) -->
       <div class="pricingCompareMobile" aria-label="Plan comparison mobile">
-        <!-- hidden radios (CSS-only switch) -->
         <input class="planSel" type="radio" name="planSel" id="planSelFree" checked>
         <input class="planSel" type="radio" name="planSel" id="planSelPro">
         <input class="planSel" type="radio" name="planSel" id="planSelAnalyst">
 
-        <div class="planSwitch" role="tablist" aria-label="Select plan" data-i18n-aria="pricing.select_plan">
-          <label for="planSelFree" role="tab" aria-controls="planFree" data-i18n="pricing.plan_free">Free</label>
-          <label for="planSelPro" role="tab" aria-controls="planPro" data-i18n="pricing.plan_pro">Pro</label>
-          <label for="planSelAnalyst" role="tab" aria-controls="planAnalyst" data-i18n="pricing.plan_analyst">Analyst</label>
+        <div class="planSwitch" role="tablist" aria-label="Select plan">
+          <label for="planSelFree" role="tab" aria-controls="planFree">Free</label>
+          <label for="planSelPro" role="tab" aria-controls="planPro">Pro</label>
+          <label for="planSelAnalyst" role="tab" aria-controls="planAnalyst">Analyst</label>
         </div>
 
         <div class="onePlan onePlanFree" id="planFree">
-          <table class="pricingOne" aria-label="Free plan features" data-i18n-aria="pricing.free_features">
+          <table class="pricingOne" aria-label="Free plan features">
             <tbody>
-              <tr><th data-i18n="pricing.plan">Plan</th><td data-i18n="pricing.plan_free">Free</td></tr>
-              <tr><th data-i18n="pricing.track_events">Track events</th><td>3</td></tr>
-              <tr><th data-i18n="pricing.trust_score_changes">Trust score changes</th><td>✓</td></tr>
-              <tr><th data-i18n="pricing.email_alerts">Email alerts</th><td>×</td></tr>
-              <tr><th data-i18n="pricing.update_history">Update history</th><td data-i18n="pricing.limited">Limited</td></tr>
-              <tr><th data-i18n="pricing.export">Export</th><td data-i18n="pricing.limited">Limited</td></tr>
+              <tr><th>Plan</th><td>Free</td></tr>
+              <tr><th>Tracked events</th><td>3</td></tr>
+              <tr><th>News feed capacity</th><td>120</td></tr>
+              <tr><th>Trust score graph</th><td>×</td></tr>
+              <tr><th>Advanced widgets</th><td>×</td></tr>
+              <tr><th>Email alerts</th><td>×</td></tr>
+              <tr><th>Trust score graph</th><td>×</td></tr>
             </tbody>
           </table>
         </div>
 
         <div class="onePlan onePlanPro" id="planPro">
-          <table class="pricingOne" aria-label="Pro plan features" data-i18n-aria="pricing.pro_features">
+          <table class="pricingOne" aria-label="Pro plan features">
             <tbody>
-              <tr><th data-i18n="pricing.plan">Plan</th><td data-i18n="pricing.plan_pro">Pro</td></tr>
-              <tr><th data-i18n="pricing.track_events">Track events</th><td>20</td></tr>
-              <tr><th data-i18n="pricing.trust_score_changes">Trust score changes</th><td>✓</td></tr>
-              <tr><th data-i18n="pricing.email_alerts">Email alerts</th><td>✓</td></tr>
-              <tr><th data-i18n="pricing.update_history">Update history</th><td data-i18n="pricing.full">Full</td></tr>
-              <tr><th data-i18n="pricing.export">Export</th><td data-i18n="pricing.limited">Limited</td></tr>
+              <tr><th>Plan</th><td>Pro</td></tr>
+              <tr><th>Tracked events</th><td>20</td></tr>
+              <tr><th>News feed capacity</th><td>300</td></tr>
+              <tr><th>Trust score graph</th><td>✓</td></tr>
+              <tr><th>Advanced widgets</th><td>6</td></tr>
+              <tr><th>Email alerts</th><td>✓</td></tr>
+              <tr><th>Trust score graph</th><td>✓</td></tr>
             </tbody>
           </table>
         </div>
 
         <div class="onePlan onePlanAnalyst" id="planAnalyst">
-          <table class="pricingOne" aria-label="Analyst plan features" data-i18n-aria="pricing.analyst_features">
+          <table class="pricingOne" aria-label="Analyst plan features">
             <tbody>
-              <tr><th data-i18n="pricing.plan">Plan</th><td data-i18n="pricing.plan_analyst">Analyst</td></tr>
-              <tr><th data-i18n="pricing.track_events">Track events</th><td data-i18n="pricing.unlimited">Unlimited</td></tr>
-              <tr><th data-i18n="pricing.trust_score_changes">Trust score changes</th><td>✓</td></tr>
-              <tr><th data-i18n="pricing.email_alerts">Email alerts</th><td>✓</td></tr>
-              <tr><th data-i18n="pricing.update_history">Update history</th><td data-i18n="pricing.full">Full</td></tr>
-              <tr><th data-i18n="pricing.export">Export</th><td data-i18n="pricing.full">Full</td></tr>
+              <tr><th>Plan</th><td>Analyst</td></tr>
+              <tr><th>Tracked events</th><td>Unlimited</td></tr>
+              <tr><th>News feed capacity</th><td>400</td></tr>
+              <tr><th>Trust score graph</th><td>✓</td></tr>
+              <tr><th>Advanced widgets</th><td>6</td></tr>
+              <tr><th>Email alerts</th><td>✓</td></tr>
+              <tr><th>Trust score graph</th><td>✓</td></tr>
             </tbody>
           </table>
         </div>
       </div>
 
-      <!-- Desktop/tablet: full comparison table -->
       <div class="pricingCompareDesktop">
-        <table class="pricingTable" aria-label="Plan comparison" data-i18n-aria="pricing.plan_comparison">
+        <table class="pricingTable" aria-label="Plan comparison">
           <thead>
             <tr>
-              <th style="text-align:left;" data-i18n="pricing.plan">Plan</th>
-              <th data-i18n="pricing.plan_free">Free</th>
-              <th data-i18n="pricing.plan_pro">Pro</th>
-              <th data-i18n="pricing.plan_analyst">Analyst</th>
+              <th>Plan</th>
+              <th>Free</th>
+              <th>Pro</th>
+              <th>Analyst</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td data-i18n="pricing.track_events">Track events</td>
+              <td>Tracked events</td>
               <td>3</td>
               <td>20</td>
-              <td data-i18n="pricing.unlimited">Unlimited</td>
+              <td>Unlimited</td>
             </tr>
             <tr>
-              <td data-i18n="pricing.trust_score_changes">Trust score changes</td>
-              <td>✓</td>
-              <td>✓</td>
-              <td>✓</td>
+              <td>News feed capacity</td>
+              <td>120</td>
+              <td>300</td>
+              <td>400</td>
             </tr>
             <tr>
-              <td data-i18n="pricing.email_alerts">Email alerts</td>
-              <td>×</td>
-              <td>✓</td>
-              <td>✓</td>
+              <td>Trust score graph</td>
+              <td><span class="pricingMark">×</span></td>
+              <td><span class="pricingMark">✓</span></td>
+              <td><span class="pricingMark">✓</span></td>
             </tr>
             <tr>
-              <td data-i18n="pricing.update_history">Update history</td>
-              <td data-i18n="pricing.limited">Limited</td>
-              <td data-i18n="pricing.full">Full</td>
-              <td data-i18n="pricing.full">Full</td>
+              <td>Advanced widgets</td>
+              <td><span class="pricingMark">×</span></td>
+              <td>6</td>
+              <td>6</td>
             </tr>
             <tr>
-              <td data-i18n="pricing.export">Export</td>
-              <td data-i18n="pricing.limited">Limited</td>
-              <td data-i18n="pricing.limited">Limited</td>
-              <td data-i18n="pricing.full">Full</td>
+              <td>Email alerts</td>
+              <td><span class="pricingMark">×</span></td>
+              <td><span class="pricingMark">✓</span></td>
+              <td><span class="pricingMark">✓</span></td>
+            </tr>
+            <tr>
+              <td>Trust score graph</td>
+              <td><span class="pricingMark">×</span></td>
+              <td><span class="pricingMark">✓</span></td>
+              <td><span class="pricingMark">✓</span></td>
             </tr>
           </tbody>
         </table>

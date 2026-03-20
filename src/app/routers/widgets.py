@@ -97,14 +97,26 @@ def _load_cached_payload(cache_key: str) -> Optional[dict[str, Any]]:
     return None
 
 
-def _store_payload(cache_key: str, cluster_id: int, payload: dict[str, Any], ttl_seconds: Optional[int] = None) -> None:
+def _store_payload(
+    cache_key: str,
+    cluster_id: int,
+    payload: dict[str, Any],
+    ttl_seconds: Optional[int] = None,
+    cluster_updated_at: str = "",
+) -> None:
     _mem_set(cache_key, payload)
     try:
         ttl = int(ttl_seconds) if ttl_seconds is not None else _ttl_seconds()
     except Exception:
         ttl = _ttl_seconds()
     try:
-        db.set_media_bias_cache(cache_key, cluster_id, _safe_json(payload), ttl_seconds=ttl)
+        db.set_media_bias_cache(
+            cache_key,
+            cluster_id,
+            _safe_json(payload),
+            ttl_seconds=ttl,
+            cluster_updated_at=cluster_updated_at,
+        )
     except Exception:
         log.exception("media-bias cache write failed for cluster %s", cluster_id)
 
@@ -176,7 +188,7 @@ def media_bias_widget(cluster_id: int):
 
         if len(outlet_rows) < 2:
             payload = {"data": None, "reason": "not_enough_sources"}
-            _store_payload(cache_key, cid, payload, ttl_seconds=_negative_ttl_seconds())
+            _store_payload(cache_key, cid, payload, ttl_seconds=_negative_ttl_seconds(), cluster_updated_at=str(updated_at))
             return {"ok": True, "cluster_id": cid, "data": None, "reason": "not_enough_sources"}
 
         domain_titles: dict[str, list[str]] = {}
@@ -249,7 +261,7 @@ def media_bias_widget(cluster_id: int):
         total_unique = len(outlet_rows)
         if known_total <= 0:
             payload = {"data": None, "reason": "not_enough_bias_data"}
-            _store_payload(cache_key, cid, payload, ttl_seconds=_negative_ttl_seconds())
+            _store_payload(cache_key, cid, payload, ttl_seconds=_negative_ttl_seconds(), cluster_updated_at=str(updated_at))
             return {"ok": True, "cluster_id": cid, "data": None, "reason": "not_enough_bias_data"}
 
         def pct(x: int) -> int:
@@ -294,5 +306,5 @@ def media_bias_widget(cluster_id: int):
         data["is_partial"] = known_total < total_unique
 
         payload = {"data": data, "reason": None}
-        _store_payload(cache_key, cid, payload)
+        _store_payload(cache_key, cid, payload, cluster_updated_at=str(updated_at))
         return {"ok": True, "cluster_id": cid, "data": data}

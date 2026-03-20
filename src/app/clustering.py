@@ -35,14 +35,24 @@ logger.info("CLUSTER_LLM_ENABLED=%s OPENAI_API_KEY_set=%s OPENAI_MODEL=%s",
 # We cache ONLY the final boolean/score/reason by a stable hash, and we log only on cache-miss.
 # This prevents log spam and repeated paid calls when the same pair is evaluated many times.
 _LLM_DECISION_CACHE: "OrderedDict[str, tuple[float, tuple[bool | None, float, str]]]" = OrderedDict()
-_LLM_DECISION_CACHE_MAX = int(os.getenv("CLUSTER_LLM_CACHE_MAX", "2048"))
-_LLM_DECISION_CACHE_TTL_SEC = int(os.getenv("CLUSTER_LLM_CACHE_TTL_SEC", str(6 * 60 * 60)))  # 6h
+def _env_int_with_fallback(primary: str, fallback: str, default: int) -> int:
+    raw = os.getenv(primary)
+    if raw is None or str(raw).strip() == "":
+        raw = os.getenv(fallback, str(default))
+    try:
+        return int(str(raw).strip())
+    except Exception:
+        return int(default)
+
+
+_LLM_DECISION_CACHE_MAX = _env_int_with_fallback("CLUSTER_LLM_CACHE_MAX", "AI_CACHE_MAX", 2048)
+_LLM_DECISION_CACHE_TTL_SEC = _env_int_with_fallback("CLUSTER_LLM_CACHE_TTL_SEC", "AI_CACHE_TTL_SECONDS", 6 * 60 * 60)  # 6h
 
 # Simple rate-limit so a single ingest cycle can't explode into hundreds of LLM calls.
 _LLM_WINDOW_START = 0.0
 _LLM_CALLS_IN_WINDOW = 0
-_LLM_MAX_CALLS_PER_MIN = int(os.getenv("CLUSTER_LLM_MAX_CALLS_PER_MIN", "12"))
-_LLM_MAX_CALLS_PER_RUN = int(os.getenv("CLUSTER_LLM_MAX_CALLS_PER_RUN", "18"))
+_LLM_MAX_CALLS_PER_MIN = _env_int_with_fallback("CLUSTER_LLM_MAX_CALLS_PER_MIN", "AI_MAX_CALLS_PER_MINUTE", 12)
+_LLM_MAX_CALLS_PER_RUN = _env_int_with_fallback("CLUSTER_LLM_MAX_CALLS_PER_RUN", "AI_MAX_CALLS_PER_RUN", 18)
 _LLM_RUN_CALLS = 0
 _LLM_RUN_CACHE_HITS = 0
 _LLM_RUN_SKIPPED = 0

@@ -195,7 +195,10 @@ def _should_refresh_summary(cluster_id: int, sources: list[dict[str, Any]], min_
         return True, "pending_stale", fingerprint, source_count
 
     if current_status != "success":
-        if not created_at or (now - created_at).total_seconds() >= max(300, min_interval_seconds // 4):
+        retry_after_seconds = max(1800, min_interval_seconds)
+        if old_fp and old_fp == fingerprint and created_at and (now - created_at).total_seconds() < retry_after_seconds:
+            return False, "recent_failed", fingerprint, source_count
+        if not created_at or (now - created_at).total_seconds() >= max(900, min_interval_seconds // 2):
             return True, "retry_failed", fingerprint, source_count
         return False, "recent_failed", fingerprint, source_count
 

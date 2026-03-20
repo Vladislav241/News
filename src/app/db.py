@@ -767,12 +767,15 @@ class Database:
                 CREATE TABLE IF NOT EXISTS media_bias_cache (
                     cache_key TEXT PRIMARY KEY,
                     cluster_id BIGINT NOT NULL,
+                    cluster_updated_at TEXT,
                     payload_json TEXT NOT NULL,
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     expires_at TEXT NOT NULL
                 );
                 """
             )
+            if not self._has_column("media_bias_cache", "cluster_updated_at"):
+                conn.execute("ALTER TABLE media_bias_cache ADD COLUMN cluster_updated_at TEXT;")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_media_bias_cache_expires ON media_bias_cache(expires_at);")
         conn.commit()
 
@@ -1469,9 +1472,17 @@ class Database:
         )
         return str(row.get("payload_json")) if row and row.get("payload_json") is not None else None
 
-    def set_media_bias_cache(self, cache_key: str, cluster_id: int, payload_json: str, ttl_seconds: int = 3 * 3600) -> None:
+    def set_media_bias_cache(
+        self,
+        cache_key: str,
+        cluster_id: int,
+        payload_json: str,
+        ttl_seconds: int = 3 * 3600,
+        cluster_updated_at: str | None = None,
+    ) -> None:
         now_iso = _utc_now_iso()
         expires_iso = (datetime.now(timezone.utc) + timedelta(seconds=max(1, int(ttl_seconds)))).replace(microsecond=0).isoformat()
+        cluster_updated_at_iso = str(cluster_updated_at or now_iso)
         self._exec(
             """
             INSERT INTO media_bias_cache (cache_key, cluster_id, cluster_updated_at, payload_json, created_at, expires_at)
@@ -1483,7 +1494,7 @@ class Database:
                 created_at=excluded.created_at,
                 expires_at=excluded.expires_at
             """,
-            (cache_key, int(cluster_id), now_iso, payload_json, now_iso, expires_iso),
+            (cache_key, int(cluster_id), cluster_updated_at_iso, payload_json, now_iso, expires_iso),
         )
 
 

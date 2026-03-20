@@ -286,7 +286,7 @@ async function ensureItemInFeedAndOpen(clusterId) {
     const uiLang = encodeURIComponent(state.language || "en");
     const { data: j } = await apiFetchJson(
       `${API_BASE}/api/news/by_ids?ids=${encodeURIComponent(String(clusterId))}` +
-        `&interests=${interests}&country=${country}&language=${language}&ui_lang=${uiLang}`,
+        `&interests=${interests}&country=${country}&language=${language}&ui_lang=${uiLang}${(typeof window.__checkneBuildGuestPreviewIdsQuery === 'function' ? window.__checkneBuildGuestPreviewIdsQuery() : '')}`,
       { timeoutMs: 12000 }
     );
     const item = (j?.items && j.items[0]) ? j.items[0] : null;
