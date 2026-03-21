@@ -406,16 +406,30 @@ function getAiSummaryState(item) {
   const text = String(item?.summary || "").trim();
   const st = normalizeStatus(item?.summary_status);
 
+  if (item?.guest_locked && !authState?.authenticated) {
+    return { status: "locked", text: "Create an account to view full details." };
+  }
+
   if (st === "skipped" || st === "locked") {
     return { status: "locked", text: "AI summary is available on Pro." };
   }
   if (text) {
     return { status: "ready", text };
   }
-  if (st === "failed") {
+
+  if (st === "success" || st === "ready") {
+    const raw = String(item?.summary_raw || "").trim();
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        const brief = String(parsed?.brief || "").trim();
+        if (brief) return { status: "ready", text: brief };
+      } catch {}
+    }
     return { status: "empty", text: "AI summary is not available for this story yet." };
   }
-  if (st === "ready") {
+
+  if (st === "failed") {
     return { status: "empty", text: "AI summary is not available for this story yet." };
   }
   return { status: "loading", text: t("ui.loading","Loading…") };
