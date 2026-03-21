@@ -643,6 +643,19 @@ class Database:
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_user_subs_plan ON user_subscriptions(plan);")
 
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS visual_search_usage (
+                    id BIGSERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    searched_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+                );
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_visual_search_usage_user_time ON visual_search_usage(user_id, searched_at);")
+
             # Account-scoped UI/preferences (e.g., interests) so settings persist across devices.
             conn.execute(
                 """
@@ -971,6 +984,88 @@ class Database:
         with self._lock:
             conn.execute("UPDATE users SET stripe_customer_id = ? WHERE id = ?", (stripe_customer_id, int(user_id)))
             conn.commit()
+
+    def get_visual_search_limit_for_plan(self, plan: str | None) -> Optional[int]:
+        p = str(plan or "free").strip().lower()
+        if p == "analyst":
+            return None
+        if p == "pro":
+            return 10
+        return 3
+
+    def get_visual_search_quota(self, user_id: int, plan: str | None = None) -> dict[str, Any]:
+        uid = int(user_id)
+        effective_plan = str(plan or (self.get_user_subscription(uid) or {}).get("plan") or "free").strip().lower()
+        limit = self.get_visual_search_limit_for_plan(effective_plan)
+        now_dt = datetime.now(timezone.utc)
+        now_iso = now_dt.isoformat()
+        window_start_dt = now_dt - timedelta(hours=24)
+        window_start_iso = window_start_dt.isoformat()
+
+        rows = self._fetchall(
+            "SELECT searched_at FROM visual_search_usage WHERE user_id = ? AND searched_at >= ? ORDER BY searched_at ASC",
+            (uid, window_start_iso),
+        )
+        used = len(rows)
+        remaining = None if limit is None else max(0, int(limit) - used)
+        reset_at = None
+        retry_after_seconds = 0
+        locked = False
+
+        if limit is not None and used >= int(limit):
+            locked = True
+            oldest = str(rows[0].get("searched_at") or "") if rows else ""
+            try:
+                oldest_dt = datetime.fromisoformat(oldest.replace("Z", "+00:00"))
+                if oldest_dt.tzinfo is None:
+                    oldest_dt = oldest_dt.replace(tzinfo=timezone.utc)
+                reset_dt = oldest_dt + timedelta(hours=24)
+                reset_at = reset_dt.isoformat()
+                retry_after_seconds = max(0, int((reset_dt - now_dt).total_seconds()))
+            except Exception:
+                reset_at = None
+                retry_after_seconds = 0
+        elif rows:
+            try:
+                oldest_dt = datetime.fromisoformat(str(rows[0].get("searched_at") or "").replace("Z", "+00:00"))
+                if oldest_dt.tzinfo is None:
+                    oldest_dt = oldest_dt.replace(tzinfo=timezone.utc)
+                reset_at = (oldest_dt + timedelta(hours=24)).isoformat()
+            except Exception:
+                reset_at = None
+
+        return {
+            "plan": effective_plan,
+            "limit": limit,
+            "used": int(used),
+            "remaining": remaining,
+            "locked": bool(locked),
+            "window_hours": 24,
+            "retry_after_seconds": int(retry_after_seconds),
+            "reset_at": reset_at,
+            "checked_at": now_iso,
+        }
+
+    def record_visual_search_usage(self, user_id: int, searched_at: Optional[str] = None) -> dict[str, Any]:
+        uid = int(user_id)
+        ts = str(searched_at or _utc_now_iso())
+        conn = self.connect()
+        with self._lock:
+            row = conn.execute(
+                """
+                INSERT INTO visual_search_usage(user_id, searched_at, created_at)
+                VALUES (?, ?, ?)
+                RETURNING *
+                """,
+                (uid, ts, ts),
+            ).fetchone()
+            try:
+                cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
+                conn.execute("DELETE FROM visual_search_usage WHERE searched_at < ?", (cutoff,))
+            except Exception:
+                pass
+            conn.commit()
+        return dict(row) if row else {"user_id": uid, "searched_at": ts, "created_at": ts}
 
     # --------- helpers ----------
     def _exec(self, sql: str, params: tuple[Any, ...] = ()) -> _PGCursor:

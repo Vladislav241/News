@@ -143,7 +143,8 @@ function _renderTopCarousel(items) {
   for (const it of list) {
     const cid = Number(it?.cluster_id ?? it?.event_id ?? it?.id);
     const title = String(it?.title || '').trim() || 'Top story';
-    const summary = String(it?.summary || '').trim();
+    const summaryState = getAiSummaryState(it);
+    const summary = String(summaryState?.text || '').trim();
     const sourceName = pickPrimarySourceName(it);
     const outlets = Number(it?.sources_count ?? (it?.sources ? it.sources.length : 0));
     const imgUrl = getNewsImage(it, 'hero');
@@ -391,50 +392,72 @@ function itemPassesFilters(item) {
   // Extra filters
   if (state.filters.onlyConfirmed && sourcesCount < 2) return false;
   if (state.filters.onlyAiSummary) {
-    const summaryText = String(item?.summary || '').trim();
+    const summaryText = _extractSummaryBriefFromText(item?.summary ?? item?.summary_text ?? item?.summary_raw ?? '');
     if (!summaryText) return false;
   }
 
   return true;
 }
 
-
-function extractSummaryBrief(value) {
-  const text = String(value || "").trim();
-  if (!text) return "";
-  const compact = text.replace(/\s+/g, " ").trim();
-  const tryParse = (candidate) => {
-    try {
-      const parsed = JSON.parse(candidate);
-      if (parsed && typeof parsed === "object") {
-        const brief = String(parsed.brief || parsed.summary || parsed.text || "").trim();
-        if (brief) return brief;
-      }
-      if (typeof parsed === "string") {
-        return extractSummaryBrief(parsed);
-      }
-    } catch {}
-    return "";
-  };
-  return tryParse(compact) || (() => {
-    const start = compact.indexOf("{");
-    const end = compact.lastIndexOf("}");
-    if (start !== -1 && end > start) return tryParse(compact.slice(start, end + 1));
-    return "";
-  })() || compact;
-}
-
 function normalizeStatus(x) {
   return String(x || "").trim().toLowerCase();
 }
 
-function getAiSummaryState(item) {
-  const text = extractSummaryBrief(item?.summary || "");
-  const st = normalizeStatus(item?.summary_status);
+function _extractSummaryBriefFromText(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
 
-  if (item?.guest_locked && !authState?.authenticated) {
-    return { status: "locked", text: "Create an account to view full details." };
+  const unwrap = (s) => {
+    let t = String(s || '').trim();
+    if (t.startsWith('```')) {
+      t = t.replace(/^```[a-zA-Z0-9_-]*\s*/, '').replace(/\s*```$/, '').trim();
+    }
+    return t;
+  };
+
+  const decodeJsonString = (s) => {
+    try {
+      return JSON.parse(`"${String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`);
+    } catch {
+      return String(s || '')
+        .replace(/\\n/g, ' ')
+        .replace(/\\r/g, ' ')
+        .replace(/\\t/g, ' ')
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, '\\');
+    }
+  };
+
+  const cleaned = unwrap(raw);
+
+  try {
+    const parsed = JSON.parse(cleaned);
+    if (parsed && typeof parsed === 'object' && typeof parsed.brief === 'string' && parsed.brief.trim()) {
+      return parsed.brief.trim();
+    }
+    if (typeof parsed === 'string' && parsed.trim()) {
+      return parsed.trim();
+    }
+  } catch {}
+
+  const briefMatch = cleaned.match(/"brief"\s*:\s*"((?:\\.|[^"\\])*)"/s);
+  if (briefMatch && briefMatch[1]) {
+    const brief = decodeJsonString(briefMatch[1]).trim();
+    if (brief) return brief;
   }
+
+  if (/^\s*\{\s*"brief"\s*:/s.test(cleaned)) {
+    return '';
+  }
+
+  return cleaned;
+}
+
+function getAiSummaryState(item) {
+  const text = _extractSummaryBriefFromText(
+    item?.summary ?? item?.summary_text ?? item?.summary_raw ?? ''
+  );
+  const st = normalizeStatus(item?.summary_status);
 
   if (st === "skipped" || st === "locked") {
     return { status: "locked", text: "AI summary is available on Pro." };
@@ -442,16 +465,10 @@ function getAiSummaryState(item) {
   if (text) {
     return { status: "ready", text };
   }
-
-  if (st === "success" || st === "ready") {
-    const raw = extractSummaryBrief(item?.summary_raw || "");
-    if (raw) {
-      return { status: "ready", text: raw };
-    }
+  if (st === "failed") {
     return { status: "empty", text: "AI summary is not available for this story yet." };
   }
-
-  if (st === "failed") {
+  if (st === "ready") {
     return { status: "empty", text: "AI summary is not available for this story yet." };
   }
   return { status: "loading", text: t("ui.loading","Loading…") };

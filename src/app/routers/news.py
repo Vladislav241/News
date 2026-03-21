@@ -19,7 +19,7 @@ from ..auth.deps import get_current_user_optional, require_user
 from ..ingest import run_ingest_cycle, backfill_article_images, _should_refresh_summary
 from ..scoring import compute_importance, compute_credibility
 from ..translate import translate_feed_items
-from ..ai import extract_visual_search_signal, _extract_brief_from_text
+from ..ai import extract_visual_search_signal
 from ..runtime import background_tasks_disabled
 
 import threading
@@ -118,7 +118,7 @@ def _backfill_summaries_for_cluster_ids(cluster_ids: list[int]) -> None:
         min_interval_seconds = 30 * 60
 
     try:
-        from ..ai import summarize_cluster, _extract_brief_from_text
+        from ..ai import summarize_cluster
 
         for cid in cluster_ids:
             try:
@@ -699,6 +699,52 @@ def _safe_json_load(s: Optional[str]) -> Optional[Dict[str, Any]]:
         return None
 
 
+def _decode_json_escaped_text(s: str) -> str:
+    try:
+        return json.loads(f'"{s}"')
+    except Exception:
+        return (
+            str(s or "")
+            .replace("\\n", " ")
+            .replace("\\r", " ")
+            .replace("\\t", " ")
+            .replace('\\"', '"')
+            .replace("\\\\", "\\")
+        )
+
+
+def _extract_summary_brief(summary_text: Optional[str], summary_json: Optional[str] = None, summary_raw: Optional[str] = None) -> str:
+    candidates = [summary_json, summary_text, summary_raw]
+    for candidate in candidates:
+        raw = str(candidate or "").strip()
+        if not raw:
+            continue
+        txt = raw
+        if txt.startswith("```"):
+            txt = re.sub(r"^```[a-zA-Z0-9_-]*\s*", "", txt).strip()
+            txt = re.sub(r"\s*```$", "", txt).strip()
+        try:
+            obj = json.loads(txt)
+            if isinstance(obj, dict):
+                brief = str(obj.get("brief") or "").strip()
+                if brief:
+                    return brief
+            elif isinstance(obj, str) and obj.strip():
+                return obj.strip()
+        except Exception:
+            pass
+
+        m = re.search(r'"brief"\s*:\s*"((?:\\.|[^"\\])*)"', txt, flags=re.S)
+        if m:
+            brief = _decode_json_escaped_text(m.group(1)).strip()
+            if brief:
+                return brief
+
+        if not re.match(r'^\s*\{\s*"brief"\s*:', txt, flags=re.S):
+            return txt
+    return ""
+
+
 def _build_diff_proofs(
     diffs: list[dict[str, Any]],
     sources: list[dict[str, Any]],
@@ -847,7 +893,8 @@ def _decorate_cluster_row(c: dict[str, Any], include_sources: bool = True) -> di
     )
 
     # summary JSON first
-    summary_json = _safe_json_load(c.get("summary_json"))
+    summary_json_raw = c.get("summary_json")
+    summary_json = _safe_json_load(summary_json_raw)
     summary_brief = ""
     summary_facts: list[str] = []
     summary_uncertainties: list[str] = []
@@ -863,9 +910,12 @@ def _decorate_cluster_row(c: dict[str, Any], include_sources: bool = True) -> di
             diffs_raw = [x for x in summary_json["diffs"] if isinstance(x, dict)]
             summary_diffs = _build_diff_proofs(diffs_raw, sources)
 
-    # fallback legacy: summary_text as brief
     if not summary_brief:
-        summary_brief = _extract_brief_from_text(c.get("summary_text") or "")
+        summary_brief = _extract_summary_brief(
+            c.get("summary_text"),
+            summary_json_raw,
+            c.get("summary_raw_text"),
+        )
 
     payload: dict[str, Any] = {
         "cluster_id": cid,
@@ -916,14 +966,138 @@ def _decorate_cluster_row(c: dict[str, Any], include_sources: bool = True) -> di
 
 
 def _redact_item_for_guest(it: dict[str, Any]) -> dict[str, Any]:
-    """Guest responses should remain fully readable.
+    """Redact details for guests (same paywall behavior as /api/news).
 
-    Keep the helper name for compatibility with existing call sites, but do
-    not strip summary, sources, or credibility details anymore.
+    /api/news/by_ids is used for deep-links (e.g. shared URLs). Without
+    this, guests could bypass the paywall by requesting an item directly.
     """
     it = dict(it)
-    it["guest_locked"] = False
+    it.pop("summary_facts", None)
+    it.pop("summary_diffs", None)
+    it.pop("summary_uncertainties", None)
+    it["summary"] = ""
+    it["credibility_explanation"] = "Create an account to view full details."
+    it["guest_locked"] = True
+    # Remove sources/details (keep count/metadata)
+    it["sources"] = []
     return it
+
+
+def _parse_guest_preview_ids(raw: str | None) -> list[int]:
+    ids: list[int] = []
+    for part in str(raw or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            cid = int(part)
+        except Exception:
+            continue
+        if cid > 0:
+            ids.append(cid)
+    return list(dict.fromkeys(ids))[:3]
+
+
+def _resolve_guest_visible_cluster_ids(
+    *,
+    interests: str,
+    country: str,
+    language: str,
+    ui_lang: str,
+    guest_preview_ids: str | None,
+    fallback_limit: int,
+) -> set[int]:
+    """Return the exact guest-visible cluster ids for the current feed snapshot.
+
+    Source of truth priority:
+    1) explicit guest_preview_ids from the current client feed
+    2) same snapshot cache payload that /api/news already built for guests
+    3) deterministic server-side fallback using the same decoration/sort/cutoff pipeline
+    """
+    explicit_ids = {cid for cid in _parse_guest_preview_ids(guest_preview_ids) if cid > 0}
+    if explicit_ids:
+        return explicit_ids
+
+    interests_norm = ",".join(_normalize_interest_selection([x.strip().lower() for x in (interests or "").split(",") if x.strip()]))
+    country_norm = (country or "world").strip().lower()
+    language_norm = (language or "all").strip().lower()
+    ui_lang_norm = (ui_lang or "en").strip().lower()
+    bucket = _snapshot_bucket()
+    _max_limit_for_plan, keep_days = _feed_limits_for_plan("free")
+    cache_key = _feed_cache_key(
+        interests=interests_norm,
+        country=country_norm,
+        language=language_norm,
+        ui_lang=ui_lang_norm,
+        since=None,
+        q=None,
+        limit=max(1, min(_max_limit_for_plan, int(fallback_limit or _max_limit_for_plan))),
+        bucket=bucket,
+        variant="guest",
+        keep_days=keep_days,
+    )
+
+    now = time.time()
+    with _FEED_CACHE_LOCK:
+        cached = _FEED_CACHE.get(cache_key)
+        if cached and cached[0] > now:
+            payload = cached[1] or {}
+            items = payload.get("items") or []
+            cached_ids = {
+                int(it.get("cluster_id") or it.get("id") or 0)
+                for it in items
+                if not bool(it.get("guest_locked")) and int(it.get("cluster_id") or it.get("id") or 0) > 0
+            }
+            if cached_ids:
+                return cached_ids
+
+    interests_list = [x.strip().lower() for x in (interests or "").split(",") if x.strip()]
+    guest_rows = db.query_clusters(
+        interests=interests_list,
+        country=country_norm,
+        language=language_norm,
+        since_iso=None,
+        limit=max(120, int(fallback_limit or 120)),
+    )
+    guest_feed = [_decorate_cluster_row(r, include_sources=True) for r in guest_rows]
+
+    guest_cutoff = _days_ago_iso(keep_days)
+    guest_feed = [
+        it for it in guest_feed
+        if (it.get("latest_published_at") or it.get("updated_at") or "") >= guest_cutoff
+    ]
+    guest_feed.sort(
+        key=lambda x: (
+            x.get("latest_published_at") or "",
+            int(x.get("importance") or 0),
+            int(x.get("credibility_score") or 0),
+            int(x.get("sources_count") or 0),
+            int(x.get("cluster_id") or 0),
+        ),
+        reverse=True,
+    )
+    return {
+        int(it.get("cluster_id") or it.get("id") or 0)
+        for it in guest_feed[:3]
+        if int(it.get("cluster_id") or it.get("id") or 0) > 0
+    }
+
+
+def _apply_guest_visibility(items: list[dict[str, Any]], allow_ids: set[int]) -> list[dict[str, Any]]:
+    visible = {int(cid) for cid in (allow_ids or set()) if int(cid) > 0}
+    out: list[dict[str, Any]] = []
+    for it in items:
+        try:
+            cid = int(it.get("cluster_id") or it.get("id") or 0)
+        except Exception:
+            cid = 0
+        if cid > 0 and cid in visible:
+            copy = dict(it)
+            copy["guest_locked"] = False
+            out.append(copy)
+        else:
+            out.append(_redact_item_for_guest(it))
+    return out
 
 
 def _is_url(s: str) -> bool:
@@ -1387,10 +1561,16 @@ async def get_news(
             reverse=True,
         )
 
-        # Guests now receive the same fully readable feed payload as signed-in users.
+        # Paywall: guests get full details only for the first 3 *visible* items.
         if user is None:
-            for it in items:
-                it["guest_locked"] = False
+            guest_items: list[dict[str, Any]] = []
+            for idx, it in enumerate(items):
+                if idx < 3:
+                    it["guest_locked"] = False
+                    guest_items.append(it)
+                else:
+                    guest_items.append(_redact_item_for_guest(it))
+            items = guest_items
 
         # UI-language translation (content only). Never affects clustering/summary generation.
     # Translate for ANY ui_lang (including EN), but translate_feed_items will skip items
@@ -1492,9 +1672,17 @@ async def news_similar(
     is_guest = user is None
     decorated: list[dict[str, Any]] = []
     for idx, c in enumerate(clusters):
-        it = _decorate_cluster_row(c, include_sources=True)
-        it["guest_locked"] = False
-        decorated.append(it)
+        if (not is_guest) or idx < 3:
+            decorated.append(_decorate_cluster_row(c, include_sources=True))
+        else:
+            it = _decorate_cluster_row(c, include_sources=False)
+            it.pop("summary_facts", None)
+            it.pop("summary_diffs", None)
+            it.pop("summary_uncertainties", None)
+            it["summary"] = ""
+            it["credibility_explanation"] = "Create an account to view full details."
+            it["guest_locked"] = True
+            decorated.append(it)
 
     def doc_text(it: dict[str, Any]) -> str:
         parts = [str(it.get("title") or "")]
@@ -1986,9 +2174,10 @@ async def news_visual_search(
     is_guest = user is None
     decorated: list[dict[str, Any]] = []
     for idx, c in enumerate(dedup_rows):
-        it = _decorate_cluster_row(c, include_sources=True)
-        it["guest_locked"] = False
-        decorated.append(it)
+        if (not is_guest) or idx < 3:
+            decorated.append(_decorate_cluster_row(c, include_sources=True))
+        else:
+            decorated.append(_redact_item_for_guest(_decorate_cluster_row(c, include_sources=False)))
 
     def _doc_text(it: dict[str, Any]) -> str:
         return _visual_doc_text(it)
@@ -2055,6 +2244,7 @@ async def news_by_ids(
     interests: str = "",
     country: str = "world",
     language: str = "all",
+    guest_preview_ids: str = "",
 ) -> dict[str, Any]:
     db.ensure_schema()
 
@@ -2073,10 +2263,17 @@ async def news_by_ids(
     _queue_missing_summaries(rows, background_tasks, max_jobs=6)
     items = [_decorate_cluster_row(r, include_sources=True) for r in rows]
 
-    # Guests now receive the same fully readable detail payload as signed-in users.
+    # Apply paywall for guests using the same source of truth as /api/news.
     if user is None:
-        for it in items:
-            it["guest_locked"] = False
+        allow_ids = _resolve_guest_visible_cluster_ids(
+            interests=interests,
+            country=country,
+            language=language,
+            ui_lang=ui_lang,
+            guest_preview_ids=guest_preview_ids,
+            fallback_limit=max(120, len(id_list) + 20),
+        )
+        items = _apply_guest_visibility(items, allow_ids)
 
     pos = {cid: i for i, cid in enumerate(id_list)}
     items.sort(key=lambda x: pos.get(int(x["cluster_id"]), 10**9))

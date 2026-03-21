@@ -119,24 +119,38 @@ def _extract_brief_from_text(text: str) -> str:
     - JSON wrapped as a string
     - fenced payloads
     - mixed outputs where a JSON object appears inside surrounding text
+    - malformed/truncated JSON where only the ``brief`` field is salvageable
     """
-    t = _unwrap_fenced(text or "")
-    t = re.sub(r"\s+", " ", t).strip()
+    raw = _unwrap_fenced(text or "")
+    raw = raw.strip()
+    t = re.sub(r"\s+", " ", raw).strip()
     if not t:
         return ""
+
+    def _clean(val: str) -> str:
+        s = str(val or "")
+        if not s:
+            return ""
+        try:
+            s = bytes(s, "utf-8").decode("unicode_escape")
+        except Exception:
+            pass
+        s = s.replace('\"', '"').replace("\n", " ").replace("\r", " ").replace("\t", " ")
+        s = re.sub(r"\s+", " ", s).strip()
+        return s.strip(' "\'')
 
     def _pick(obj: Any) -> str:
         if isinstance(obj, dict):
             val = obj.get("brief") or obj.get("summary") or obj.get("text")
             if isinstance(val, str):
-                return re.sub(r"\s+", " ", val).strip()
+                return _clean(val)
         if isinstance(obj, str):
             inner = obj.strip()
             if inner and inner != t:
                 parsed_inner = _parse_json(inner)
                 if parsed_inner:
                     return _pick(parsed_inner)
-                return re.sub(r"\s+", " ", inner).strip()
+                return _clean(inner)
         return ""
 
     parsed = _parse_json(t)
@@ -152,6 +166,33 @@ def _extract_brief_from_text(text: str) -> str:
         brief = _pick(parsed) if parsed is not None else ""
         if brief:
             return brief
+
+    # Salvage malformed JSON by extracting just the brief field.
+    for candidate in (raw, t):
+        m = re.search(r'"brief"\s*:\s*"((?:\\.|[^"\\])*)"', candidate, flags=re.DOTALL)
+        if m:
+            brief = _clean(m.group(1))
+            if brief:
+                return brief
+
+        anchor = re.search(r'"brief"\s*:\s*"', candidate, flags=re.DOTALL)
+        if anchor:
+            tail = candidate[anchor.end():]
+            cut_points = []
+            for marker in (
+                '","key_facts"', '", "key_facts"',
+                '","diffs"', '", "diffs"',
+                '","uncertainties"', '", "uncertainties"',
+                '"}', '”,"key_facts"'
+            ):
+                idx = tail.find(marker)
+                if idx != -1:
+                    cut_points.append(idx)
+            snippet = tail[: min(cut_points)] if cut_points else tail
+            snippet = re.sub(r'"\s*,\s*$', '', snippet)
+            brief = _clean(snippet)
+            if brief:
+                return brief
 
     return t
 

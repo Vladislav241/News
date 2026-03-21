@@ -1133,7 +1133,6 @@ function createCardElement(item, ctx, seen, idx) {
   const id = Number(item.cluster_id ?? item.event_id);
   const idStr = String(id);
   div.setAttribute('data-id', idStr);
-  div.setAttribute('data-cluster-id', idStr);
   div.setAttribute('data-title', String(item?.title || ''));
   try {
     const normalizedCardTitle = (typeof window.__checkneNormalizeStoryTitle === 'function')
@@ -3028,6 +3027,244 @@ let visualPreviewReaderToken = 0;
 let visualProcessingStepsTimer = null;
 const visualAllowedTypes = new Set(['image/png', 'image/jpeg', 'image/jpg', 'image/webp']);
 
+const VISUAL_SEARCH_LIMITS = Object.freeze({
+  free: { limit: 3, resetHours: 24 },
+  pro: { limit: 15, resetHours: 24 },
+  analyst: { limit: -1, resetHours: 0 },
+});
+const VISUAL_SEARCH_LIMIT_NOTICE_MS = 6500;
+let visualQuotaBubbleEl = null;
+let visualQuotaNoticeEl = null;
+let visualQuotaNoticeTimer = null;
+
+function getVisualSearchPlan(){
+  try {
+    return String((typeof billingState !== 'undefined' && billingState && billingState.plan) ? billingState.plan : 'free').trim().toLowerCase() || 'free';
+  } catch {
+    return 'free';
+  }
+}
+
+function getVisualSearchQuotaConfig(){
+  const plan = getVisualSearchPlan();
+  return VISUAL_SEARCH_LIMITS[plan] || VISUAL_SEARCH_LIMITS.free;
+}
+
+function getVisualSearchQuotaStorageKey(){
+  let who = 'guest';
+  try {
+    if (authState?.authenticated && authState?.user?.id) who = `user:${String(authState.user.id)}`;
+  } catch {}
+  return `checkne.visualSearchQuota.v1.${who}`;
+}
+
+function readVisualSearchQuotaState(){
+  const cfg = getVisualSearchQuotaConfig();
+  const now = Date.now();
+  if (!cfg || Number(cfg.limit) < 0) {
+    return { used: 0, windowStart: now, resetAt: null };
+  }
+  let raw = null;
+  try { raw = localStorage.getItem(getVisualSearchQuotaStorageKey()); } catch {}
+  let parsed = {};
+  if (raw) {
+    try { parsed = JSON.parse(raw) || {}; } catch { parsed = {}; }
+  }
+  let windowStart = Number(parsed.windowStart || 0);
+  let used = Math.max(0, Number(parsed.used || 0));
+  const resetMs = Math.max(1, Number(cfg.resetHours || 24)) * 60 * 60 * 1000;
+  if (!Number.isFinite(windowStart) || windowStart <= 0 || (windowStart + resetMs) <= now) {
+    windowStart = now;
+    used = 0;
+    try { localStorage.setItem(getVisualSearchQuotaStorageKey(), JSON.stringify({ windowStart, used })); } catch {}
+  }
+  return { used, windowStart, resetAt: windowStart + resetMs };
+}
+
+function writeVisualSearchQuotaState(next){
+  try {
+    localStorage.setItem(getVisualSearchQuotaStorageKey(), JSON.stringify({
+      used: Math.max(0, Number(next?.used || 0)),
+      windowStart: Math.max(0, Number(next?.windowStart || Date.now())),
+    }));
+  } catch {}
+}
+
+function getVisualSearchQuotaInfo(){
+  const cfg = getVisualSearchQuotaConfig();
+  const plan = getVisualSearchPlan();
+  if (!cfg || Number(cfg.limit) < 0) {
+    return { plan, unlimited: true, limit: -1, remaining: Infinity, locked: false, resetAt: null, used: 0 };
+  }
+  const state = readVisualSearchQuotaState();
+  const limit = Math.max(0, Number(cfg.limit || 0));
+  const used = Math.max(0, Number(state.used || 0));
+  const remaining = Math.max(0, limit - used);
+  return {
+    plan,
+    unlimited: false,
+    limit,
+    used,
+    remaining,
+    locked: remaining <= 0,
+    resetAt: Number(state.resetAt || 0) || null,
+    windowStart: Number(state.windowStart || 0) || Date.now(),
+  };
+}
+
+function consumeVisualSearchAttempt(){
+  const info = getVisualSearchQuotaInfo();
+  if (info.unlimited) return info;
+  const used = Math.min(info.limit, Math.max(0, Number(info.used || 0)) + 1);
+  writeVisualSearchQuotaState({ used, windowStart: info.windowStart });
+  return getVisualSearchQuotaInfo();
+}
+
+function formatVisualSearchTimeLeft(resetAt){
+  const target = Number(resetAt || 0);
+  const diff = Math.max(0, target - Date.now());
+  if (!diff) return 'less than a minute';
+  const totalMinutes = Math.ceil(diff / 60000);
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+  if (days >= 1) {
+    return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+  }
+  if (hours >= 1) {
+    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  }
+  return `${minutes}m`;
+}
+
+function ensureVisualQuotaBubble(){
+  if (visualQuotaBubbleEl && document.body.contains(visualQuotaBubbleEl)) return visualQuotaBubbleEl;
+  const el = document.createElement('div');
+  el.className = 'visualSearchQuotaBubble';
+  el.id = 'visualSearchQuotaBubble';
+  el.setAttribute('aria-hidden', 'true');
+  el.innerHTML = '<div class="visualSearchQuotaBubble__title"></div><div class="visualSearchQuotaBubble__text"></div>';
+  document.body.appendChild(el);
+  visualQuotaBubbleEl = el;
+  return el;
+}
+
+function positionVisualQuotaBubble(){
+  if (!visualQuotaBubbleEl || !visualBtnEl) return;
+  const rect = visualBtnEl.getBoundingClientRect();
+  const bubbleRect = visualQuotaBubbleEl.getBoundingClientRect();
+  const left = Math.min(window.innerWidth - bubbleRect.width - 10, Math.max(10, rect.left + (rect.width / 2) - (bubbleRect.width / 2)));
+  const top = Math.max(10, rect.top - bubbleRect.height - 14);
+  visualQuotaBubbleEl.style.left = `${left}px`;
+  visualQuotaBubbleEl.style.top = `${top}px`;
+}
+
+function hideVisualQuotaBubble(){
+  if (!visualQuotaBubbleEl) return;
+  visualQuotaBubbleEl.classList.remove('isVisible');
+  visualQuotaBubbleEl.setAttribute('aria-hidden', 'true');
+}
+
+function showVisualQuotaBubble(){
+  if (!visualBtnEl) return;
+  const info = getVisualSearchQuotaInfo();
+  if (!info.locked) {
+    hideVisualQuotaBubble();
+    return;
+  }
+  const el = ensureVisualQuotaBubble();
+  const titleEl = el.querySelector('.visualSearchQuotaBubble__title');
+  const textEl = el.querySelector('.visualSearchQuotaBubble__text');
+  if (titleEl) titleEl.textContent = 'Image search is recharging';
+  if (textEl) textEl.textContent = `Available again in ${formatVisualSearchTimeLeft(info.resetAt)}.`;
+  el.setAttribute('aria-hidden', 'false');
+  el.classList.add('isVisible');
+  requestAnimationFrame(positionVisualQuotaBubble);
+}
+
+function ensureVisualQuotaNotice(){
+  if (visualQuotaNoticeEl && document.body.contains(visualQuotaNoticeEl)) return visualQuotaNoticeEl;
+  const el = document.createElement('div');
+  el.className = 'visualSearchLimitNotice';
+  el.id = 'visualSearchLimitNotice';
+  el.setAttribute('aria-hidden', 'true');
+  el.innerHTML = `
+    <div class="visualSearchLimitNotice__copy">
+      <div class="visualSearchLimitNotice__title"></div>
+      <div class="visualSearchLimitNotice__text"></div>
+    </div>
+    <div class="visualSearchLimitNotice__actions">
+      <button type="button" class="visualSearchLimitNotice__btn">See plans</button>
+      <button type="button" class="visualSearchLimitNotice__close" aria-label="Close">✕</button>
+    </div>`;
+  document.body.appendChild(el);
+  const close = () => hideVisualQuotaNotice();
+  const cta = el.querySelector('.visualSearchLimitNotice__btn');
+  const closeBtn = el.querySelector('.visualSearchLimitNotice__close');
+  if (cta) cta.addEventListener('click', () => {
+    hideVisualQuotaNotice();
+    try {
+      if (typeof window.__setMainPage === 'function') {
+        window.history.pushState({}, '', '/pricing');
+        window.__setMainPage('pricing');
+      } else {
+        window.location.href = '/pricing';
+      }
+    } catch {
+      window.location.href = '/pricing';
+    }
+  });
+  if (closeBtn) closeBtn.addEventListener('click', close);
+  visualQuotaNoticeEl = el;
+  return el;
+}
+
+function hideVisualQuotaNotice(){
+  if (visualQuotaNoticeTimer) {
+    clearTimeout(visualQuotaNoticeTimer);
+    visualQuotaNoticeTimer = null;
+  }
+  if (!visualQuotaNoticeEl) return;
+  visualQuotaNoticeEl.classList.remove('isVisible');
+  visualQuotaNoticeEl.setAttribute('aria-hidden', 'true');
+}
+
+function showVisualQuotaNotice(){
+  const info = getVisualSearchQuotaInfo();
+  if (!info.locked) return;
+  const el = ensureVisualQuotaNotice();
+  const titleEl = el.querySelector('.visualSearchLimitNotice__title');
+  const textEl = el.querySelector('.visualSearchLimitNotice__text');
+  if (titleEl) titleEl.textContent = 'No image searches left right now';
+  if (textEl) textEl.textContent = `Your next image search unlocks in ${formatVisualSearchTimeLeft(info.resetAt)}. Upgrade your plan to get more searches.`;
+  el.setAttribute('aria-hidden', 'false');
+  el.classList.add('isVisible');
+  if (visualQuotaNoticeTimer) clearTimeout(visualQuotaNoticeTimer);
+  visualQuotaNoticeTimer = setTimeout(() => hideVisualQuotaNotice(), VISUAL_SEARCH_LIMIT_NOTICE_MS);
+}
+
+function updateVisualSearchButtonQuotaUI(){
+  if (!visualBtnEl) return;
+  const info = getVisualSearchQuotaInfo();
+  if (info.unlimited) {
+    visualBtnEl.removeAttribute('data-has-count');
+    visualBtnEl.removeAttribute('data-count');
+    visualBtnEl.removeAttribute('data-locked');
+    visualBtnEl.title = 'Search from image';
+    return;
+  }
+  visualBtnEl.setAttribute('data-has-count', '1');
+  visualBtnEl.setAttribute('data-count', String(info.remaining));
+  visualBtnEl.setAttribute('data-locked', info.locked ? '1' : '0');
+  visualBtnEl.title = info.locked
+    ? `Image search available again in ${formatVisualSearchTimeLeft(info.resetAt)}`
+    : `Search from image · ${info.remaining} left`;
+}
+
+function isVisualSearchQuotaLocked(){
+  return !!getVisualSearchQuotaInfo().locked;
+}
+
 function setVisualStatus(msg = ""){
   if (visualStatusEl) visualStatusEl.textContent = String(msg || "");
 }
@@ -3510,22 +3747,40 @@ function attachVisualFile(file){
 }
 
 if (visualBtnEl && visualInputEl) {
-  visualBtnEl.onclick = () => {
+  const handleVisualTrigger = () => {
     if (requireLoginForVisualSearch()) return;
+    if (isVisualSearchQuotaLocked()) {
+      showVisualQuotaNotice();
+      showVisualQuotaBubble();
+      return;
+    }
+    hideVisualQuotaBubble();
     closeVisualResultModal();
     openVisualModal();
   };
+
+  visualBtnEl.onclick = handleVisualTrigger;
+  visualBtnEl.addEventListener('mouseenter', () => {
+    if (isVisualSearchQuotaLocked()) showVisualQuotaBubble();
+  });
+  visualBtnEl.addEventListener('focus', () => {
+    if (isVisualSearchQuotaLocked()) showVisualQuotaBubble();
+  });
+  visualBtnEl.addEventListener('mouseleave', hideVisualQuotaBubble);
+  visualBtnEl.addEventListener('blur', hideVisualQuotaBubble);
+
   visualInputEl.addEventListener('change', async () => {
     if (requireLoginForVisualSearch()) { clearVisualInputValue(); return; }
+    if (isVisualSearchQuotaLocked()) { clearVisualInputValue(); showVisualQuotaNotice(); return; }
     const file = visualInputEl.files && visualInputEl.files[0] ? visualInputEl.files[0] : null;
     attachVisualFile(file);
   });
 }
-if (visualChooseBtnEl) visualChooseBtnEl.onclick = () => { if (requireLoginForVisualSearch()) return; try { visualInputEl.click(); } catch {} };
-if (visualReplaceBtnEl) visualReplaceBtnEl.onclick = () => { if (requireLoginForVisualSearch()) return; try { visualInputEl.click(); } catch {} };
-if (visualRunBtnEl) visualRunBtnEl.onclick = () => { if (requireLoginForVisualSearch()) return; runVisualSearch(visualSelectedFile); };
+if (visualChooseBtnEl) visualChooseBtnEl.onclick = () => { if (requireLoginForVisualSearch()) return; if (isVisualSearchQuotaLocked()) { showVisualQuotaNotice(); return; } try { visualInputEl.click(); } catch {} };
+if (visualReplaceBtnEl) visualReplaceBtnEl.onclick = () => { if (requireLoginForVisualSearch()) return; if (isVisualSearchQuotaLocked()) { showVisualQuotaNotice(); return; } try { visualInputEl.click(); } catch {} };
+if (visualRunBtnEl) visualRunBtnEl.onclick = () => { if (requireLoginForVisualSearch()) return; if (isVisualSearchQuotaLocked()) { showVisualQuotaNotice(); return; } runVisualSearch(visualSelectedFile); };
 if (visualCloseBtnEl) visualCloseBtnEl.onclick = () => closeVisualModal();
-if (visualPasteBtnEl) visualPasteBtnEl.onclick = () => { if (requireLoginForVisualSearch()) return; pickVisualClipboardImage(); };
+if (visualPasteBtnEl) visualPasteBtnEl.onclick = () => { if (requireLoginForVisualSearch()) return; if (isVisualSearchQuotaLocked()) { showVisualQuotaNotice(); return; } pickVisualClipboardImage(); };
 if (visualModalEl) {
   visualModalEl.addEventListener('click', (e) => {
     if (e.target && e.target.closest('[data-visual-close="1"]')) closeVisualModal();
@@ -3559,9 +3814,32 @@ if (visualDropzoneEl) {
     visualDropzoneEl.classList.remove('isHover');
     const dt = e.dataTransfer;
     const file = dt && dt.files && dt.files[0] ? dt.files[0] : null;
-    if (file) attachVisualFile(file);
+    if (file) {
+      if (isVisualSearchQuotaLocked()) { showVisualQuotaNotice(); return; }
+      attachVisualFile(file);
+    }
   });
 }
+window.addEventListener('resize', () => { if (visualQuotaBubbleEl && visualQuotaBubbleEl.classList.contains('isVisible')) positionVisualQuotaBubble(); });
+document.addEventListener('scroll', () => { if (visualQuotaBubbleEl && visualQuotaBubbleEl.classList.contains('isVisible')) positionVisualQuotaBubble(); }, true);
+document.addEventListener('click', (e) => {
+  if (!visualQuotaNoticeEl || !visualQuotaNoticeEl.classList.contains('isVisible')) return;
+  if (visualQuotaNoticeEl.contains(e.target)) return;
+  if (visualBtnEl && visualBtnEl.contains(e.target)) return;
+  hideVisualQuotaNotice();
+});
+window.addEventListener('checkne:auth-state', () => {
+  hideVisualQuotaBubble();
+  hideVisualQuotaNotice();
+  updateVisualSearchButtonQuotaUI();
+});
+document.addEventListener('checkne:billingUpdated', () => {
+  hideVisualQuotaBubble();
+  hideVisualQuotaNotice();
+  updateVisualSearchButtonQuotaUI();
+});
+updateVisualSearchButtonQuotaUI();
+
 document.addEventListener('keydown', (e) => {
   const uploadOpen = !!(visualModalEl && visualModalEl.classList.contains('isOpen'));
   const resultOpen = !!(visualResultModalEl && visualResultModalEl.classList.contains('isOpen'));
@@ -3579,6 +3857,7 @@ document.addEventListener('keydown', (e) => {
 document.addEventListener('paste', (e) => {
   if (!visualModalEl || !visualModalEl.classList.contains('isOpen')) return;
   if (requireLoginForVisualSearch()) return;
+  if (isVisualSearchQuotaLocked()) { showVisualQuotaNotice(); return; }
   const items = Array.from(e.clipboardData?.items || []);
   const imgItem = items.find((it) => String(it.type || '').startsWith('image/'));
   if (!imgItem) return;
@@ -3592,6 +3871,11 @@ async function runVisualSearch(file){
   const validation = validateVisualFile(file);
   if (!validation.ok) {
     setVisualStatus(validation.message);
+    return;
+  }
+  if (isVisualSearchQuotaLocked()) {
+    showVisualQuotaNotice();
+    setVisualStatus(`Image search becomes available again in ${formatVisualSearchTimeLeft(getVisualSearchQuotaInfo().resetAt)}.`);
     return;
   }
 
@@ -3638,6 +3922,9 @@ async function runVisualSearch(file){
   fd.append('language', 'all');
   fd.append('interests', (state.interests || []).join(','));
   fd.append('limit', String(getFeedLimitForCurrentPlan()));
+
+  consumeVisualSearchAttempt();
+  updateVisualSearchButtonQuotaUI();
 
   let btn = qs('btnVisualSearch');
   let input = qs('visualSearchInput');
@@ -3738,6 +4025,7 @@ async function runVisualSearch(file){
       if (visualChooseBtnEl) visualChooseBtnEl.disabled = false;
       if (visualReplaceBtnEl) visualReplaceBtnEl.disabled = false;
       if (visualPasteBtnEl) visualPasteBtnEl.disabled = false;
+      updateVisualSearchButtonQuotaUI();
     } catch {}
   }
 }

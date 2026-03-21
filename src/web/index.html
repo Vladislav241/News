@@ -441,6 +441,8 @@
   font-size: 18px;
 }
 .visualSearchBtn{
+  position: relative;
+  overflow: visible;
   width: 42px;
   height: 42px;
   flex: 0 0 42px;
@@ -463,6 +465,155 @@
   background: url('/static/icons/photo.svg') center/contain no-repeat;
 }
 .visualSearchBtn[data-loading="1"]{ background: rgba(15,23,42,.1); }
+.visualSearchBtn[data-has-count="1"]::after{
+  content: attr(data-count);
+  position:absolute;
+  top:-8px;
+  right:-8px;
+  min-width: 10px;
+  height: 24px;
+  padding: 0 7px;
+  border-radius: 999px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#0b0b0d;
+  color:#fff;
+  box-shadow:0 10px 24px rgba(15,23,42,.18);
+  font-size:13px;
+  font-weight:900;
+  line-height:1;
+  letter-spacing:-0.02em;
+}
+.visualSearchBtn[data-locked="1"]{
+  background: rgba(0, 0, 0, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(15,23,42,.08);
+}
+.visualSearchBtn[data-locked="1"]::before{ opacity:.72; }
+.visualSearchBtn[data-locked="1"]:hover{ background: rgba(15,23,42,.11); }
+.visualSearchQuotaBubble{
+  position: fixed;
+  z-index: 2300;
+  max-width: min(320px, calc(100vw - 24px));
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgb(0, 0, 0);
+  color: #fff;
+  box-shadow: 0 20px 60px rgba(15,23,42,.28);
+  pointer-events: none;
+  opacity: 0;
+  transform: translate3d(0,10px,0) scale(.96);
+  transition: opacity .22s cubic-bezier(.22,1,.36,1), transform .22s cubic-bezier(.22,1,.36,1);
+}
+.visualSearchQuotaBubble.isVisible{
+  opacity: 1;
+  transform: translate3d(0,0,0) scale(1);
+}
+.visualSearchQuotaBubble__title{
+  font-size: 13px;
+  font-weight: 900;
+  margin-bottom: 4px;
+}
+.visualSearchQuotaBubble__text{
+  font-size: 13px;
+  line-height: 1.45;
+  color: rgba(255,255,255,.82);
+}
+.visualSearchQuotaBubble::after{
+  content:"";
+  position:absolute;
+  left:50%;
+  bottom:-8px;
+  width:16px;
+  height:16px;
+  background: rgb(0, 0, 0);
+  transform: translateX(-50%) rotate(45deg);
+  border-radius: 3px;
+}
+.visualSearchLimitNotice{
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  transform: translate3d(-50%,-18px,0) scale(.98);
+  width: min(560px, calc(100vw - 24px));
+  z-index: 2350;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  padding: 14px 16px;
+  border-radius: 20px;
+  background: rgba(255,255,255,.96);
+  border: 1px solid rgba(15,23,42,.08);
+  box-shadow: 0 18px 48px rgba(15,23,42,.16);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .24s cubic-bezier(.22,1,.36,1), transform .24s cubic-bezier(.22,1,.36,1);
+}
+.visualSearchLimitNotice.isVisible{
+  opacity: 1;
+  transform: translate3d(-50%,0,0) scale(1);
+  pointer-events: auto;
+}
+.visualSearchLimitNotice__copy{ min-width:0; }
+.visualSearchLimitNotice__title{
+  font-size: 14px;
+  font-weight: 900;
+  color: #111827;
+  margin-bottom: 3px;
+}
+.visualSearchLimitNotice__text{
+  font-size: 13px;
+  line-height: 1.45;
+  color: rgba(15,23,42,.72);
+}
+.visualSearchLimitNotice__actions{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-shrink:0;
+}
+.visualSearchLimitNotice__btn,
+.visualSearchLimitNotice__close{
+  border:0;
+  cursor:pointer;
+  transition: transform .18s ease, opacity .18s ease, background .18s ease;
+}
+.visualSearchLimitNotice__btn{
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background: #000000;
+  color: #fff;
+  font-weight: 900;
+}
+.visualSearchLimitNotice__btn:hover,
+.visualSearchLimitNotice__close:hover{ transform: translateY(-1px); }
+.visualSearchLimitNotice__close{
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.06);
+  color: #111827;
+  font-size: 18px;
+  line-height: 1;
+}
+@media (max-width: 640px){
+  .visualSearchQuotaBubble{ max-width: min(280px, calc(100vw - 18px)); }
+  .visualSearchLimitNotice{
+    top: 12px;
+    width: calc(100vw - 16px);
+    padding: 12px;
+    border-radius: 18px;
+    gap: 12px;
+    align-items:flex-start;
+  }
+  .visualSearchLimitNotice__actions{
+    width: 100%;
+    justify-content:flex-end;
+  }
+  .visualSearchLimitNotice{ flex-direction: column; }
+}
 .visualSearchInput{ display:none; }
 .visualSearchModal{
   position: fixed;
@@ -6027,7 +6178,7 @@ border:1px solid #000;
             <tr>
               <td>Tracked events</td>
               <td>3</td>
-              <td>30</td>
+              <td>20</td>
               <td>Unlimited</td>
             </tr>
             <tr>
@@ -6303,10 +6454,10 @@ body.eventMapModalOpen{overflow:hidden;}
 <script src="/static/js/state.js?v=2026-02-24" defer></script>
 <script src="/static/js/mode.js?v=2026-03-06-1" defer></script>
 <link rel="stylesheet" href="/static/css/motion-system.css?v=2026-03-18-ui-fixes-3">
-<link rel="stylesheet" href="/static/css/onboarding.css?v=2026-03-21-5">
+<link rel="stylesheet" href="/static/css/onboarding.css?v=2026-03-18-4">
 <script src="/static/js/tracking.js?v=2026-02-24" defer></script>
 <script src="/static/js/auth.js?v=2026-03-18-onboarding-fix" defer></script>
-<script src="/static/js/onboarding.js?v=2026-03-21-5" defer></script>
+<script src="/static/js/onboarding.js?v=2026-03-18-4" defer></script>
   <script src="/static/js/interests.js?v=2026-03-01"></script>
 <script src="/static/js/pricing.js?v=2026-03-08-relative-time" defer></script>
 <script src="/static/js/carousel.js?v=2026-02-24" defer></script>
