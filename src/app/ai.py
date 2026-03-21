@@ -109,6 +109,52 @@ def _parse_json(text: str) -> Optional[dict[str, Any]]:
         return None
 
 
+
+
+def _extract_brief_from_text(text: str) -> str:
+    """Best-effort extraction of a human-readable brief from raw model output.
+
+    Handles:
+    - strict JSON objects
+    - JSON wrapped as a string
+    - fenced payloads
+    - mixed outputs where a JSON object appears inside surrounding text
+    """
+    t = _unwrap_fenced(text or "")
+    t = re.sub(r"\s+", " ", t).strip()
+    if not t:
+        return ""
+
+    def _pick(obj: Any) -> str:
+        if isinstance(obj, dict):
+            val = obj.get("brief") or obj.get("summary") or obj.get("text")
+            if isinstance(val, str):
+                return re.sub(r"\s+", " ", val).strip()
+        if isinstance(obj, str):
+            inner = obj.strip()
+            if inner and inner != t:
+                parsed_inner = _parse_json(inner)
+                if parsed_inner:
+                    return _pick(parsed_inner)
+                return re.sub(r"\s+", " ", inner).strip()
+        return ""
+
+    parsed = _parse_json(t)
+    brief = _pick(parsed) if parsed is not None else ""
+    if brief:
+        return brief
+
+    start = t.find("{")
+    end = t.rfind("}")
+    if start != -1 and end > start:
+        candidate = t[start:end + 1]
+        parsed = _parse_json(candidate)
+        brief = _pick(parsed) if parsed is not None else ""
+        if brief:
+            return brief
+
+    return t
+
 def _sanitize_summary_obj(obj: dict[str, Any], sources: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
     """
     Normalize model output into a stable summary payload.
@@ -375,7 +421,7 @@ def summarize_cluster(
             )
         except Exception:
             pass
-        fallback_brief = re.sub(r"\s+", " ", _unwrap_fenced(raw1 or "")).strip()
+        fallback_brief = _extract_brief_from_text(raw1 or "")
         if fallback_brief:
             fallback_brief = fallback_brief[:900].strip()
             fallback_obj = {

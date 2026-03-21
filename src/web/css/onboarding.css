@@ -463,12 +463,17 @@ body.onboardingLock{
 
   .onboardingViewport{
     min-height:0;
-    overflow:hidden;
+    overflow-x:hidden;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior-y:contain;
+    touch-action:pan-y pinch-zoom;
     padding:0 1px 2px;
   }
 
   .onboardingTrack{
     min-height:100%;
+    height:auto;
     align-items:flex-start;
   }
 
@@ -478,8 +483,8 @@ body.onboardingLock{
   }
 
   .onboardingSlide{
-    height:100%;
-    min-height:0;
+    height:auto;
+    min-height:100%;
     align-items:flex-start;
     justify-content:center;
     padding:0;
@@ -489,23 +494,16 @@ body.onboardingLock{
     margin:0;
     width:100%;
     min-height:0;
-    max-height:100%;
-    overflow-y:auto;
-    overflow-x:hidden;
-    overscroll-behavior:contain;
-    -webkit-overflow-scrolling:touch;
-    padding:18px 16px calc(18px + 96px + env(safe-area-inset-bottom));
+    max-height:none;
+    overflow:visible;
+    padding:18px 16px 18px;
     gap:14px;
     border-radius:26px;
-    scrollbar-width:none;
-    -ms-overflow-style:none;
     align-content:start;
   }
 
   .onboardingCard.isScrollable{
-    overflow-y:auto;
-    overflow-x:hidden;
-    -webkit-overflow-scrolling:touch;
+    overflow:visible;
   }
 
   .onboardingCard::-webkit-scrollbar{
@@ -648,7 +646,7 @@ body.onboardingLock{
 
   .onboardingSlide[data-slide-index="2"] .onboardingCard{
     padding-top:12px;
-    padding-bottom:calc(16px + 96px + env(safe-area-inset-bottom));
+    padding-bottom:16px;
     gap:12px;
   }
 

@@ -398,12 +398,38 @@ function itemPassesFilters(item) {
   return true;
 }
 
+
+function extractSummaryBrief(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const compact = text.replace(/\s+/g, " ").trim();
+  const tryParse = (candidate) => {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === "object") {
+        const brief = String(parsed.brief || parsed.summary || parsed.text || "").trim();
+        if (brief) return brief;
+      }
+      if (typeof parsed === "string") {
+        return extractSummaryBrief(parsed);
+      }
+    } catch {}
+    return "";
+  };
+  return tryParse(compact) || (() => {
+    const start = compact.indexOf("{");
+    const end = compact.lastIndexOf("}");
+    if (start !== -1 && end > start) return tryParse(compact.slice(start, end + 1));
+    return "";
+  })() || compact;
+}
+
 function normalizeStatus(x) {
   return String(x || "").trim().toLowerCase();
 }
 
 function getAiSummaryState(item) {
-  const text = String(item?.summary || "").trim();
+  const text = extractSummaryBrief(item?.summary || "");
   const st = normalizeStatus(item?.summary_status);
 
   if (item?.guest_locked && !authState?.authenticated) {
@@ -418,13 +444,9 @@ function getAiSummaryState(item) {
   }
 
   if (st === "success" || st === "ready") {
-    const raw = String(item?.summary_raw || "").trim();
+    const raw = extractSummaryBrief(item?.summary_raw || "");
     if (raw) {
-      try {
-        const parsed = JSON.parse(raw);
-        const brief = String(parsed?.brief || "").trim();
-        if (brief) return { status: "ready", text: brief };
-      } catch {}
+      return { status: "ready", text: raw };
     }
     return { status: "empty", text: "AI summary is not available for this story yet." };
   }

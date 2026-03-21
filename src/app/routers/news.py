@@ -19,7 +19,7 @@ from ..auth.deps import get_current_user_optional, require_user
 from ..ingest import run_ingest_cycle, backfill_article_images, _should_refresh_summary
 from ..scoring import compute_importance, compute_credibility
 from ..translate import translate_feed_items
-from ..ai import extract_visual_search_signal
+from ..ai import extract_visual_search_signal, _extract_brief_from_text
 from ..runtime import background_tasks_disabled
 
 import threading
@@ -118,7 +118,7 @@ def _backfill_summaries_for_cluster_ids(cluster_ids: list[int]) -> None:
         min_interval_seconds = 30 * 60
 
     try:
-        from ..ai import summarize_cluster
+        from ..ai import summarize_cluster, _extract_brief_from_text
 
         for cid in cluster_ids:
             try:
@@ -865,7 +865,7 @@ def _decorate_cluster_row(c: dict[str, Any], include_sources: bool = True) -> di
 
     # fallback legacy: summary_text as brief
     if not summary_brief:
-        summary_brief = (c.get("summary_text") or "").strip()
+        summary_brief = _extract_brief_from_text(c.get("summary_text") or "")
 
     payload: dict[str, Any] = {
         "cluster_id": cid,

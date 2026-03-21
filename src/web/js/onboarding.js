@@ -463,8 +463,8 @@
     track.style.transform = `translate3d(${-currentIndex * 100}%,0,0)`;
     updateControls();
     try {
-      const activeCard = root.querySelector(`.onboardingSlide[data-slide-index="${currentIndex}"] .onboardingCard`);
-      if (activeCard) activeCard.scrollTop = 0;
+      const viewport = root.querySelector('.onboardingViewport');
+      if (viewport) viewport.scrollTop = 0;
     } catch {}
     requestAnimationFrame(updateCardScroll);
   }
@@ -666,14 +666,12 @@
 function updateCardScroll() {
   if (!root) return;
 
+  const viewport = root.querySelector('.onboardingViewport');
   const activeCard = root.querySelector('.onboardingSlide.isActive .onboardingCard');
-  if (!activeCard) return;
+  if (!viewport || !activeCard) return;
 
-  if (activeCard.scrollHeight > activeCard.clientHeight + 2) {
-    activeCard.classList.add('isScrollable');
-  } else {
-    activeCard.classList.remove('isScrollable');
-  }
+  const canScroll = activeCard.scrollHeight > viewport.clientHeight + 2;
+  activeCard.classList.toggle('isScrollable', canScroll);
 }
 
   function bindRoot(){
@@ -700,30 +698,41 @@ function updateCardScroll() {
         startX: event.clientX,
         startY: event.clientY,
         dx: 0,
+        dy: 0,
         active: false,
+        lockedAxis: '',
       };
     });
 
     viewport.addEventListener('pointermove', (event) => {
       if (!drag || event.pointerId !== drag.id) return;
       drag.dx = event.clientX - drag.startX;
-      const dy = event.clientY - drag.startY;
+      drag.dy = event.clientY - drag.startY;
+
+      if (!drag.lockedAxis) {
+        if (Math.abs(drag.dx) < 10 && Math.abs(drag.dy) < 10) return;
+        drag.lockedAxis = Math.abs(drag.dx) > Math.abs(drag.dy) ? 'x' : 'y';
+      }
+
+      if (drag.lockedAxis !== 'x') return;
+
       if (!drag.active) {
-        if (Math.abs(drag.dx) < 10) return;
-        if (Math.abs(dy) > Math.abs(drag.dx)) { drag = null; return; }
         drag.active = true;
         track.classList.add('isDragging');
       }
+
       const width = viewport.clientWidth || 1;
-      const pct = (-currentIndex * width) + drag.dx;
-      track.style.transform = `translate3d(${pct}px,0,0)`;
-    }, { passive: true });
+      const px = (-currentIndex * width) + drag.dx;
+      track.style.transform = `translate3d(${px}px,0,0)`;
+      event.preventDefault();
+    }, { passive: false });
 
     const endDrag = () => {
       if (!drag) return;
       const dx = drag.dx || 0;
+      const wasHorizontal = drag.lockedAxis === 'x' && drag.active;
       track.classList.remove('isDragging');
-      if (Math.abs(dx) > Math.min(80, (viewport.clientWidth || 0) * 0.18)) {
+      if (wasHorizontal && Math.abs(dx) > Math.min(72, (viewport.clientWidth || 0) * 0.16)) {
         if (dx < 0) next(); else prev();
       } else {
         syncTrack(false);
