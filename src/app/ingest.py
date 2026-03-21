@@ -195,10 +195,13 @@ def _should_refresh_summary(cluster_id: int, sources: list[dict[str, Any]], min_
         return True, "pending_stale", fingerprint, source_count
 
     if current_status != "success":
-        retry_after_seconds = max(1800, min_interval_seconds)
+        # Failed/invalid summary generations should retry much sooner than a full
+        # successful regeneration interval; otherwise stories can stay without an
+        # AI summary for many hours after a single malformed model response.
+        retry_after_seconds = min(max(600, min_interval_seconds // 6), 1800)
         if old_fp and old_fp == fingerprint and created_at and (now - created_at).total_seconds() < retry_after_seconds:
             return False, "recent_failed", fingerprint, source_count
-        if not created_at or (now - created_at).total_seconds() >= max(900, min_interval_seconds // 2):
+        if not created_at or (now - created_at).total_seconds() >= retry_after_seconds:
             return True, "retry_failed", fingerprint, source_count
         return False, "recent_failed", fingerprint, source_count
 

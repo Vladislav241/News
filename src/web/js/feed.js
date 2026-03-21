@@ -1133,6 +1133,7 @@ function createCardElement(item, ctx, seen, idx) {
   const id = Number(item.cluster_id ?? item.event_id);
   const idStr = String(id);
   div.setAttribute('data-id', idStr);
+  div.setAttribute('data-cluster-id', idStr);
   div.setAttribute('data-title', String(item?.title || ''));
   try {
     const normalizedCardTitle = (typeof window.__checkneNormalizeStoryTitle === 'function')

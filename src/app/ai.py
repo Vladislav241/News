@@ -109,33 +109,35 @@ def _parse_json(text: str) -> Optional[dict[str, Any]]:
         return None
 
 
-def _validate(obj: dict[str, Any], sources: list[dict[str, Any]]) -> bool:
+def _sanitize_summary_obj(obj: dict[str, Any], sources: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
     """
-    Validate structure and enforce that diffs cite >=2 concrete known sources.
-    Also blocks vague wording in multiple languages.
+    Normalize model output into a stable summary payload.
+
+    The previous implementation rejected the whole summary whenever `diffs`
+    referenced unknown sources or used vague wording. In production that caused
+    many stories to stay without an AI summary for hours even though the model
+    returned a usable brief. Here we salvage the valid parts and synthesize a
+    safe fallback `diffs` item when needed.
     """
-    if not isinstance(obj.get("brief"), str) or not obj["brief"].strip():
-        return False
-    if not isinstance(obj.get("key_facts"), list) or not obj["key_facts"]:
-        return False
-    if not isinstance(obj.get("diffs"), list) or not obj["diffs"]:
-        return False
-    if "uncertainties" in obj and not isinstance(obj["uncertainties"], list):
-        return False
+    if not isinstance(obj, dict):
+        return None
 
-    known = {(s.get("source_name") or "").strip() for s in (sources or [])}
-    known = {x for x in known if x}
+    brief = str(obj.get("brief") or obj.get("summary") or obj.get("text") or "").strip()
+    brief = re.sub(r"\s+", " ", brief)
+    if not brief:
+        return None
 
-    def ok_src_list(lst: Any) -> bool:
-        if not isinstance(lst, list):
-            return False
-        ss = [str(x).strip() for x in lst if str(x).strip()]
-        if len(ss) < 2:
-            return False
-        # Must be from known list; check first 2 (that's what we require)
-        return all((x in known) for x in ss[:2])
+    known_names = []
+    known_lc_to_real = {}
+    for s in (sources or []):
+        name = str(s.get("source_name") or "").strip()
+        if not name:
+            continue
+        key = name.lower()
+        if key not in known_lc_to_real:
+            known_lc_to_real[key] = name
+            known_names.append(name)
 
-    # block vague wording (RU/EN/DE/FR/UK)
     vague_re = re.compile(
         r"\b("
         r"некоторые|другие|часть\s+источников|многие\s+источники|ряд\s+источников|"
@@ -147,17 +149,52 @@ def _validate(obj: dict[str, Any], sources: list[dict[str, Any]]) -> bool:
         re.IGNORECASE,
     )
 
+    key_facts = []
+    for x in (obj.get("key_facts") or [])[:6]:
+        s = re.sub(r"\s+", " ", str(x or "")).strip()
+        if s and s not in key_facts:
+            key_facts.append(s)
+    if not key_facts:
+        for src in (sources or [])[:3]:
+            candidate = re.sub(r"\s+", " ", str(src.get("title") or src.get("description") or "")).strip()
+            if candidate and candidate not in key_facts:
+                key_facts.append(candidate)
+            if len(key_facts) >= 3:
+                break
+
+    uncertainties = []
+    for x in (obj.get("uncertainties") or [])[:4]:
+        s = re.sub(r"\s+", " ", str(x or "")).strip()
+        if s and s not in uncertainties:
+            uncertainties.append(s)
+
+    diffs = []
     for d in (obj.get("diffs") or [])[:5]:
         if not isinstance(d, dict):
-            return False
-        if not ok_src_list(d.get("sources")):
-            return False
-        if not isinstance(d.get("difference"), str) or not d["difference"].strip():
-            return False
-        if vague_re.search(d["difference"]):
-            return False
+            continue
+        raw_sources = d.get("sources") or []
+        mapped = []
+        for name in raw_sources:
+            key = str(name or "").strip().lower()
+            real = known_lc_to_real.get(key)
+            if real and real not in mapped:
+                mapped.append(real)
+        difference = re.sub(r"\s+", " ", str(d.get("difference") or "")).strip()
+        if len(mapped) >= 2 and difference and not vague_re.search(difference):
+            diffs.append({"sources": mapped[:4], "difference": difference})
 
-    return True
+    if not diffs and len(known_names) >= 2:
+        diffs = [{
+            "sources": known_names[:2],
+            "difference": "No material differences were stated between sources.",
+        }]
+
+    return {
+        "brief": brief,
+        "key_facts": key_facts[:6],
+        "diffs": diffs[:5],
+        "uncertainties": uncertainties[:4],
+    }
 
 
 def summarize_cluster(
@@ -303,16 +340,15 @@ def summarize_cluster(
             ]
         )
         obj1 = _parse_json(raw1)
-        if obj1 and _validate(obj1, sources):
-            obj1["key_facts"] = (obj1.get("key_facts") or [])[:6]
-            obj1["diffs"] = (obj1.get("diffs") or [])[:5]
-            obj1["uncertainties"] = (obj1.get("uncertainties") or [])[:4]
-            brief = (obj1.get("brief") or "").strip()
+        sanitized = _sanitize_summary_obj(obj1, sources) if obj1 else None
+        if sanitized:
+            brief = (sanitized.get("brief") or "").strip()
+            status_name = "success"
             try:
                 db.log_ai_usage(
                     feature="cluster_summary",
                     model=model,
-                    status="success",
+                    status=status_name,
                     cache_hit=False,
                     latency_ms=usage_meta.get("latency_ms"),
                     prompt_tokens=usage_meta.get("prompt_tokens"),
@@ -322,7 +358,7 @@ def summarize_cluster(
                 )
             except Exception:
                 pass
-            return brief, json.dumps(obj1, ensure_ascii=False), "success", raw1
+            return brief, json.dumps(sanitized, ensure_ascii=False), status_name, raw1
 
         logger.warning("AI summary output invalid; storing raw text only")
         try:
@@ -339,6 +375,16 @@ def summarize_cluster(
             )
         except Exception:
             pass
+        fallback_brief = re.sub(r"\s+", " ", _unwrap_fenced(raw1 or "")).strip()
+        if fallback_brief:
+            fallback_brief = fallback_brief[:900].strip()
+            fallback_obj = {
+                "brief": fallback_brief,
+                "key_facts": [],
+                "diffs": [],
+                "uncertainties": [],
+            }
+            return fallback_brief, json.dumps(fallback_obj, ensure_ascii=False), "success", raw1
         return None, None, "failed", raw1
 
     except Exception:
