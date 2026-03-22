@@ -1025,7 +1025,7 @@ body.visualSearchLock{ overflow:hidden; }
       from{ opacity: 0; transform: translateY(8px); }
       to{ opacity: 1; transform: translateY(0); }
     }
-    .newsTopRight { display:flex; align-items:center; gap: 12px; flex-shrink:0; }
+    .newsTopRight { display:flex; align-items:center; gap: 10px; flex-shrink:0; flex-wrap: wrap; justify-content:flex-end; }
 
     /* Tracking-only UI (delta + green/red icon like in the reference) */
     .delta{ font-weight: 700; font-size: 13px; display:inline-flex; align-items:center; gap:6px; }
@@ -1349,22 +1349,75 @@ body.visualSearchLock{ overflow:hidden; }
       user-select: none;
     }
     .dragHandle:active{ cursor: grabbing; }
-.scoreBadge {
-      border: 1px solid rgba(15,23,42,.15);
-      background: rgba(255,255,255,.85);
-      border-radius: 30px;
-      padding: 6px 10px;
-      font-weight: 700;
-      font-size: 14px;
-      min-width: 86px;
-      text-align:center;
-        margin-right: 0px;
+ .scoreBadge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 8px;
+      inline-size: 128px;
+      min-inline-size: 128px;
+      max-inline-size: 128px;
+      flex: 0 0 128px;
+      min-height: 44px;
+      padding: 5px 8px;
+      border-radius: 16px;
+      border: 1px solid rgba(15,23,42,.10);
+      background: #fff;
+      color: #111113;
+      box-shadow: 0 1px 2px rgba(15,23,42,.04);
+      transition: inline-size .26s cubic-bezier(.22,1,.36,1), min-inline-size .26s cubic-bezier(.22,1,.36,1), max-inline-size .26s cubic-bezier(.22,1,.36,1), box-shadow .18s ease, background-color .18s ease;
+      overflow: hidden;
+      cursor: default;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
     }
-    .newsCard.isLow .scoreBadge { background: transparent; border-color: rgba(17,17,19,.14); color: var(--text); }
-
-    /* Score badge variants */
-    .scoreBadge.dark { background: #111113; border-color: #111113; color: #fff; }
-    .scoreBadge.light { background: #fff; border-color: rgba(17,17,19,.14); color: #111113; }
+    .scoreBadge.needsExpand.isExpanded {
+      inline-size: 184px;
+      min-inline-size: 184px;
+      max-inline-size: 184px;
+      box-shadow: 0 10px 22px rgba(15,23,42,.08);
+    }
+    .scoreBadgeValue {
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      min-width: 32px;
+      height: 30px;
+      padding: 0 7px;
+      border-radius: 999px;
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: -.02em;
+      background: rgba(15,23,42,.06);
+    }
+    .scoreBadgeCopy { display:flex; flex-direction:column; align-items:flex-start; justify-content:center; min-inline-size: 0; flex: 1 1 auto; line-height:1.05; overflow:hidden; }
+    .scoreBadgeLabel { display:block; font-size: 11px; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-inline-size: 100%; }
+    .scoreBadgeScale { display:block; font-size: 10px; color: rgba(17,17,19,.56); white-space: nowrap; }
+    .scoreBadge.s90,.scoreBadge.s80,.scoreBadge.s70,.scoreBadge.s55,.scoreBadge.s40,.scoreBadge.s25 { border-color: rgba(15,23,42,.10); }
+    .scoreBadge.s90 .scoreBadgeValue { background: rgba(17,17,19,.92); color:#fff; }
+    .scoreBadge.s80 .scoreBadgeValue { background: rgba(17,17,19,.84); color:#fff; }
+    .scoreBadge.s70 .scoreBadgeValue { background: rgba(17,17,19,.72); color:#fff; }
+    .scoreBadge.s55 .scoreBadgeValue { background: rgba(15,23,42,.10); color:#111113; }
+    .scoreBadge.s40 .scoreBadgeValue { background: rgba(15,23,42,.08); color:#111113; }
+    .scoreBadge.s25 .scoreBadgeValue { background: rgba(15,23,42,.06); color:#111113; }
+    .scoreTrend {
+      display:inline-flex;
+      justify-content:center;
+      min-inline-size: 106px;
+      align-items:center;
+      min-height: 30px;
+      padding: 0 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(15,23,42,.08);
+      background: rgba(15,23,42,.04);
+      font-size: 12px;
+      font-weight: 600;
+      color: rgba(17,17,19,.72);
+      white-space: nowrap;
+      transition: transform .18s ease, opacity .18s ease;
+    }
+    .scoreTrend.up { color: #166534; background: rgba(22,101,52,.08); border-color: rgba(22,101,52,.12); }
+    .scoreTrend.down { color: #b45309; background: rgba(180,83,9,.08); border-color: rgba(180,83,9,.12); }
 
     /* Smooth collapse/exit */
     .newsCard.isExiting {
@@ -1523,8 +1576,35 @@ body.visualSearchLock{ overflow:hidden; }
     .sourceLogo.isFallback { padding: 0; }
     .sourceLogoFallback, .sourceLogoFallbackInner { font-size: 13px; font-weight: 800; letter-spacing: .02em; color: rgba(15,23,42,.78); }
     .newsCard.isLow .sourceLogoFallback, .newsCard.isLow .sourceLogoFallbackInner { color: rgba(255,255,255,.92); }
-    .factor { border:1px solid rgba(15,23,42,.10); border-radius: 14px; padding: 10px; background: rgba(255,255,255,.65); margin-top: 8px; }
-    .newsCard.isLow .factor { border-color: rgba(255,255,255,.12); background: rgba(255,255,255,.06); }
+    .scoreExplainLead {
+      font-size: 13px;
+      line-height: 1.5;
+      color: rgb(0, 0, 0);
+      margin-bottom: 12px;
+    }
+    .scoreFactors {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .scoreFactor {
+      border:1px solid rgba(15,23,42,.08);
+      border-radius: 14px;
+      padding: 12px;
+      background: rgba(255,255,255,.78);
+    }
+    .scoreFactorTop {
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .scoreFactorName { font-size: 12px; font-weight: 700; color: rgb(0, 0, 0); }
+    .scoreFactorMeta { display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+    .scoreFactorValue { font-size: 12px; font-weight: 700; color: rgba(17,17,19,.54); white-space: nowrap; }
+    .scoreFactorPts { display:inline-flex; align-items:center; justify-content:center; padding: 4px 8px; border-radius: 999px; background: rgba(15,23,42,.06); color: rgba(17,17,19,.82); font-size: 11px; font-weight: 800; white-space: nowrap; }
+    .scoreFactorText { font-size: 13px; line-height: 1.45; color: rgba(17,17,19,.72); }
     .impact { font-weight: 800; }
     .srcMark { display:inline-flex; align-items:center; justify-content:center; padding: 1px 6px; border-radius: 999px; border: 1px solid rgba(16,185,129,.25); background: rgba(16,185,129,.10); font-size: 11px; margin-left: 6px; }
     .newsCard.isLow .srcMark { border-color: rgba(16,185,129,.25); background: rgba(16,185,129,.12); color: #fff; }
@@ -1724,13 +1804,71 @@ body.visualSearchLock{ overflow:hidden; }
       .newsTitle{ font-size: 15px; line-height: 1.25; word-break: break-word; hyphens: auto; }
       .newsMeta{ font-size: 12.5px; }
       .newsTopRow{ flex-wrap: wrap; gap: 10px; }
-      .newsTopRight{ width: 100%; justify-content: flex-start; gap: 10px; }
+      .newsTopRight{ width: 100%; justify-content: flex-start; gap: 8px; }
 
-      /* Controls: slightly smaller */
+      /* Controls: mobile score badge is compact by default and expands only when card is open */
       .trackToggle{ width: 46px; height: 30px; }
       .trackToggle .eyeToggleIcon{ width: 21px; height: 14px; }
-      .scoreBadge{ min-width: 74px; padding: 5px 9px; font-size: 13px; }
-      .openBtn, .shareBtn{ width: 40px; height: 30px; border-radius: 10px; }
+      .newsTopRight{ flex-wrap: nowrap; align-items: center; }
+     .scoreBadge{
+  inline-size: auto;
+  min-inline-size: 0;
+  max-inline-size: none;
+  flex: 0 0 auto;
+
+  gap: 0;
+  padding: 0 4px;        /* было 2px */
+  block-size: 45px;        /* фиксируем высоту ровно под кружок */
+  min-block-size: 34px;
+  overflow: hidden;
+
+  transition:
+    inline-size .42s cubic-bezier(.22,1,.36,1),   /* было .26s */
+    padding .30s ease,
+    gap .30s ease,
+    box-shadow .22s ease;
+}
+     .scoreBadgeValue{
+  min-width: 34px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  flex: 0 0 34px;
+  line-height: 34px;       /* помогает визуально центрировать */
+}
+     .scoreBadgeCopy{
+  max-inline-size: 0;
+  opacity: 0;
+  transform: translateX(-6px);
+  transition:
+    max-inline-size .40s cubic-bezier(.22,1,.36,1),
+    opacity .28s ease,
+    transform .34s ease;
+}
+      .scoreBadgeLabel,
+      .scoreBadgeScale{
+        max-inline-size: 100%;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .newsDetails[open] .scoreBadge{
+        inline-size: 140px;
+        min-inline-size: 140px;
+        max-inline-size: 140px;
+        flex: 0 0 140px;
+        gap: 8px;
+        padding: 4px 8px;
+      }
+      .newsDetails[open] .scoreBadgeCopy{
+        max-inline-size: 82px;
+        opacity: 1;
+        transform: translateX(0);
+      }
+      .scoreTrend{ min-height: 28px; font-size: 11px; }
+      .scoreFactors{ grid-template-columns: 1fr; }
+      .openBtn, .shareBtn{ width: 40px; height: 30px; border-radius: 10px; flex: 0 0 40px;  margin-right: 8px;}
+      .reportBtn{ flex: 0 0 30px; }
 
       /* Thumbnail block moves below text so title has full width */
       .newsSummaryGrid{ flex-direction: column; align-items: stretch; }
@@ -6445,6 +6583,7 @@ body.eventMapModalOpen{overflow:hidden;}
   #eventMapMeta{font-size:13px;margin:10px 0 12px;}
   #eventMapCanvas{height:58vh;min-height:420px;border-radius:24px;}
 }
+
 </style>
 
 <!-- Cache-bust static JS on deploy by bumping v=... -->

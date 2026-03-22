@@ -1128,6 +1128,165 @@ function removeLastRenderedCard() {
   }
 }
 
+
+function getScoreUiLocale() {
+  const lang = String(I18N_LANG || localStorage.getItem('lang') || 'en').toLowerCase();
+  if (lang.startsWith('de')) return 'de';
+  if (lang.startsWith('fr')) return 'fr';
+  return 'en';
+}
+
+function getScoreLocaleCopy() {
+  const locale = getScoreUiLocale();
+  const dict = {
+    en: {
+      outOf100: 'out of 100',
+      ariaPrefix: 'Score',
+      stable: 'Stable',
+      recentSuffix: 'recently',
+      pt: 'pt',
+      pts: 'pts',
+      labels: {
+        s90: { label: 'Major story', shortLabel: 'Major story' },
+        s80: { label: 'High impact', shortLabel: 'High impact' },
+        s70: { label: 'Strong momentum', shortLabel: 'Strong momentum' },
+        s55: { label: 'Developing', shortLabel: 'Developing' },
+        s40: { label: 'Worth watching', shortLabel: 'Worth watching' },
+        s25: { label: 'Low activity', shortLabel: 'Low activity' },
+      },
+    },
+    de: {
+      outOf100: 'von 100',
+      ariaPrefix: 'Score',
+      stable: 'Stabil',
+      recentSuffix: 'zuletzt',
+      pt: 'Pkt.',
+      pts: 'Pkt.',
+      labels: {
+        s90: { label: 'Große Story', shortLabel: 'Große Story' },
+        s80: { label: 'Hohe Wirkung', shortLabel: 'Hohe Wirkung' },
+        s70: { label: 'Starke Dynamik', shortLabel: 'Starke Dynamik' },
+        s55: { label: 'In Entwicklung', shortLabel: 'In Entwicklung' },
+        s40: { label: 'Beobachtenswert', shortLabel: 'Beobachtenswert' },
+        s25: { label: 'Geringe Aktivität', shortLabel: 'Geringe Aktivität' },
+      },
+    },
+    fr: {
+      outOf100: 'sur 100',
+      ariaPrefix: 'Score',
+      stable: 'Stable',
+      recentSuffix: 'récemment',
+      pt: 'pt',
+      pts: 'pts',
+      labels: {
+        s90: { label: 'Sujet majeur', shortLabel: 'Sujet majeur' },
+        s80: { label: 'Fort impact', shortLabel: 'Fort impact' },
+        s70: { label: 'Forte dynamique', shortLabel: 'Forte dynamique' },
+        s55: { label: 'En développement', shortLabel: 'En développement' },
+        s40: { label: 'À surveiller', shortLabel: 'À surveiller' },
+        s25: { label: 'Faible activité', shortLabel: 'Faible activité' },
+      },
+    },
+  };
+  return dict[locale] || dict.en;
+}
+
+function getStoryScoreMeta(item) {
+  const score = clamp(
+    item?.credibility_score ?? item?.credibility ?? item?.score ?? item?.rating ?? 0,
+    0,
+    100,
+  );
+  let tone = 's70';
+  if (score >= 90) tone = 's90';
+  else if (score >= 80) tone = 's80';
+  else if (score >= 70) tone = 's70';
+  else if (score >= 55) tone = 's55';
+  else if (score >= 40) tone = 's40';
+  else tone = 's25';
+  const copy = getScoreLocaleCopy();
+  const toneCopy = copy.labels?.[tone] || copy.labels?.s70 || { label: 'High signal', shortLabel: 'High signal' };
+  return { score, tone, label: toneCopy.label, shortLabel: toneCopy.shortLabel, scaleLabel: copy.outOf100, ariaPrefix: copy.ariaPrefix };
+}
+
+function getStoryTrendMeta(item) {
+  const delta = Number(item?.delta_score ?? item?.delta ?? item?.credibility_delta ?? 0);
+  const copy = getScoreLocaleCopy();
+  if (!Number.isFinite(delta) || delta === 0) return { delta: 0, text: copy.stable, dir: 'flat' };
+  const dir = delta > 0 ? 'up' : 'down';
+  const rounded = Math.abs(Math.round(delta));
+  return {
+    delta,
+    dir,
+    text: `${delta > 0 ? '+' : '−'}${rounded} ${rounded === 1 ? copy.pt : copy.pts} ${copy.recentSuffix}`,
+  };
+}
+
+function buildWhyScoreFactors(item) {
+  const sourcesCount = Number(item?.sources_count ?? (Array.isArray(item?.sources) ? item.sources.length : 0) ?? 0);
+  const scoreMeta = getStoryScoreMeta(item);
+  const trendMeta = getStoryTrendMeta(item);
+  const impact = Number(item?.importance ?? scoreMeta.score ?? 0);
+  const isTrending = !!item?.is_trending || trendMeta.dir === 'up' || scoreMeta.score >= 80;
+  const firstTs = Date.parse(item?.created_at || item?.first_published_at || item?.latest_published_at || '') || NaN;
+  const latestTs = Date.parse(item?.updated_at || item?.latest_published_at || item?.created_at || '') || NaN;
+  const ageHours = Number.isFinite(firstTs) ? Math.max(0, (Date.now() - firstTs) / 36e5) : NaN;
+  const freshnessHours = Number.isFinite(latestTs) ? Math.max(0, (Date.now() - latestTs) / 36e5) : NaN;
+  const displayCountry = inferCountryDisplay(item);
+  const displayLabel = String(displayCountry?.label || '').toLowerCase();
+  const isGlobal = displayLabel === 'world' || displayLabel === 'global' || sourcesCount >= 8 || impact >= 78;
+
+  const coverageWeight = Math.min(1, Math.max(0.12, sourcesCount / 10)) * 1.05;
+  const velocityWeight = Math.min(1, Math.max(0.18, trendMeta.dir === 'up' ? 1 : (freshnessHours <= 6 ? 0.78 : 0.52))) * 0.95;
+  const impactWeight = Math.min(1, Math.max(0.2, impact / 100)) * 1.15;
+  const noveltyWeight = Math.min(1, Math.max(0.14, Number.isFinite(ageHours) && ageHours <= 8 ? 1 : (freshnessHours <= 6 ? 0.8 : 0.5))) * 0.85;
+  const rawWeights = [coverageWeight, velocityWeight, impactWeight, noveltyWeight];
+  const total = rawWeights.reduce((sum, n) => sum + n, 0) || 1;
+  const rawPoints = rawWeights.map((w) => (scoreMeta.score * w) / total);
+  const points = rawPoints.map((n) => Math.floor(n));
+  let remainder = scoreMeta.score - points.reduce((sum, n) => sum + n, 0);
+  rawPoints
+    .map((n, idx) => ({ idx, frac: n - Math.floor(n) }))
+    .sort((a, b) => b.frac - a.frac)
+    .forEach((entry) => {
+      if (remainder > 0) {
+        points[entry.idx] += 1;
+        remainder -= 1;
+      }
+    });
+
+  const coverageText = sourcesCount >= 10
+    ? 'Widely covered across major outlets.'
+    : sourcesCount >= 5
+      ? 'Covered by several outlets, giving the story broader weight.'
+      : sourcesCount >= 2
+        ? 'Appearing across multiple sources, but coverage is still building.'
+        : 'Limited coverage so far, so the signal is still early.';
+  const velocityText = trendMeta.dir === 'up'
+    ? 'Rapidly developing, with attention rising right now.'
+    : trendMeta.dir === 'down'
+      ? 'Still active, but momentum has cooled slightly.'
+      : isTrending
+        ? 'Steady attention with ongoing developments.'
+        : 'No sharp movement right now; the story is moving at a normal pace.';
+  const impactText = isGlobal
+    ? 'High global relevance with potential broader impact.'
+    : impact >= 60
+      ? 'Meaningful regional relevance with visible impact.'
+      : 'More niche or local in scope right now.';
+  const noveltyText = Number.isFinite(ageHours) && ageHours <= 8
+    ? 'New story with fresh developments.'
+    : Number.isFinite(freshnessHours) && freshnessHours <= 6
+      ? 'Ongoing story with recent updates.'
+      : 'Continuing story; attention is being sustained over time.';
+
+  return [
+    { name: 'Coverage', value: sourcesCount ? `${sourcesCount} sources` : 'Early signal', points: points[0], text: coverageText },
+    { name: 'Velocity', value: trendMeta.dir === 'flat' ? 'Stable' : trendMeta.text, points: points[1], text: velocityText },
+    { name: 'Impact', value: isGlobal ? 'Global' : 'Regional', points: points[2], text: impactText },
+    { name: 'Novelty', value: (Number.isFinite(ageHours) && ageHours <= 8) ? 'New' : 'Ongoing', points: points[3], text: noveltyText },
+  ];
+}
 function createCardElement(item, ctx, seen, idx) {
   const div = document.createElement('div');
   const id = Number(item.cluster_id ?? item.event_id);
@@ -1145,12 +1304,10 @@ function createCardElement(item, ctx, seen, idx) {
   const sourcesCount = Number(item.sources_count ?? (item.sources ? item.sources.length : 0));
 
   // Be tolerant to backend/format changes (prevents showing 0/100 when the score exists under a different key)
-  const score = clamp(
-    item.credibility_score ?? item.credibility ?? item.score ?? item.rating ?? 0,
-    0,
-    100,
-  );
+  const scoreMeta = getStoryScoreMeta(item);
+  const score = scoreMeta.score;
   const importance = clamp(item.importance ?? 0, 0, 100);
+  const trendMeta = getStoryTrendMeta(item);
 
   // Redesign: cards are always light; only the score badge switches black/white.
   div.className = 'newsCard';
@@ -1208,15 +1365,9 @@ function createCardElement(item, ctx, seen, idx) {
     })
     .join('');
 
-  const factorsHtml = (item.credibility_factors || [])
-    .map((f) => {
-      const tf = (I18N_LANG && I18N_LANG !== 'ru') ? translateFactor(f) : { name: (f?.name||''), description: (f?.description||''), impact: Number(f?.impact||0) };
-      const name = escapeHtml(tf.name || '');
-      const desc = escapeHtml(tf.description || '');
-      const impact = Number(tf.impact || 0);
-      const sign = impact > 0 ? '+' : '';
-      return `<div class="factor"><div><span class="impact">${sign}${impact}</span> — <b>${name}</b></div><div class="muted">${desc}</div></div>`;
-    })
+  const whyFactors = buildWhyScoreFactors(item);
+  const factorsHtml = whyFactors
+    .map((factor) => `<div class="scoreFactor"><div class="scoreFactorTop"><span class="scoreFactorName">${escapeHtml(factor.name)}</span><span class="scoreFactorMeta"><span class="scoreFactorValue">${escapeHtml(factor.value)}</span><span class="scoreFactorPts">+${escapeHtml(String(factor.points || 0))} pts</span></span></div><div class="scoreFactorText">${escapeHtml(factor.text)}</div></div>`)
     .join('');
 
   // --- AI Summary states: loading | ready | empty | locked
@@ -1253,25 +1404,17 @@ function createCardElement(item, ctx, seen, idx) {
   // --- Why this score?
   const whyState = getWhyScoreState(item);
   let whyHtml = '';
-  if (whyState.status === 'ready') {
-    const expl = whyState.text
-      ? `<div class="muted">${escapeHtml(whyState.text)}</div>`
-      : `<div class="muted">${t("score.limited","Score explanation is limited due to insufficient data")}</div>`;
-    whyHtml = `
-        <details class="accordion">
-          <summary class="accordionSummary" ${accordionClosedAttrs}><span class="accordionSummaryLabel">${t("ui.why_score","Why this score?")}</span>${disclosureIcon}</summary>
-          <div class="accordionBody">
-            ${expl}
-            <div class="factors">${factorsHtml || '<div class="muted">${t("score.limited","Score explanation is limited due to insufficient data")}</div>'}</div>
-          </div>
-        </details>`;
-  } else if (whyState.status === 'empty' && whyState.text) {
-    whyHtml = `
-        <details class="accordion">
-          <summary class="accordionSummary" ${accordionClosedAttrs}><span class="accordionSummaryLabel">${t("ui.why_score","Why this score?")}</span>${disclosureIcon}</summary>
-          <div class="accordionBody"><div class="muted">${escapeHtml(whyState.text)}</div></div>
-        </details>`;
-  }
+  const whyIntroText = (whyState.status === 'ready' && whyState.text)
+    ? escapeHtml(whyState.text)
+    : 'This score reflects importance and activity — not whether the story is true.';
+  whyHtml = `
+      <details class="accordion scoreAccordion">
+        <summary class="accordionSummary" ${accordionClosedAttrs}><span class="accordionSummaryLabel">${t("ui.why_score","Why this score?")}</span>${disclosureIcon}</summary>
+        <div class="accordionBody scoreExplainBody">
+          <div class="scoreExplainLead">${whyIntroText}</div>
+          <div class="scoreFactors">${factorsHtml || `<div class="muted">${t("score.limited","Score explanation is limited due to insufficient data")}</div>`}</div>
+        </div>
+      </details>`;
 
   // --- Event map
   let eventMapHtml = '';
@@ -1422,7 +1565,14 @@ const showTrackingUI = state.mode === 'fav';
               <div class="newsTopRight">
                 ${flameHtml}
                 ${trackToggleHtml}
-                <div class="scoreBadge ${score < LOW_SCORE_THRESHOLD ? 'dark' : 'light'}">${score} / 100</div>
+                <div class="scoreBadge ${scoreMeta.tone}" aria-label="${escapeHtml(scoreMeta.ariaPrefix)} ${score} ${escapeHtml(scoreMeta.label)}">
+                  <span class="scoreBadgeValue">${score}</span>
+                  <span class="scoreBadgeCopy">
+                    <span class="scoreBadgeLabel">${escapeHtml(scoreMeta.shortLabel)}</span>
+                    <span class="scoreBadgeScale">${escapeHtml(scoreMeta.scaleLabel)}</span>
+                  </span>
+                </div>
+                ${trendMeta.dir !== 'flat' ? `<div class="scoreTrend ${trendMeta.dir}">${escapeHtml(trendMeta.text)}</div>` : ''}
                 ${deltaHtml}
                 ${iconHtml}
                 ${shareHtml}
@@ -1547,6 +1697,37 @@ const showTrackingUI = state.mode === 'fav';
     imgEl.addEventListener('load', () => {
       if (imgEl.parentElement) imgEl.parentElement.dataset.imageState = 'ready';
     });
+  }
+
+  const scoreBadge = div.querySelector('.scoreBadge');
+  const newsDetails = div.querySelector('details.newsDetails');
+  const syncScoreBadgeExpansion = () => {
+    if (!scoreBadge) return;
+    const labelEl = scoreBadge.querySelector('.scoreBadgeLabel');
+    if (!labelEl) return;
+    scoreBadge.classList.remove('needsExpand', 'isExpanded');
+    const detailsOpen = !!(newsDetails && newsDetails.open);
+    if (!detailsOpen) return;
+    requestAnimationFrame(() => {
+      const labelElNow = scoreBadge.querySelector('.scoreBadgeLabel');
+      if (!labelElNow) return;
+      const needsExpand = (labelElNow.scrollWidth - labelElNow.clientWidth) > 1;
+      if (!needsExpand) return;
+      scoreBadge.classList.add('needsExpand');
+      requestAnimationFrame(() => {
+        scoreBadge.classList.add('isExpanded');
+      });
+    });
+  };
+  div.__syncScoreBadgeExpansion = syncScoreBadgeExpansion;
+  if (newsDetails) {
+    newsDetails.addEventListener('toggle', () => {
+      syncScoreBadgeExpansion();
+    });
+  }
+  if (scoreBadge) {
+    requestAnimationFrame(() => syncScoreBadgeExpansion());
+    window.addEventListener('resize', syncScoreBadgeExpansion, { passive: true });
   }
 
   // Share button should not toggle the details accordion.
@@ -1736,18 +1917,38 @@ function updateCardElement(el, item, ctx, seen) {
   if (!el) return;
   const id = getItemId(item);
   const idStr = String(id);
-  const score = clamp(
-    item.credibility_score ?? item.credibility ?? item.score ?? item.rating ?? 0,
-    0,
-    100,
-  );
+  const scoreMeta = getStoryScoreMeta(item);
+  const score = scoreMeta.score;
 
   // Update score badge
   const scoreEl = el.querySelector('.scoreBadge');
   if (scoreEl) {
-    scoreEl.textContent = `${score} / 100`;
-    scoreEl.classList.toggle('dark', score < LOW_SCORE_THRESHOLD);
-    scoreEl.classList.toggle('light', score >= LOW_SCORE_THRESHOLD);
+    scoreEl.className = `scoreBadge ${scoreMeta.tone}`;
+    scoreEl.setAttribute('aria-label', `${scoreMeta.ariaPrefix} ${score} ${scoreMeta.label}`);
+    scoreEl.innerHTML = `<span class="scoreBadgeValue">${score}</span><span class="scoreBadgeCopy"><span class="scoreBadgeLabel">${escapeHtml(scoreMeta.shortLabel)}</span><span class="scoreBadgeScale">${escapeHtml(scoreMeta.scaleLabel)}</span></span>`;
+    const syncScoreBadgeExpansion = el.__syncScoreBadgeExpansion;
+    if (typeof syncScoreBadgeExpansion === 'function') {
+      requestAnimationFrame(() => syncScoreBadgeExpansion());
+    }
+  }
+
+  const trendMeta = getStoryTrendMeta(item);
+  let trendEl = el.querySelector('.scoreTrend');
+  if (trendMeta.dir === 'flat') {
+    if (trendEl) trendEl.remove();
+  } else {
+    if (!trendEl) {
+      trendEl = document.createElement('div');
+      trendEl.className = 'scoreTrend';
+      const topRight = el.querySelector('.newsTopRight');
+      const deltaEl = el.querySelector('.delta');
+      if (topRight) {
+        if (deltaEl) topRight.insertBefore(trendEl, deltaEl);
+        else topRight.appendChild(trendEl);
+      }
+    }
+    trendEl.className = `scoreTrend ${trendMeta.dir}`;
+    trendEl.textContent = trendMeta.text;
   }
 
   // When switching tabs, ensure Tracking-specific UI doesn't "leak" into the feed.
