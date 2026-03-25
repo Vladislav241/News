@@ -345,6 +345,7 @@ function __initStatusPage(){
 
 function setInfoPage(slug){
   if(!infoSection || !infoTitleEl || !infoBodyEl) return;
+  try { if (typeof window.__syncGuestLandingVisibility === 'function') document.body.classList.remove('guestLandingActive'); } catch {}
 
   const page = INFO_PAGES[slug];
   if(!page) return;
@@ -371,6 +372,7 @@ function setMainFeed(){
   pricingSection.style.display = 'none';
   if(profileSection) profileSection.style.display = 'none';
   feedView.style.display = 'block';
+  try { if (typeof window.__syncGuestLandingVisibility === 'function') window.__syncGuestLandingVisibility(); } catch {}
   window.scrollTo({ top: 0, behavior: 'instant' });
 }
 
@@ -391,6 +393,7 @@ function setMainFeed(){
       feedView.style.display = 'none';
       if(profileSection) profileSection.style.display = 'none';
       pricingSection.style.display = 'block';
+      try { document.body.classList.remove('guestLandingActive'); } catch {}
       window.scrollTo({ top: 0, behavior: 'instant' });
       const btn = document.getElementById('btnPricing');
       if(btn) btn.setAttribute('aria-current','page');
@@ -402,6 +405,7 @@ function setMainFeed(){
       feedView.style.display = 'none';
       pricingSection.style.display = 'none';
       if(profileSection) profileSection.style.display = 'block';
+      try { document.body.classList.remove('guestLandingActive'); } catch {}
       try{ window.scrollTo({ top: 0, behavior: 'instant' }); }catch{}
       // Keep UI in sync
       try{ updateProfileUI(); }catch{}

@@ -94,6 +94,7 @@ menuLogout.addEventListener("click", async () => {
 
     // Update in-memory state + UI
     authState = { authenticated: false, user: null };
+    window.authState = authState;
     billingState = null;
     updateAuthUI();
     updatePricingUI();
@@ -110,7 +111,16 @@ menuLogout.addEventListener("click", async () => {
       }
     } catch {}
 
-    alert("Logged out!");
+    try {
+      window.dispatchEvent(new CustomEvent('checkne:auth-state', { detail: { authenticated: false, user: null, wasAuthenticated: true } }));
+    } catch {}
+
+    try {
+      if (typeof window.__navigate === 'function') window.__navigate('/');
+      else window.location.href = '/';
+    } catch {
+      window.location.href = '/';
+    }
 
   } catch (e) {
     console.error(e);

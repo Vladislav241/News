@@ -12,7 +12,6 @@
   <!-- Favicon (prevents noisy /favicon.ico 404s in logs) -->
   <link rel="icon" href="/static/icons/Prev.svg" type="image/png">
   <link rel="apple-touch-icon" href="/static/icons/Prev.svg">
-
   <!-- Fonts: Jersey 25 (logo) + Inter (UI) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -5895,6 +5894,560 @@ border:1px solid #000;
   }
 }
 
+
+
+/* =============================
+   Guest landing (preview entry)
+   ============================= */
+body.guestLandingActive{
+  background: #fff;
+}
+body.guestLandingActive header{
+  display:none;
+}
+body.guestLandingActive{
+  padding-top:0 !important;
+}
+#guestLanding{
+  display:none;
+  max-width:1500px;
+  margin:0 auto;
+  padding:36px 28px 0;
+}
+body.guestLandingActive #guestLanding{
+  display:block;
+}
+body.guestLandingActive #pageLayout,
+body.guestLandingActive #profileSection,
+body.guestLandingActive #pricingSection,
+body.guestLandingActive #infoSection{
+  display:none !important;
+}
+body.guestLandingActive .sidebar,
+body.guestLandingActive .widgetsFab,
+body.guestLandingActive .widgetsDrawer,
+body.guestLandingActive .mwDock,
+body.guestLandingActive .mwSheet{
+  display:none !important;
+}
+body.guestLandingActive,
+body.guestLandingActive #guestLanding{
+  overflow-x:hidden;
+}
+body.guestLandingActive #guestLanding,
+body.guestLandingActive #guestLanding *,
+body.guestLandingActive #guestLanding *::before,
+body.guestLandingActive #guestLanding *::after{
+  box-sizing:border-box;
+}
+.guestLandingShell{
+  display:grid;
+ grid-template-columns: 560px 1fr;
+  gap:44px;
+  align-items:start;
+}
+.guestLandingLeft{
+  padding:0 8px 28px;
+  position:sticky;
+  top:36px;
+}
+.guestLandingBrand{
+  display:flex;
+  align-items:center;
+  gap:14px;
+  margin-bottom:110px;
+}
+.guestLandingBrandIcon{
+  width:48px;
+  height:auto;
+  display:block;
+  flex:0 0 auto;
+}
+.guestLandingBrandText{
+  font-family: "Jersey 25", Inter, system-ui;
+  font-size:40px;
+  line-height:.88;
+  font-weight:800;
+  color:#060606;
+   margin-top:23px;
+}
+.guestLandingTitle{
+  
+  margin:0;
+  max-width:550px;
+  font-size:66px;
+  line-height:.93;
+  letter-spacing:-.06em;
+  font-weight:500;
+  color:#060606;
+  
+}
+.guestLandingSub{
+  margin:28px 0 0;
+  max-width:480px;
+  font-size:24px;
+  font-weight: 300;
+  line-height:1.34;
+  letter-spacing:-.03em;
+  color:rgba(12,12,14,.92);
+}
+.guestLandingActions{ margin-top:36px; }
+.guestLandingCta{
+  appearance:none;
+  border:none;
+  background:#040404;
+  color:#fff;
+  width:304px;
+  max-width:100%;
+  height:72px;
+  border-radius:18px;
+  font-size:25px;
+  font-weight:600;
+  letter-spacing:-.03em;
+  cursor:pointer;
+  box-shadow:none;
+}
+.guestLandingCta{ transition:transform .18s ease, box-shadow .18s ease, opacity .18s ease; box-shadow:0 14px 34px rgba(0,0,0,.16), 0 1px 0 rgba(255,255,255,.12) inset; }
+.guestLandingCta:hover{ transform:translateY(-1px); box-shadow:0 18px 38px rgba(0,0,0,.2), 0 1px 0 rgba(255,255,255,.12) inset; }
+.guestLandingMetaGrid{
+  margin-top:72px;
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:16px;
+}
+.guestLandingFeatureCard,
+.guestLandingSourcesCard,
+.guestLandingPreview{
+  border:1px solid rgba(17,18,22,.07);
+  border-radius:28px;
+  background:linear-gradient(180deg,rgba(255,255,255,.94) 0%,rgba(250,250,248,.98) 100%);
+  box-shadow:0 10px 30px rgba(17,18,22,.045), 0 1px 0 rgba(255,255,255,.72) inset;
+  backdrop-filter:blur(10px);
+}
+.guestLandingMiniFeature{
+  padding:20px 18px 18px;
+  min-height:182px;
+}
+.guestLandingMiniHeader{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  margin-bottom:12px;
+}
+
+.guestLandingMiniHeader img{
+  width:28px;
+  height:28px;
+  object-fit:contain;
+  display:block;
+}
+
+.guestLandingMiniTitle{
+  font-size:17px;
+  font-weight:700;
+  letter-spacing:-0.045em;
+  color:#101114;
+}
+
+.guestLandingMiniText{
+  margin-top:0;
+  font-size:14px;
+  line-height:1.2;
+  letter-spacing:-0.03em;
+  color:rgba(17,18,22,.86);
+}
+.guestLandingMiniHeader img{
+  width:40px;
+  height:40px;
+  flex:0 0 40px;
+}
+
+/* 🔥 фикс для "глаза" (он реально меньше внутри svg) */
+.guestLandingMiniHeader img[src*="Eye.svg"]{
+  transform: scale(1.25);
+}
+.guestLandingMiniTitle{
+  font-size:17px;
+  line-height:.98;
+  font-weight:700;
+  letter-spacing:-.045em;
+  color:#101114;
+}
+.guestLandingMiniText{
+  margin-top:16px;
+  font-size:14px;
+  line-height:1.15;
+  letter-spacing:-.03em;
+  color:rgba(17,18,22,.86);
+}
+.guestLandingSourcesCard{
+  margin-top:40px;
+  padding:30px 24px 20px;
+  overflow:hidden;
+  position:relative;
+}
+
+.guestLandingSourcesHead{
+  display:block;
+}
+
+.guestLandingSourcesTitleWrap{
+  position:relative;
+  min-height:110px;
+}
+
+.guestLandingSourcesTitle{
+  margin:0;
+  max-width:460px;
+  font-size:28px;
+  line-height:1.18;
+  letter-spacing:-.055em;
+  font-weight:800;
+  color:#101114;
+}
+
+.guestLandingSourcesGlobe{
+  position:absolute;
+  top:16px;     /* ⬇️ опускаем ниже */
+  right:50px;  /* ⬅️ двигаем левее */
+  width:86px;
+  height:86px;
+}
+
+.guestLandingSourcesGlobe img{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  display:block;
+}
+.guestLandingSourcesMarquee{
+  position:relative;
+  overflow:hidden;
+  margin-top:20px;
+  padding:10px 0 8px;
+}
+.guestLandingSourcesMarquee::before,
+.guestLandingSourcesMarquee::after{
+  content:"";
+  position:absolute;
+  top:0; bottom:0;
+  width:34px;
+  z-index:2;
+  pointer-events:none;
+}
+.guestLandingSourcesMarquee::before{
+  left:0;
+  background:linear-gradient(90deg,#f8f8f8,rgba(248,248,248,0));
+}
+.guestLandingSourcesMarquee::after{
+  right:0;
+  background:linear-gradient(270deg,#f8f8f8,rgba(248,248,248,0));
+}
+.guestLandingSourcesTrack{
+  display:flex;
+  gap:20px;
+  align-items:center;
+  min-width:max-content;
+  animation:guestLandingMarquee 34s linear infinite;
+  will-change:transform;
+}
+.guestLandingSourceItem{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-width:max-content;
+  padding:0;
+  white-space:nowrap;
+  flex:0 0 auto;
+}
+.guestLandingSourceImgWrap{
+  width:34px;
+  height:34px;
+  border-radius:10px;
+  overflow:hidden;
+  background:#fff;
+  border:1px solid #dedede;
+  display:grid;
+  place-items:center;
+  flex:0 0 auto;
+}
+.guestLandingSourceImg{
+  width:22px;
+  height:22px;
+  object-fit:contain;
+  display:block;
+}
+.guestLandingSourceLabel{
+  font-size:26px;
+  line-height:1;
+  letter-spacing:-.06em;
+  font-weight:800;
+  color:#101114;
+}
+@keyframes guestLandingMarquee{from{transform:translate3d(0,0,0)}to{transform:translate3d(-50%,0,0)}}
+.guestLandingRight{
+  min-width:0;
+  width:100%;
+}
+.guestLandingPreview,
+.guestLandingPreviewInner,
+.guestLandingStoryList,
+.guestLandingFeedCard,
+.guestLandingStoryFallback,
+.guestLandingHeroMedia,
+.guestLandingHeroMedia img{
+  width:100%;
+  max-width:100%;
+}
+.guestLandingPreview,
+.guestLandingPreviewInner,
+.guestLandingFeedCard,
+.guestLandingStoryFallback{
+  min-width:0;
+}
+.guestLandingPreview,
+.guestLandingPreviewInner,
+.guestLandingHeroMedia,
+.guestLandingStoryList,
+.guestLandingFeedCard{
+  overflow:hidden;
+}
+
+.guestLandingPreviewInner{
+  border:1px solid rgba(17,18,22,.10);
+  border-radius:28px;
+  padding:22px 24px 24px;
+  background:linear-gradient(180deg,#ffffff 0%,#fbfbfa 100%);
+  box-shadow:0 14px 34px rgba(17,18,22,.06);
+}
+.guestLandingHeroHead{ display:flex; gap:18px; align-items:flex-start; }
+.guestLandingFire{ width:48px;height:48px;flex:0 0 auto; }
+.guestLandingHeroTitle{
+  margin:0;
+  font-size:28px;line-height:1.06;letter-spacing:-.04em;font-weight:800;color:#111216;
+}
+.guestLandingHeroMedia{ margin-top:18px; }
+.guestLandingHeroMedia img{
+  width:100%; aspect-ratio:16/7.2; object-fit:cover; border-radius:24px; display:block; background:#ece9e5;
+}
+.guestLandingHeroMetaRow{
+  margin-top:16px;
+  display:grid; grid-template-columns:auto 1fr; gap:18px; align-items:center;
+}
+.guestLandingScorePill{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:92px;height:42px;padding:0 18px;border-radius:999px;background:#060607;color:#fff;font-size:18px;font-weight:800;letter-spacing:-.03em;
+}
+.guestLandingHeroMeta{
+  font-size:14px;line-height:1.4;color:rgba(17,18,22,.58);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.guestLandingStoryList{ display:grid; gap:22px; margin-top:18px; }
+.guestLandingFeedCard{
+  margin:0;
+  width:100%;
+  transform:none !important;
+  box-shadow:none !important;
+}
+.guestLandingFeedCard .newsOpenBody{ display:none !important; }
+.guestLandingFeedCard details[open] .newsOpenBody{ display:none !important; }
+.guestLandingFeedCard .whyScoreWrap,
+.guestLandingFeedCard .sourcesWrap,
+.guestLandingFeedCard .fullDetailsWrap{ display:none !important; }
+.guestLandingStoryFallback{
+  border:1px solid #d6d6d6;
+  border-radius:20px;
+  background:#fff;
+  padding:18px 20px;
+}
+.guestLandingStoryFallbackTitle{ font-size:18px; line-height:1.15; letter-spacing:-.03em; font-weight:800; color:#12141a; }
+.guestLandingStoryFallbackMeta{ margin-top:10px; font-size:13px; line-height:1.35; color:rgba(17,18,22,.54); }
+.guestLandingWidgets{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:14px;
+  align-items:start;
+   margin-top:24px;
+}
+.guestLandingWidget{ min-width:0; }
+.guestLandingWidget > .widgetCard{
+  width:100%;
+  min-height:0;
+  border-radius:18px;
+  border-color:#d6d6d6;
+  overflow:visible;
+}
+.guestLandingWidget > .widgetCard .widgetBody{
+  min-height:0;
+}
+.guestLandingHistory{ margin-top:18px; }
+.guestLandingHistoryTop{ display:flex;align-items:flex-start;justify-content:space-between;gap:18px; }
+.guestLandingHistoryTitle{ margin:0 0 10px; font-size:17px; line-height:1.1; letter-spacing:-.03em; font-weight:800; color:#111216; }
+.guestLandingHistoryControls{ display:flex;gap:10px; }
+.guestLandingHistoryControl{ width:34px;height:34px;border-radius:12px;border:1px solid #d9d5d1;background:#fff;font-size:20px;font-weight:800;color:#111;display:grid;place-items:center; }
+.guestLandingHistoryGrid{ display:grid;grid-template-columns:minmax(0,1fr) 180px;gap:18px;align-items:start; }
+.guestLandingHistoryChart{ border:1px solid #e5e1dc;border-radius:22px;padding:8px;background:#fff;min-height:300px; }
+.guestLandingHistoryChart svg{ width:100%;height:auto;display:block; }
+.guestLandingHistoryStats{ border:1px solid #e5e1dc;border-radius:22px;background:#fff;padding:16px 18px; }
+.guestLandingHistoryStat{ display:flex;justify-content:space-between;gap:14px;padding:12px 0;font-size:15px;line-height:1.2;color:rgba(17,18,22,.62); }
+.guestLandingHistoryStat strong{ color:#111216;font-size:16px; }
+.guestLandingHistoryDivider{ height:1px;background:#ece8e4;margin:6px 0; }
+.guestLandingPreviewLoading,
+.guestLandingPreviewError{ padding:34px 22px;border:1px dashed #ddd5ce;border-radius:24px;background:rgba(255,255,255,.75);font-size:15px;color:rgba(17,18,22,.64); }
+.guestLandingFeatureCard,
+.guestLandingSourcesCard,
+.guestLandingPreview,
+.guestLandingFeedCard,
+.guestLandingWidget,
+.guestLandingHistory,
+.guestLandingSourceItem{ cursor:pointer; }
+@media (max-width: 900px){
+  #guestLanding{ padding:20px 14px 0; max-width:none; }
+  .guestLandingShell{ grid-template-columns:1fr; gap:18px; }
+  .guestLandingLeft{ position:relative; top:0; padding:0; }
+  .guestLandingRight{ min-width:0; }
+  .guestLandingBrand{ margin-bottom:24px; gap:10px; }
+  .guestLandingBrandIcon{ width:40px; }
+  .guestLandingBrandText{ font-size:32px; margin-top:16px; }
+  .guestLandingTitle{ max-width:100%; font-size:40px; line-height:.95; }
+  .guestLandingSub{ max-width:100%; font-size:18px; line-height:1.36; margin-top:16px; }
+  .guestLandingActions{ margin-top:20px; }
+  .guestLandingCta{ width:100%; max-width:none; height:58px; font-size:19px; border-radius:18px; }
+  .guestLandingMetaGrid{ margin-top:22px; grid-template-columns:1fr; gap:12px; }
+  .guestLandingFeatureCard,
+  .guestLandingSourcesCard,
+  .guestLandingPreview{ border-radius:26px; }
+  .guestLandingMiniFeature{ min-height:0; padding:18px 16px 16px; }
+  .guestLandingMiniHeader img{ width:34px; height:34px; flex:0 0 34px; }
+  .guestLandingMiniTitle{ font-size:16px; }
+  .guestLandingMiniText{ margin-top:12px; font-size:13.5px; line-height:1.26; }
+  .guestLandingSourcesCard{ margin-top:16px; padding:18px 18px 14px; }
+  .guestLandingSourcesTitleWrap{ min-height:84px; }
+  .guestLandingSourcesTitle{ max-width:240px; font-size:22px; line-height:1.06; }
+  .guestLandingSourcesGlobe{ width:70px; height:70px; top:4px; right:4px; }
+  .guestLandingSourcesMarquee{ margin-top:12px; }
+  .guestLandingSourceImgWrap{ width:30px; height:30px; border-radius:9px; }
+  .guestLandingSourceImg{ width:18px; height:18px; }
+  .guestLandingSourceLabel{ font-size:18px; }
+  .guestLandingPreview{ padding:8px; }
+  .guestLandingPreviewInner{ border-radius:24px; padding:16px; }
+  .guestLandingHeroHead{ gap:10px; }
+  .guestLandingFire{ width:34px; height:34px; }
+  .guestLandingHeroTitle{ font-size:21px; line-height:1.08; }
+  .guestLandingHeroMedia{ margin-top:12px; }
+  .guestLandingHeroMedia img{ aspect-ratio:16 / 10.1; border-radius:18px; }
+  .guestLandingHeroMetaRow{ margin-top:12px; grid-template-columns:1fr; gap:8px; }
+  .guestLandingHeroMeta{ text-align:left; white-space:normal; }
+  .guestLandingScorePill{ min-width:84px; height:38px; font-size:17px; }
+  .guestLandingStoryList{ gap:14px; margin-top:14px; }
+  .guestLandingWidgets{ display:none !important; }
+  .guestLandingHistory{ display:block !important; margin-top:18px; }
+  .guestLandingHistory .trustHistoryHeader{ margin:0 0 10px; }
+  .guestLandingHistory .trustHistoryTitle{ font-size:18px; }
+}
+@media (max-width: 640px){
+  body.guestLandingActive{
+    width:100%;
+    max-width:100%;
+  }
+  #guestLanding{
+    width:100%;
+    max-width:100%;
+    margin:0;
+    padding:12px 10px 0;
+  }
+  .guestLandingShell,
+  .guestLandingLeft,
+  .guestLandingRight{
+    width:100%;
+    max-width:100%;
+    min-width:0;
+  }
+  .guestLandingLeft{
+    padding:2px 2px 0;
+  }
+  .guestLandingBrand{ margin-bottom:18px; align-items:center; }
+  .guestLandingBrandIcon{ width:34px; }
+  .guestLandingBrandText{ font-size:27px; margin-top:11px; }
+  .guestLandingTitle{
+    font-size:31px;
+    line-height:.96;
+    letter-spacing:-.055em;
+  }
+  .guestLandingSub{
+    font-size:16.5px;
+    line-height:1.38;
+    letter-spacing:-.025em;
+    color:rgba(17,18,22,.78);
+  }
+  .guestLandingActions{ margin-top:18px; }
+  .guestLandingCta{
+    height:56px;
+    font-size:19px;
+    border-radius:18px;
+  }
+  .guestLandingFeatureCard,
+  .guestLandingSourcesCard,
+  .guestLandingPreview{
+    border-radius:24px;
+    box-shadow:0 12px 30px rgba(17,18,22,.06), 0 1px 0 rgba(255,255,255,.78) inset;
+  }
+  .guestLandingMiniFeature{ padding:18px 16px 15px; }
+  .guestLandingMiniHeader{ gap:11px; margin-bottom:10px; }
+  .guestLandingMiniTitle{ font-size:15.5px; }
+  .guestLandingMiniText{ margin-top:10px; font-size:13px; line-height:1.28; color:rgba(17,18,22,.76); }
+  .guestLandingSourcesCard{ margin-top:14px; padding:18px 16px 14px; }
+  .guestLandingSourcesTitleWrap{ min-height:74px; }
+  .guestLandingSourcesTitle{ max-width:185px; font-size:20px; }
+  .guestLandingSourcesGlobe{ width:62px; height:62px; top:2px; right:0; }
+  .guestLandingSourcesMarquee{ margin-top:10px; padding:6px 0 4px; }
+  .guestLandingSourceItem{ gap:8px; }
+  .guestLandingSourceLabel{ font-size:16px; }
+  .guestLandingPreview{ padding:6px; }
+  .guestLandingPreviewInner{ padding:14px; border-radius:20px; }
+  .guestLandingHeroHead{ align-items:flex-start; gap:9px; }
+  .guestLandingHeroTitle{
+    font-size:19px;
+    line-height:1.08;
+    overflow-wrap:anywhere;
+    word-break:break-word;
+  }
+  .guestLandingHeroMedia img{ aspect-ratio:16 / 10.9; border-radius:16px; }
+  .guestLandingHeroMetaRow{ grid-template-columns:1fr; gap:8px; }
+  .guestLandingScorePill{ width:max-content; min-width:78px; height:36px; font-size:16px; }
+  .guestLandingHeroMeta{
+    text-align:left;
+    white-space:normal;
+    overflow:visible;
+    text-overflow:clip;
+    word-break:break-word;
+    font-size:13px;
+    line-height:1.36;
+  }
+  .guestLandingStoryList{ gap:12px; margin-top:12px; }
+  .guestLandingFeedCard,
+  .guestLandingStoryFallback{ border-radius:18px; }
+  .guestLandingHistory{
+    display:block !important;
+    margin-top:16px;
+  }
+  .guestLandingHistory .trustHistoryHeader{ margin:2px 0 10px; gap:10px; }
+  .guestLandingHistory .trustHistoryTitle{ font-size:18px; }
+  .guestLandingHistory .trustChartControls{ gap:6px; }
+  .guestLandingHistory .trustCtl{ width:30px; height:30px; border-radius:10px; }
+  .guestLandingHistory .trustChartCard{ padding:10px 10px 8px; border-radius:18px; }
+  .guestLandingHistory .trustChartLoading{ height:210px; border-radius:16px; }
+  .guestLandingHistory .trustStatsCard{ border-radius:18px; padding:12px; }
+  .guestLandingHistory .trustStatsRow{ font-size:13.5px; }
+  .guestLandingHistory .trustStatsLabel{ font-size:12px; }
+  .guestLandingHistory .trustStatsVal{ font-size:14.5px; }
+  .guestLandingHistory .trustStatsSub{ font-size:11.5px; }
+}
+@media (max-width: 1280px){
+  .guestLandingShell{ grid-template-columns: 1fr; }
+  .guestLandingLeft{ position:relative; top:0; }
+}
+
+/* ===== Landing widgets: compact density ===== */
 </style>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
@@ -5949,6 +6502,81 @@ border:1px solid #000;
 
   <!-- Backdrop used by the Feed <-> Tracking page transition -->
   <div id="viewShade" class="viewShade" aria-hidden="true"><div class="dotLoader" aria-hidden="true"><span></span><span></span><span></span></div></div>
+  <section id="guestLanding" aria-label="Guest landing preview">
+    <div class="guestLandingShell">
+      <div class="guestLandingLeft">
+        <div class="guestLandingBrand" aria-label="CHECKNE.">
+          <img class="guestLandingBrandIcon" src="/static/icons/Logo.svg" alt="">
+          <div class="guestLandingBrandText">CHECKNE.</div>
+        </div>
+        <h1 class="guestLandingTitle">See which news you can rely on.</h1>
+        <p class="guestLandingSub">Compare sources, track credibility signals, and stay updated as information evolves.</p>
+        <div class="guestLandingActions">
+          <button id="guestLandingStartBtn" class="guestLandingCta" type="button">Start free</button>
+        </div>
+      <div class="guestLandingMetaGrid">
+  <div class="guestLandingMiniFeature guestLandingFeatureCard">
+    <div class="guestLandingMiniHeader">
+      <img src="/static/icons/Eye.svg" alt="">
+      <div class="guestLandingMiniTitle">Real-time tracking</div>
+    </div>
+    <div class="guestLandingMiniText">
+      Follow important events and get updates as credibility signals change.
+    </div>
+  </div>
+
+  <div class="guestLandingMiniFeature guestLandingFeatureCard">
+    <div class="guestLandingMiniHeader">
+      <img src="/static/icons/structure.svg" alt="">
+      <div class="guestLandingMiniTitle">Multiple sources</div>
+    </div>
+    <div class="guestLandingMiniText">
+      Analyze coverage across a wide range of news outlets.
+    </div>
+  </div>
+
+  <div class="guestLandingMiniFeature guestLandingFeatureCard">
+    <div class="guestLandingMiniHeader">
+      <img src="/static/icons/camera.svg" alt="">
+      <div class="guestLandingMiniTitle">Image search</div>
+    </div>
+    <div class="guestLandingMiniText">
+      Upload a photo or screenshot to find related news instantly.
+    </div>
+  </div>
+</div>
+
+<div id="guestLandingSources" class="guestLandingSourcesCard">
+  <div class="guestLandingSourcesHead">
+    <div class="guestLandingSourcesTitleWrap">
+      <h2 class="guestLandingSourcesTitle">
+        Based On Data From<br>
+        Diverse News Sources:
+      </h2>
+      <div class="guestLandingSourcesGlobe">
+        <img src="/static/icons/news.svg" alt="">
+      </div>
+    </div>
+  </div>
+
+  <div class="guestLandingSourcesMarquee">
+    <div class="guestLandingSourcesTrack">
+      <!-- тут твои source items -->
+    </div>
+  </div>
+</div>
+
+</div> <!-- guestLandingLeft -->
+
+<div class="guestLandingRight">
+  <div class="guestLandingPreview">
+    <div id="guestLandingPreviewInner" class="guestLandingPreviewInner"></div>
+  </div>
+</div>
+
+</div> <!-- guestLandingShell -->
+  </section>
+
   <div id="pageLayout" class="pageLayout">
   <aside id="leftSidebar" class="sidebar" aria-label="Left widgets"></aside>
   <div id="feedView" class="mainCol">
@@ -6607,6 +7235,7 @@ body.eventMapModalOpen{overflow:hidden;}
 <script src="/static/js/promo.js?v=2026-03-09-sharepromo" defer></script>
 <script src="/static/js/dropdowns.js?v=2026-02-24" defer></script>
 <script src="/static/js/motion-system.js?v=2026-03-18-ui-fixes-3" defer></script>
+<script src="/static/js/landing.js?v=2026-03-25-guest-preview-3" defer></script>
 <script src="/static/js/bootstrap.js?v=2026-03-18-ui-fixes-3" defer></script>
 <!-- Share modal -->
 <div id="shareBackdrop" class="shareBackdrop" aria-hidden="true">

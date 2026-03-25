@@ -364,7 +364,16 @@ async function main() {
     } catch {}
     await fetchFavorites({ reset: true });
   } else {
-    await fetchFeed({ reset: true });
+    const guestLandingActive = (() => {
+      try { return typeof window.__isGuestLandingActive === 'function' && window.__isGuestLandingActive(); } catch { return false; }
+    })();
+    if (guestLandingActive) {
+      try {
+        if (typeof window.__renderGuestLanding === 'function') await window.__renderGuestLanding();
+      } catch {}
+    } else {
+      await fetchFeed({ reset: true });
+    }
   }
 
   // If we arrived via a shared URL (/?open=...), open that article card.
