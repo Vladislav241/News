@@ -33,27 +33,29 @@ const menuPricing = document.getElementById("menuPricing");
 const menuLogout = document.getElementById("menuLogout");
 
 // открыть/закрыть меню
-btnAccount.addEventListener("click", (e) => {
-  // If not logged in, the Account button behaves like Login.
-  if (!authState.authenticated) {
-    openAuthModal('login');
-    return;
-  }
-  e.stopPropagation();
-  accountMenu.classList.toggle("open");
-});
+if (btnAccount && accountMenu) {
+  btnAccount.addEventListener("click", (e) => {
+    // If not logged in, the Account button behaves like Login.
+    if (!authState.authenticated) {
+      openAuthModal('login');
+      return;
+    }
+    e.stopPropagation();
+    accountMenu.classList.toggle("open");
+  });
 
-// закрывать при клике вне
-document.addEventListener("click", (e) => {
-  if (!accountMenu.contains(e.target) && !btnAccount.contains(e.target)) {
-    accountMenu.classList.remove("open");
-  }
-});
+  // закрывать при клике вне
+  document.addEventListener("click", (e) => {
+    if (!accountMenu.contains(e.target) && !btnAccount.contains(e.target)) {
+      if (accountMenu) accountMenu.classList.remove("open");
+    }
+  });
+}
 
 // ✅ Profile click
 if(menuProfile){
   menuProfile.addEventListener("click", () => {
-    accountMenu.classList.remove("open");
+    if (accountMenu) accountMenu.classList.remove("open");
     try { if (typeof window.__navigate === 'function') window.__navigate('/account'); else location.href = '/account'; } catch(_) {}
   });
 }
@@ -61,14 +63,14 @@ if(menuProfile){
 // ✅ Pricing click
 if(menuPricing){
   menuPricing.addEventListener("click", () => {
-    accountMenu.classList.remove("open");
+    if (accountMenu) accountMenu.classList.remove("open");
     try { if (typeof window.__navigate === 'function') window.__navigate('/pricing'); else location.href = '/pricing'; } catch(_) {}
   });
 }
 
 // ✅ Logout click
-menuLogout.addEventListener("click", async () => {
-  accountMenu.classList.remove("open");
+if (menuLogout) menuLogout.addEventListener("click", async () => {
+  if (accountMenu) accountMenu.classList.remove("open");
 
   try {
     // Cookie session logout
@@ -116,8 +118,13 @@ menuLogout.addEventListener("click", async () => {
     } catch {}
 
     try {
-      if (typeof window.__navigate === 'function') window.__navigate('/');
-      else window.location.href = '/';
+      if (typeof window.__navigate === 'function') {
+        window.__navigate('/');
+        try { if (typeof window.__syncGuestLandingVisibility === 'function') window.__syncGuestLandingVisibility(); } catch {}
+        try { window.dispatchEvent(new Event('popstate')); } catch {}
+      } else {
+        window.location.href = '/';
+      }
     } catch {
       window.location.href = '/';
     }

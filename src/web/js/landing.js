@@ -502,10 +502,13 @@
   window.__renderGuestLanding = renderLanding;
 
   document.addEventListener('click', (e) => {
-    const target = e.target && e.target.closest ? e.target.closest('#guestLandingStartBtn, .guestLandingFeatureCard, .guestLandingSourcesCard, .guestLandingPreview, .guestLandingFeedCard, .guestLandingWidget, .guestLandingHistory, .guestLandingSourceItem') : null;
-    if (!target || isAuthed()) return;
+    const rawTarget = e.target && e.target.closest ? e.target : null;
+    const interactive = rawTarget && rawTarget.closest ? rawTarget.closest('.guestLandingPreview a, .guestLandingPreview button, .guestLandingPreview summary, .guestLandingPreview [role="button"], .guestLandingPreview [data-action], .guestLandingWidget a, .guestLandingWidget button, .guestLandingWidget summary, .guestLandingWidget [role="button"], .guestLandingHistory a, .guestLandingHistory button, .guestLandingHistory summary, .guestLandingFeedCard a, .guestLandingFeedCard button, .guestLandingFeedCard summary, .guestLandingFeedCard [role="button"]') : null;
+    const target = rawTarget && rawTarget.closest ? rawTarget.closest('#guestLandingStartBtn, .guestLandingFeatureCard, .guestLandingSourcesCard, .guestLandingPreview, .guestLandingFeedCard, .guestLandingWidget, .guestLandingHistory, .guestLandingSourceItem') : null;
+    if ((!target && !interactive) || isAuthed()) return;
     e.preventDefault();
     e.stopPropagation();
+    if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
     try { if (typeof openAuthModal === 'function') openAuthModal('login'); } catch {}
   }, true);
   window.addEventListener('checkne:auth-state', () => {

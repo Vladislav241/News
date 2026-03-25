@@ -5900,7 +5900,7 @@ border:1px solid #000;
    Guest landing (preview entry)
    ============================= */
 body.guestLandingActive{
-  background: #fff;
+  background:#FFFF;
 }
 body.guestLandingActive header{
   display:none;
@@ -5965,11 +5965,11 @@ body.guestLandingActive #guestLanding *::after{
 }
 .guestLandingBrandText{
   font-family: "Jersey 25", Inter, system-ui;
-  font-size:40px;
+  font-size:50px;
   line-height:.88;
   font-weight:800;
   color:#060606;
-   margin-top:23px;
+   margin-top:18px;
 }
 .guestLandingTitle{
   
@@ -6002,13 +6002,12 @@ body.guestLandingActive #guestLanding *::after{
   height:72px;
   border-radius:18px;
   font-size:25px;
-  font-weight:600;
+  font-weight:400;
   letter-spacing:-.03em;
   cursor:pointer;
   box-shadow:none;
 }
-.guestLandingCta{ transition:transform .18s ease, box-shadow .18s ease, opacity .18s ease; box-shadow:0 14px 34px rgba(0,0,0,.16), 0 1px 0 rgba(255,255,255,.12) inset; }
-.guestLandingCta:hover{ transform:translateY(-1px); box-shadow:0 18px 38px rgba(0,0,0,.2), 0 1px 0 rgba(255,255,255,.12) inset; }
+.guestLandingCta:hover{ transform:translateY(-1px); }
 .guestLandingMetaGrid{
   margin-top:72px;
   display:grid;
@@ -6018,11 +6017,10 @@ body.guestLandingActive #guestLanding *::after{
 .guestLandingFeatureCard,
 .guestLandingSourcesCard,
 .guestLandingPreview{
-  border:1px solid rgba(17,18,22,.07);
+   border:1px solid #ececec;
   border-radius:28px;
-  background:linear-gradient(180deg,rgba(255,255,255,.94) 0%,rgba(250,250,248,.98) 100%);
-  box-shadow:0 10px 30px rgba(17,18,22,.045), 0 1px 0 rgba(255,255,255,.72) inset;
-  backdrop-filter:blur(10px);
+  background:#f8f8f8;
+  box-shadow:0 2px 10px rgba(0,0,0,.05);
 }
 .guestLandingMiniFeature{
   padding:20px 18px 18px;
@@ -6061,10 +6059,93 @@ body.guestLandingActive #guestLanding *::after{
   height:40px;
   flex:0 0 40px;
 }
-
-/* 🔥 фикс для "глаза" (он реально меньше внутри svg) */
-.guestLandingMiniHeader img[src*="Eye.svg"]{
-  transform: scale(1.25);
+.guestLandingMiniIcon{
+  position:relative;
+  width:40px;
+  height:40px;
+  flex:0 0 40px;
+  display:grid;
+  place-items:center;
+  transform:translateZ(0);
+  will-change:transform, opacity;
+}
+.guestLandingMiniIcon img{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  display:block;
+}
+.guestLandingMiniIcon--eye{
+  animation:guestLandingEyeFloat 6.8s ease-in-out infinite;
+}
+.guestLandingMiniIcon--eye img{
+  transform:scale(1.18);
+  transform-origin:center center;
+  animation:guestLandingEyeBlink 6.8s cubic-bezier(.4,0,.2,1) infinite;
+}
+.guestLandingMiniIcon--layers{
+  animation:guestLandingLayersFloat 5.8s ease-in-out infinite;
+}
+.guestLandingMiniIcon--camera{
+  animation:guestLandingCameraFloat 6.2s ease-in-out infinite;
+}
+.guestLandingMiniIcon--camera::after{
+  content:"";
+  position:absolute;
+  inset:7px 5px 14px 22px;
+  border-radius:999px;
+  background:radial-gradient(circle at 30% 30%, rgba(255,255,255,.85), rgba(255,255,255,0) 72%);
+  opacity:0;
+  mix-blend-mode:screen;
+  pointer-events:none;
+  animation:guestLandingCameraFlash 6.2s ease-in-out infinite;
+}
+.guestLandingMiniIcon--globe{
+  animation:guestLandingGlobeFloat 8.5s ease-in-out infinite;
+}
+.guestLandingFeatureCard{
+  transition:transform .32s cubic-bezier(.22,1,.36,1), box-shadow .32s cubic-bezier(.22,1,.36,1), border-color .32s ease, background-color .32s ease;
+  will-change:transform;
+}
+.guestLandingFeatureCard:hover{
+  transform:translateY(-4px);
+  box-shadow:0 14px 34px rgba(15,23,42,.08);
+  border-color:#e3e3e3;
+  background:#fbfbfb;
+}
+@keyframes guestLandingEyeFloat{
+  0%,100%{ transform:translate3d(0,0,0); }
+  50%{ transform:translate3d(0,-1.5px,0); }
+}
+@keyframes guestLandingEyeBlink{
+  0%,7%,42%,49%,100%{ transform:scale(1.18,1.18); }
+  4%{ transform:scale(1.18,.92); }
+  5.2%{ transform:scale(1.18,.22); }
+  6.1%{ transform:scale(1.18,.96); }
+  46%{ transform:scale(1.18,.98); }
+  47.3%{ transform:scale(1.18,.44); }
+  48.2%{ transform:scale(1.18,1.04); }
+}
+@keyframes guestLandingLayersFloat{
+  0%,100%{ transform:translate3d(0,0,0); }
+  28%{ transform:translate3d(0,-1px,0); }
+  58%{ transform:translate3d(0,1px,0); }
+}
+@keyframes guestLandingCameraFloat{
+  0%,100%{ transform:translate3d(0,0,0) scale(1); }
+  18%{ transform:translate3d(0,-1px,0) scale(1.01); }
+  22%{ transform:translate3d(0,0,0) scale(.97); }
+  26%{ transform:translate3d(0,0,0) scale(1.02); }
+  34%{ transform:translate3d(0,0,0) scale(1); }
+}
+@keyframes guestLandingCameraFlash{
+  0%,18%,100%{ opacity:0; transform:translateX(-2px) scale(.92); }
+  22%{ opacity:.78; transform:translateX(0) scale(1.02); }
+  27%{ opacity:0; transform:translateX(1px) scale(1.04); }
+}
+@keyframes guestLandingGlobeFloat{
+  0%,100%{ transform:translate3d(0,0,0) rotate(0deg); }
+  50%{ transform:translate3d(0,-2px,0) rotate(.8deg); }
 }
 .guestLandingMiniTitle{
   font-size:17px;
@@ -6214,11 +6295,10 @@ body.guestLandingActive #guestLanding *::after{
 }
 
 .guestLandingPreviewInner{
-  border:1px solid rgba(17,18,22,.10);
+  border:1px solid #d3d3d3;
   border-radius:28px;
   padding:22px 24px 24px;
-  background:linear-gradient(180deg,#ffffff 0%,#fbfbfa 100%);
-  box-shadow:0 14px 34px rgba(17,18,22,.06);
+  background:#fff;
 }
 .guestLandingHeroHead{ display:flex; gap:18px; align-items:flex-start; }
 .guestLandingFire{ width:48px;height:48px;flex:0 0 auto; }
@@ -6239,7 +6319,7 @@ body.guestLandingActive #guestLanding *::after{
   min-width:92px;height:42px;padding:0 18px;border-radius:999px;background:#060607;color:#fff;font-size:18px;font-weight:800;letter-spacing:-.03em;
 }
 .guestLandingHeroMeta{
-  font-size:14px;line-height:1.4;color:rgba(17,18,22,.58);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  font-size:14px;line-height:1.4;color:rgba(17,18,22,.48);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
 .guestLandingStoryList{ display:grid; gap:22px; margin-top:18px; }
 .guestLandingFeedCard{
@@ -6300,154 +6380,169 @@ body.guestLandingActive #guestLanding *::after{
 .guestLandingWidget,
 .guestLandingHistory,
 .guestLandingSourceItem{ cursor:pointer; }
-@media (max-width: 900px){
-  #guestLanding{ padding:20px 14px 0; max-width:none; }
-  .guestLandingShell{ grid-template-columns:1fr; gap:18px; }
-  .guestLandingLeft{ position:relative; top:0; padding:0; }
-  .guestLandingRight{ min-width:0; }
-  .guestLandingBrand{ margin-bottom:24px; gap:10px; }
-  .guestLandingBrandIcon{ width:40px; }
-  .guestLandingBrandText{ font-size:32px; margin-top:16px; }
-  .guestLandingTitle{ max-width:100%; font-size:40px; line-height:.95; }
-  .guestLandingSub{ max-width:100%; font-size:18px; line-height:1.36; margin-top:16px; }
-  .guestLandingActions{ margin-top:20px; }
-  .guestLandingCta{ width:100%; max-width:none; height:58px; font-size:19px; border-radius:18px; }
-  .guestLandingMetaGrid{ margin-top:22px; grid-template-columns:1fr; gap:12px; }
-  .guestLandingFeatureCard,
-  .guestLandingSourcesCard,
-  .guestLandingPreview{ border-radius:26px; }
-  .guestLandingMiniFeature{ min-height:0; padding:18px 16px 16px; }
-  .guestLandingMiniHeader img{ width:34px; height:34px; flex:0 0 34px; }
-  .guestLandingMiniTitle{ font-size:16px; }
-  .guestLandingMiniText{ margin-top:12px; font-size:13.5px; line-height:1.26; }
-  .guestLandingSourcesCard{ margin-top:16px; padding:18px 18px 14px; }
-  .guestLandingSourcesTitleWrap{ min-height:84px; }
-  .guestLandingSourcesTitle{ max-width:240px; font-size:22px; line-height:1.06; }
-  .guestLandingSourcesGlobe{ width:70px; height:70px; top:4px; right:4px; }
-  .guestLandingSourcesMarquee{ margin-top:12px; }
-  .guestLandingSourceImgWrap{ width:30px; height:30px; border-radius:9px; }
-  .guestLandingSourceImg{ width:18px; height:18px; }
-  .guestLandingSourceLabel{ font-size:18px; }
-  .guestLandingPreview{ padding:8px; }
-  .guestLandingPreviewInner{ border-radius:24px; padding:16px; }
-  .guestLandingHeroHead{ gap:10px; }
-  .guestLandingFire{ width:34px; height:34px; }
-  .guestLandingHeroTitle{ font-size:21px; line-height:1.08; }
-  .guestLandingHeroMedia{ margin-top:12px; }
-  .guestLandingHeroMedia img{ aspect-ratio:16 / 10.1; border-radius:18px; }
-  .guestLandingHeroMetaRow{ margin-top:12px; grid-template-columns:1fr; gap:8px; }
-  .guestLandingHeroMeta{ text-align:left; white-space:normal; }
-  .guestLandingScorePill{ min-width:84px; height:38px; font-size:17px; }
-  .guestLandingStoryList{ gap:14px; margin-top:14px; }
-  .guestLandingWidgets{ display:none !important; }
-  .guestLandingHistory{ display:block !important; margin-top:18px; }
-  .guestLandingHistory .trustHistoryHeader{ margin:0 0 10px; }
-  .guestLandingHistory .trustHistoryTitle{ font-size:18px; }
+
+.guestLandingShell,
+.guestLandingShell > *,
+.guestLandingLeft,
+.guestLandingRight,
+.guestLandingPreview,
+.guestLandingPreviewInner,
+.guestLandingStoryList,
+.guestLandingWidgets,
+.guestLandingHistory,
+.guestLandingHistoryGrid,
+.guestLandingHeroHead,
+.guestLandingHeroMetaRow{
+  min-width:0;
 }
-@media (max-width: 640px){
-  body.guestLandingActive{
-    width:100%;
-    max-width:100%;
-  }
-  #guestLanding{
-    width:100%;
-    max-width:100%;
-    margin:0;
-    padding:12px 10px 0;
-  }
-  .guestLandingShell,
-  .guestLandingLeft,
-  .guestLandingRight{
-    width:100%;
-    max-width:100%;
-    min-width:0;
-  }
-  .guestLandingLeft{
-    padding:2px 2px 0;
-  }
-  .guestLandingBrand{ margin-bottom:18px; align-items:center; }
-  .guestLandingBrandIcon{ width:34px; }
-  .guestLandingBrandText{ font-size:27px; margin-top:11px; }
-  .guestLandingTitle{
-    font-size:31px;
-    line-height:.96;
-    letter-spacing:-.055em;
-  }
-  .guestLandingSub{
-    font-size:16.5px;
-    line-height:1.38;
-    letter-spacing:-.025em;
-    color:rgba(17,18,22,.78);
-  }
-  .guestLandingActions{ margin-top:18px; }
-  .guestLandingCta{
-    height:56px;
-    font-size:19px;
-    border-radius:18px;
-  }
-  .guestLandingFeatureCard,
-  .guestLandingSourcesCard,
-  .guestLandingPreview{
-    border-radius:24px;
-    box-shadow:0 12px 30px rgba(17,18,22,.06), 0 1px 0 rgba(255,255,255,.78) inset;
-  }
-  .guestLandingMiniFeature{ padding:18px 16px 15px; }
-  .guestLandingMiniHeader{ gap:11px; margin-bottom:10px; }
-  .guestLandingMiniTitle{ font-size:15.5px; }
-  .guestLandingMiniText{ margin-top:10px; font-size:13px; line-height:1.28; color:rgba(17,18,22,.76); }
-  .guestLandingSourcesCard{ margin-top:14px; padding:18px 16px 14px; }
-  .guestLandingSourcesTitleWrap{ min-height:74px; }
-  .guestLandingSourcesTitle{ max-width:185px; font-size:20px; }
-  .guestLandingSourcesGlobe{ width:62px; height:62px; top:2px; right:0; }
-  .guestLandingSourcesMarquee{ margin-top:10px; padding:6px 0 4px; }
-  .guestLandingSourceItem{ gap:8px; }
-  .guestLandingSourceLabel{ font-size:16px; }
-  .guestLandingPreview{ padding:6px; }
-  .guestLandingPreviewInner{ padding:14px; border-radius:20px; }
-  .guestLandingHeroHead{ align-items:flex-start; gap:9px; }
-  .guestLandingHeroTitle{
-    font-size:19px;
-    line-height:1.08;
-    overflow-wrap:anywhere;
-    word-break:break-word;
-  }
-  .guestLandingHeroMedia img{ aspect-ratio:16 / 10.9; border-radius:16px; }
-  .guestLandingHeroMetaRow{ grid-template-columns:1fr; gap:8px; }
-  .guestLandingScorePill{ width:max-content; min-width:78px; height:36px; font-size:16px; }
-  .guestLandingHeroMeta{
-    text-align:left;
-    white-space:normal;
-    overflow:visible;
-    text-overflow:clip;
-    word-break:break-word;
-    font-size:13px;
-    line-height:1.36;
-  }
-  .guestLandingStoryList{ gap:12px; margin-top:12px; }
-  .guestLandingFeedCard,
-  .guestLandingStoryFallback{ border-radius:18px; }
-  .guestLandingHistory{
-    display:block !important;
-    margin-top:16px;
-  }
-  .guestLandingHistory .trustHistoryHeader{ margin:2px 0 10px; gap:10px; }
-  .guestLandingHistory .trustHistoryTitle{ font-size:18px; }
-  .guestLandingHistory .trustChartControls{ gap:6px; }
-  .guestLandingHistory .trustCtl{ width:30px; height:30px; border-radius:10px; }
-  .guestLandingHistory .trustChartCard{ padding:10px 10px 8px; border-radius:18px; }
-  .guestLandingHistory .trustChartLoading{ height:210px; border-radius:16px; }
-  .guestLandingHistory .trustStatsCard{ border-radius:18px; padding:12px; }
-  .guestLandingHistory .trustStatsRow{ font-size:13.5px; }
-  .guestLandingHistory .trustStatsLabel{ font-size:12px; }
-  .guestLandingHistory .trustStatsVal{ font-size:14.5px; }
-  .guestLandingHistory .trustStatsSub{ font-size:11.5px; }
+.guestLandingShell{
+  width:100%;
+  isolation:isolate;
 }
-@media (max-width: 1280px){
-  .guestLandingShell{ grid-template-columns: 1fr; }
-  .guestLandingLeft{ position:relative; top:0; }
+.guestLandingLeft,
+.guestLandingRight{
+  position:relative;
+  z-index:0;
+}
+.guestLandingPreview,
+.guestLandingPreviewInner,
+.guestLandingHeroMedia,
+.guestLandingHistoryChart,
+.guestLandingWidget > .widgetCard{
+  contain:layout paint;
+}
+.guestLandingFeedCard img,
+.guestLandingHeroMedia img{
+  max-width:100%;
+  height:auto;
+}
+.guestLandingSourcesCard{
+  transition:transform .35s cubic-bezier(.22,1,.36,1), box-shadow .35s cubic-bezier(.22,1,.36,1), border-color .35s ease, background-color .35s ease;
+}
+.guestLandingSourcesCard:hover{
+  transform:translateY(-4px);
+  box-shadow:0 12px 30px rgba(0,0,0,.08);
+  border-color:#e3e3e3;
+  background:#fbfbfb;
+}
+.guestLandingSourcesGlobe{
+  animation:guestLandingSourcesGlobeFloat 6s ease-in-out infinite;
+  transform-origin:center;
+  will-change:transform;
+}
+@keyframes guestLandingSourcesGlobeFloat{
+  0%,100%{ transform:translate3d(0,0,0) rotate(0deg); }
+  50%{ transform:translate3d(0,-4px,0) rotate(2deg); }
 }
 
-/* ===== Landing widgets: compact density ===== */
+@media (max-width: 1380px){
+  #guestLanding{ padding:30px 22px 0; }
+  .guestLandingShell{ grid-template-columns:minmax(0,460px) minmax(0,1fr); gap:28px; }
+  .guestLandingBrand{ margin-bottom:72px; }
+  .guestLandingTitle{ max-width:460px; font-size:58px; }
+  .guestLandingSub{ max-width:430px; font-size:21px; }
+  .guestLandingMetaGrid{ margin-top:44px; gap:12px; }
+  .guestLandingMiniFeature{ min-height:168px; padding:18px 16px 16px; }
+  .guestLandingMiniIcon{ width:36px; height:36px; flex:0 0 36px; }
+  .guestLandingMiniTitle{ font-size:15px; }
+  .guestLandingMiniText{ font-size:13px; }
+  .guestLandingSourcesCard{ margin-top:24px; padding:24px 20px 18px; }
+  .guestLandingSourcesTitle{ max-width:340px; font-size:24px; }
+  .guestLandingSourcesGlobe{ width:80px; height:80px; top:10px; right:18px; }
+  .guestLandingSourceLabel{ font-size:22px; }
+  .guestLandingPreviewInner{ padding:18px 18px 20px; border-radius:24px; }
+  .guestLandingHeroTitle{ font-size:24px; }
+  .guestLandingHeroMedia img{ border-radius:18px; }
+  .guestLandingWidgets{ gap:12px; }
+  .guestLandingHistoryGrid{ grid-template-columns:minmax(0,1fr) 156px; gap:14px; }
+}
+
+@media (max-width: 1180px){
+  #guestLanding{ max-width:none; padding:24px 18px 0; }
+  .guestLandingShell{ grid-template-columns:1fr; gap:22px; }
+  .guestLandingLeft{ position:relative; top:0; padding:0; }
+  .guestLandingRight{ width:100%; }
+  .guestLandingBrand{ margin-bottom:32px; }
+  .guestLandingTitle{ max-width:720px; font-size:48px; line-height:.96; }
+  .guestLandingSub{ max-width:720px; font-size:20px; margin-top:18px; }
+  .guestLandingActions{ margin-top:22px; }
+  .guestLandingCta{ width:min(360px,100%); height:60px; font-size:20px; }
+  .guestLandingMetaGrid{ margin-top:28px; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+  .guestLandingMiniFeature{ min-height:154px; }
+  .guestLandingSourcesCard{ margin-top:20px; }
+  .guestLandingPreview{ padding:8px; }
+  .guestLandingPreviewInner{ padding:16px; border-radius:22px; }
+  .guestLandingHeroHead{ gap:12px; }
+  .guestLandingFire{ width:38px; height:38px; }
+  .guestLandingHeroTitle{ font-size:22px; }
+  .guestLandingHeroMedia{ margin-top:14px; }
+  .guestLandingHeroMedia img{ aspect-ratio:16 / 8.8; }
+  .guestLandingHeroMetaRow{ margin-top:12px; gap:12px; }
+  .guestLandingHeroMeta{ text-align:left; white-space:normal; overflow:visible; text-overflow:clip; }
+  .guestLandingWidgets{ grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+  .guestLandingHistoryGrid{ grid-template-columns:minmax(0,1fr) 170px; }
+}
+
+@media (max-width: 1024px){
+  #guestLanding{ padding:22px 16px 0; }
+  .guestLandingShell{ gap:20px; }
+  .guestLandingBrand{ gap:10px; margin-bottom:28px; }
+  .guestLandingBrandIcon{ width:42px; }
+  .guestLandingBrandText{ font-size:34px; margin-top:18px; }
+  .guestLandingTitle{ max-width:100%; font-size:42px; }
+  .guestLandingSub{ max-width:100%; font-size:18px; line-height:1.34; }
+  .guestLandingCta{ width:100%; max-width:none; height:56px; font-size:19px; border-radius:16px; }
+  .guestLandingMetaGrid{ grid-template-columns:1fr; gap:14px; }
+  .guestLandingMiniFeature{ min-height:0; }
+  .guestLandingMiniIcon{ width:34px; height:34px; flex:0 0 34px; }
+  .guestLandingMiniTitle{ font-size:15px; }
+  .guestLandingMiniText{ margin-top:12px; font-size:13px; line-height:1.22; }
+  .guestLandingSourcesCard{ padding:20px 18px 14px; }
+  .guestLandingSourcesTitleWrap{ min-height:90px; }
+  .guestLandingSourcesTitle{ max-width:210px; font-size:22px; line-height:1.08; }
+  .guestLandingSourcesGlobe{ width:74px; height:74px; top:8px; right:4px; }
+  .guestLandingSourcesMarquee{ margin-top:14px; }
+  .guestLandingSourceImgWrap{ width:30px; height:30px; border-radius:8px; }
+  .guestLandingSourceImg{ width:18px; height:18px; }
+  .guestLandingSourceLabel{ font-size:17px; }
+  .guestLandingPreviewInner{ border-radius:22px; padding:14px; }
+  .guestLandingHeroHead{ gap:10px; }
+  .guestLandingFire{ width:34px; height:34px; }
+  .guestLandingHeroTitle{ font-size:20px; line-height:1.08; }
+  .guestLandingHeroMedia img{ aspect-ratio:16 / 10.8; border-radius:16px; }
+  .guestLandingHeroMetaRow{ grid-template-columns:1fr; gap:8px; }
+  .guestLandingScorePill{ min-width:84px; height:38px; font-size:17px; }
+  .guestLandingStoryList{ gap:14px; margin-top:14px; }
+  .guestLandingWidgets,
+  .guestLandingHistory{ display:none !important; }
+}
+
+@media (max-width: 640px){
+  body.guestLandingActive{ width:100%; max-width:100%; }
+  #guestLanding{ width:100%; max-width:100%; margin:0; padding:16px 10px 0; }
+  .guestLandingShell,
+  .guestLandingLeft,
+  .guestLandingRight{ width:100%; max-width:100%; min-width:0; }
+  .guestLandingPreview{ padding:6px; border-radius:22px; }
+  .guestLandingPreviewInner{ padding:12px; border-radius:18px; }
+  .guestLandingHeroHead{ align-items:flex-start; }
+  .guestLandingHeroTitle{ font-size:18px; line-height:1.08; overflow-wrap:anywhere; word-break:break-word; }
+  .guestLandingHeroMedia img{ aspect-ratio:16 / 11.5; border-radius:14px; }
+  .guestLandingHeroMetaRow{ grid-template-columns:1fr; gap:8px; }
+  .guestLandingScorePill{ width:max-content; }
+  .guestLandingHeroMeta{ text-align:left; white-space:normal; overflow:visible; text-overflow:clip; word-break:break-word; }
+  .guestLandingStoryList{ gap:12px; }
+  .guestLandingFeedCard,
+  .guestLandingStoryFallback{ border-radius:16px; }
+  .guestLandingBrand{ margin-bottom:24px; }
+  .guestLandingBrandIcon{ width:38px; }
+  .guestLandingBrandText{ font-size:30px; margin-top:16px; }
+  .guestLandingTitle{ font-size:34px; }
+  .guestLandingSub{ font-size:17px; }
+  .guestLandingCta{ height:54px; font-size:18px; }
+  .guestLandingSourcesTitle{ max-width:185px; font-size:20px; }
+  .guestLandingSourcesGlobe{ width:68px; height:68px; top:4px; right:0; }
+}
 </style>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
@@ -6456,53 +6551,49 @@ body.guestLandingActive #guestLanding *::after{
 <body>
   <header id="siteHeader" class="siteHeader">
     <div class="headerInner">
-  <!-- Brand: logo + ONE news. (matches the reference) -->
-  <div id="brand" class="brand" aria-label="ONE news" role="button" tabindex="0">
-    <img class="brandLogo" src="/static/icons/Logo.svg" alt="Logo" />
-    <div class="brandText"><div class="top">CHECKNE.</div></div>
-  </div>
+      <div id="brand" class="brand" aria-label="ONE news" role="button" tabindex="0">
+        <img class="brandLogo" src="/static/icons/Logo.svg" alt="Logo" />
+        <div class="brandText"><div class="top">CHECKNE.</div></div>
+      </div>
 
-  <!-- Spacer column (keeps the header grid stable) -->
-  <div class="headerCenter"></div>
+      <div class="headerCenter"></div>
 
-  <!-- ✅ RIGHT: Tracking + Account -->
-  <div class="headerRight">
-    <button id="btnTracking" class="trackBtn" type="button" aria-label="Tracking">
-      <span>Tracking</span>
-      <span id="trackingCount" class="trackBadge">0</span>
-    </button>
-    <div class="accountWrap">
-      <button id="btnAccount" class="loginBtn" type="button" aria-label="Account">
-        <span id="accountAvatar" class="accountAvatar" aria-hidden="true">V</span>
-        <span id="accountName" class="accountName">Account</span>
-        <span id="accountPlanPill" class="accountPlanPill" style="display:none;">Pro</span>
-      </button>
+      <div class="headerRight">
+        <button id="btnTracking" class="trackBtn" type="button" aria-label="Tracking">
+          <span>Tracking</span>
+          <span id="trackingCount" class="trackBadge">0</span>
+        </button>
+        <div class="accountWrap">
+          <button id="btnAccount" class="loginBtn" type="button" aria-label="Account">
+            <span id="accountAvatar" class="accountAvatar" aria-hidden="true">V</span>
+            <span id="accountName" class="accountName">Account</span>
+            <span id="accountPlanPill" class="accountPlanPill" style="display:none;">Pro</span>
+          </button>
 
-      <div id="accountMenu" class="accountMenu">
-        <div class="accountMenuHeader">
-          <div class="menuEmailRow">
-            <span class="menuEmailDot" aria-hidden="true"></span>
-            <div id="menuEmail" class="menuEmailPlain"></div>
+          <div id="accountMenu" class="accountMenu">
+            <div class="accountMenuHeader">
+              <div class="menuEmailRow">
+                <span class="menuEmailDot" aria-hidden="true"></span>
+                <div id="menuEmail" class="menuEmailPlain"></div>
+              </div>
+            </div>
+
+            <div class="accountMenuDivider"></div>
+
+            <button id="menuProfile" type="button"><span data-i18n="profile.menu">Profile</span><span id="menuPlanBadge" class="menuPlanBadge" style="display:none;">FREE</span></button>
+            <button id="menuPricing" type="button" data-i18n="pricing.menu">Pricing</button>
+            <button id="menuLogout" type="button">Log out</button>
           </div>
         </div>
 
-        <div class="accountMenuDivider"></div>
-
-        <button id="menuProfile" type="button"><span data-i18n="profile.menu">Profile</span><span id="menuPlanBadge" class="menuPlanBadge" style="display:none;">FREE</span></button>
-        <button id="menuPricing" type="button" data-i18n="pricing.menu">Pricing</button>
-        <button id="menuLogout" type="button">Log out</button>
+        <button id="btnRefresh" class="btn hiddenCompat" type="button">Refresh</button>
       </div>
     </div>
-
-    <!-- Manual refresh kept for JS compatibility, but hidden in the new design -->
-    <button id="btnRefresh" class="btn hiddenCompat" type="button">Refresh</button>
-  </div>
-</div>
   </header>
 
-  <!-- Backdrop used by the Feed <-> Tracking page transition -->
   <div id="viewShade" class="viewShade" aria-hidden="true"><div class="dotLoader" aria-hidden="true"><span></span><span></span><span></span></div></div>
-  <section id="guestLanding" aria-label="Guest landing preview">
+
+<section id="guestLanding" aria-label="Guest landing preview">
     <div class="guestLandingShell">
       <div class="guestLandingLeft">
         <div class="guestLandingBrand" aria-label="CHECKNE.">
@@ -6517,7 +6608,7 @@ body.guestLandingActive #guestLanding *::after{
       <div class="guestLandingMetaGrid">
   <div class="guestLandingMiniFeature guestLandingFeatureCard">
     <div class="guestLandingMiniHeader">
-      <img src="/static/icons/Eye.svg" alt="">
+      <span class="guestLandingMiniIcon guestLandingMiniIcon--eye" aria-hidden="true"><img src="/static/icons/Eye.svg" alt=""></span>
       <div class="guestLandingMiniTitle">Real-time tracking</div>
     </div>
     <div class="guestLandingMiniText">
@@ -6527,7 +6618,7 @@ body.guestLandingActive #guestLanding *::after{
 
   <div class="guestLandingMiniFeature guestLandingFeatureCard">
     <div class="guestLandingMiniHeader">
-      <img src="/static/icons/structure.svg" alt="">
+      <span class="guestLandingMiniIcon guestLandingMiniIcon--layers" aria-hidden="true"><img src="/static/icons/structure.svg" alt=""></span>
       <div class="guestLandingMiniTitle">Multiple sources</div>
     </div>
     <div class="guestLandingMiniText">
@@ -6537,7 +6628,7 @@ body.guestLandingActive #guestLanding *::after{
 
   <div class="guestLandingMiniFeature guestLandingFeatureCard">
     <div class="guestLandingMiniHeader">
-      <img src="/static/icons/camera.svg" alt="">
+      <span class="guestLandingMiniIcon guestLandingMiniIcon--camera" aria-hidden="true"><img src="/static/icons/camera.svg" alt=""></span>
       <div class="guestLandingMiniTitle">Image search</div>
     </div>
     <div class="guestLandingMiniText">
@@ -6553,7 +6644,7 @@ body.guestLandingActive #guestLanding *::after{
         Based On Data From<br>
         Diverse News Sources:
       </h2>
-      <div class="guestLandingSourcesGlobe">
+      <div class="guestLandingSourcesGlobe guestLandingMiniIcon guestLandingMiniIcon--globe" aria-hidden="true">
         <img src="/static/icons/news.svg" alt="">
       </div>
     </div>

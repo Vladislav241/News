@@ -214,7 +214,8 @@
   function updateBannerVisibility(){
     const banner = qs('sharePromoBanner');
     if (!banner) return;
-    const should = !!(cfg?.enabled && currentPage() === 'feed' && isEligiblePlan() && !isDismissed() && !status?.reward_active_until);
+    const onGuestLanding = !!(typeof window.__isGuestLandingActive === 'function' && window.__isGuestLandingActive());
+    const should = !!(cfg?.enabled && isAuthed() && currentPage() === 'feed' && !onGuestLanding && isEligiblePlan() && !isDismissed() && !status?.reward_active_until);
     banner.classList.toggle('isVisible', should);
   }
 
