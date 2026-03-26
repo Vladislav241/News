@@ -6483,65 +6483,360 @@ body.guestLandingActive #guestLanding *::after{
   .guestLandingHistoryGrid{ grid-template-columns:minmax(0,1fr) 170px; }
 }
 
-@media (max-width: 1024px){
-  #guestLanding{ padding:22px 16px 0; }
-  .guestLandingShell{ gap:20px; }
-  .guestLandingBrand{ gap:10px; margin-bottom:28px; }
-  .guestLandingBrandIcon{ width:42px; }
-  .guestLandingBrandText{ font-size:34px; margin-top:18px; }
-  .guestLandingTitle{ max-width:100%; font-size:42px; }
-  .guestLandingSub{ max-width:100%; font-size:18px; line-height:1.34; }
-  .guestLandingCta{ width:100%; max-width:none; height:56px; font-size:19px; border-radius:16px; }
-  .guestLandingMetaGrid{ grid-template-columns:1fr; gap:14px; }
-  .guestLandingMiniFeature{ min-height:0; }
-  .guestLandingMiniIcon{ width:34px; height:34px; flex:0 0 34px; }
-  .guestLandingMiniTitle{ font-size:15px; }
-  .guestLandingMiniText{ margin-top:12px; font-size:13px; line-height:1.22; }
-  .guestLandingSourcesCard{ padding:20px 18px 14px; }
-  .guestLandingSourcesTitleWrap{ min-height:90px; }
-  .guestLandingSourcesTitle{ max-width:210px; font-size:22px; line-height:1.08; }
-  .guestLandingSourcesGlobe{ width:74px; height:74px; top:8px; right:4px; }
+@media (min-width: 1025px) and (max-width: 1180px){
+  .guestLandingMetaGrid{
+    grid-template-columns:repeat(3,minmax(0,240px));
+    justify-content:flex-start;
+    align-items:stretch;
+    max-width:780px;
+    gap:14px;
+  }
+  .guestLandingMiniFeature{
+    min-height:0;
+    aspect-ratio:1 / 1;
+    padding:20px 16px 16px;
+    display:flex;
+    flex-direction:column;
+    justify-content:flex-start;
+  }
+  .guestLandingMiniHeader{
+    display:grid;
+    grid-template-columns:44px minmax(0,1fr);
+    align-items:start;
+    gap:12px;
+    margin-bottom:14px;
+  }
+  .guestLandingMiniHeader > *{ min-width:0; }
+  .guestLandingMiniTitle{ font-size:17px; line-height:.96; }
+  .guestLandingMiniText{ font-size:13px; line-height:1.18; }
+  .guestLandingSourcesCard{
+    width:100%;
+    max-width:780px;
+    box-sizing:border-box;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 1024px){
+  #guestLanding{ max-width:none; padding:24px 18px 0; }
+  .guestLandingShell{ grid-template-columns:1fr; gap:22px; }
+  .guestLandingLeft{ position:relative; top:0; padding:0; }
+  .guestLandingRight{ width:100%; }
+  .guestLandingBrand{ margin-bottom:32px; }
+  .guestLandingTitle{ max-width:720px; font-size:48px; line-height:.96; }
+  .guestLandingSub{ max-width:720px; font-size:20px; margin-top:18px; }
+  .guestLandingActions{ margin-top:22px; }
+  .guestLandingCta{ width:min(360px,100%); height:60px; font-size:20px; }
+  .guestLandingMetaGrid{
+    margin-top:28px;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:16px;
+    align-items:stretch;
+    max-width:920px;
+  }
+  .guestLandingMiniFeature{
+    min-height:0;
+    aspect-ratio:1 / 1;
+    padding:22px 18px 18px;
+    display:flex;
+    flex-direction:column;
+    justify-content:flex-start;
+  }
+  .guestLandingMiniHeader{ align-items:flex-start; gap:12px; margin-bottom:16px; }
+  .guestLandingMiniIcon{ width:44px; height:44px; flex:0 0 44px; }
+  .guestLandingMiniTitle{ font-size:18px; line-height:.98; }
+  .guestLandingMiniText{ margin-top:0; font-size:14px; line-height:1.2; }
+  .guestLandingSourcesCard{ max-width:920px; margin-top:20px; padding:22px 18px 16px; }
+  .guestLandingSourcesTitleWrap{ min-height:96px; }
+  .guestLandingSourcesTitle{ max-width:240px; font-size:24px; line-height:1.06; }
+  .guestLandingSourcesGlobe{ width:76px; height:76px; top:6px; right:8px; }
   .guestLandingSourcesMarquee{ margin-top:14px; }
-  .guestLandingSourceImgWrap{ width:30px; height:30px; border-radius:8px; }
+  .guestLandingSourceImgWrap{ width:32px; height:32px; border-radius:9px; }
   .guestLandingSourceImg{ width:18px; height:18px; }
-  .guestLandingSourceLabel{ font-size:17px; }
-  .guestLandingPreviewInner{ border-radius:22px; padding:14px; }
-  .guestLandingHeroHead{ gap:10px; }
-  .guestLandingFire{ width:34px; height:34px; }
-  .guestLandingHeroTitle{ font-size:20px; line-height:1.08; }
-  .guestLandingHeroMedia img{ aspect-ratio:16 / 10.8; border-radius:16px; }
-  .guestLandingHeroMetaRow{ grid-template-columns:1fr; gap:8px; }
-  .guestLandingScorePill{ min-width:84px; height:38px; font-size:17px; }
-  .guestLandingStoryList{ gap:14px; margin-top:14px; }
-  .guestLandingWidgets,
-  .guestLandingHistory{ display:none !important; }
+  .guestLandingSourceLabel{ font-size:18px; }
+  .guestLandingPreview{ width:100%; max-width:920px; padding:8px; }
+  .guestLandingPreviewInner{ padding:16px; border-radius:22px; }
+  .guestLandingHeroHead{ gap:12px; }
+  .guestLandingFire{ width:38px; height:38px; }
+  .guestLandingHeroTitle{ font-size:22px; }
+  .guestLandingHeroMedia{ margin-top:14px; }
+  .guestLandingHeroMedia img{ aspect-ratio:16 / 8.8; border-radius:18px; }
+  .guestLandingHeroMetaRow{ margin-top:12px; gap:12px; }
+  .guestLandingHeroMeta{ text-align:left; white-space:normal; overflow:visible; text-overflow:clip; }
+  .guestLandingWidgets{ display:grid !important; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+  .guestLandingHistory{ display:block !important; }
+  .guestLandingHistoryGrid{ grid-template-columns:minmax(0,1fr) 170px; }
 }
 
 @media (max-width: 640px){
   body.guestLandingActive{ width:100%; max-width:100%; }
-  #guestLanding{ width:100%; max-width:100%; margin:0; padding:16px 10px 0; }
-  .guestLandingShell,
+  #guestLanding{ width:100%; max-width:100%; margin:0; padding:22px 16px 0; }
+  .guestLandingShell{
+    display:flex;
+    flex-direction:column;
+    gap:16px;
+    width:100%;
+    max-width:100%;
+  }
   .guestLandingLeft,
-  .guestLandingRight{ width:100%; max-width:100%; min-width:0; }
-  .guestLandingPreview{ padding:6px; border-radius:22px; }
-  .guestLandingPreviewInner{ padding:12px; border-radius:18px; }
-  .guestLandingHeroHead{ align-items:flex-start; }
-  .guestLandingHeroTitle{ font-size:18px; line-height:1.08; overflow-wrap:anywhere; word-break:break-word; }
-  .guestLandingHeroMedia img{ aspect-ratio:16 / 11.5; border-radius:14px; }
-  .guestLandingHeroMetaRow{ grid-template-columns:1fr; gap:8px; }
-  .guestLandingScorePill{ width:max-content; }
-  .guestLandingHeroMeta{ text-align:left; white-space:normal; overflow:visible; text-overflow:clip; word-break:break-word; }
-  .guestLandingStoryList{ gap:12px; }
-  .guestLandingFeedCard,
-  .guestLandingStoryFallback{ border-radius:16px; }
-  .guestLandingBrand{ margin-bottom:24px; }
+  .guestLandingRight{
+    width:100%;
+    max-width:100%;
+    min-width:0;
+    display:contents;
+  }
+  .guestLandingBrand{ order:1; gap:10px; margin-bottom:18px; }
   .guestLandingBrandIcon{ width:38px; }
   .guestLandingBrandText{ font-size:30px; margin-top:16px; }
-  .guestLandingTitle{ font-size:34px; }
-  .guestLandingSub{ font-size:17px; }
-  .guestLandingCta{ height:54px; font-size:18px; }
-  .guestLandingSourcesTitle{ max-width:185px; font-size:20px; }
-  .guestLandingSourcesGlobe{ width:68px; height:68px; top:4px; right:0; }
+  .guestLandingTitle{
+    order:2;
+    margin:0;
+    font-size:34px;
+    line-height:.98;
+    letter-spacing:-.055em;
+  }
+  .guestLandingSub{
+    order:3;
+    margin:10px 0 0;
+    font-size:17px;
+    line-height:1.34;
+    letter-spacing:-.03em;
+  }
+  .guestLandingActions{ order:4; margin-top:18px; }
+  .guestLandingCta{
+    width:auto;
+    min-width:142px;
+    height:58px;
+    padding:0 18px;
+    border-radius:18px;
+    font-size:18px;
+    font-weight:700;
+    letter-spacing:-.03em;
+    box-shadow:0 1px 0 rgba(255,255,255,.06) inset;
+  }
+  .guestLandingPreview{
+    order:7;
+    margin-top:2px;
+    padding:0;
+    border:none;
+    background:transparent;
+    border-radius:0;
+  }
+  .guestLandingPreviewInner{
+    padding:0;
+    border:none;
+    background:transparent;
+    border-radius:0;
+    overflow:visible;
+  }
+  .guestLandingHeroHead{
+    align-items:flex-start;
+    gap:14px;
+  }
+  .guestLandingFire{
+    width:30px;
+    height:30px;
+    flex:0 0 30px;
+  }
+  .guestLandingHeroTitle{
+    font-size:21px;
+    line-height:1.08;
+    letter-spacing:-.05em;
+    overflow-wrap:normal;
+    word-break:normal;
+  }
+  .guestLandingHeroMedia{ margin-top:14px; }
+  .guestLandingHeroMedia img{
+    aspect-ratio:16 / 9.6;
+    border-radius:18px;
+  }
+  .guestLandingHeroMetaRow{
+    margin-top:12px;
+    grid-template-columns:92px 1fr;
+    gap:14px;
+    align-items:center;
+  }
+  .guestLandingScorePill{
+    min-width:86px;
+    height:38px;
+    padding:0 16px;
+    font-size:16px;
+    width:auto;
+  }
+  .guestLandingHeroMeta{
+    text-align:left;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    word-break:normal;
+    font-size:12px;
+  }
+  .guestLandingStoryList{
+    gap:12px;
+    margin-top:14px;
+  }
+  .guestLandingFeedCard,
+  .guestLandingStoryFallback{ border-radius:16px; }
+  .guestLandingMetaGrid{
+    order:5;
+    margin-top:0;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:10px;
+    align-items:stretch;
+  }
+  .guestLandingMiniFeature{
+    min-height:0;
+    aspect-ratio:1 / 1;
+    min-width:0;
+    padding:14px 12px 12px;
+    border-radius:24px;
+    background:#f8f8f8;
+    box-shadow:0 10px 28px rgba(0,0,0,.10);
+    display:flex;
+    flex-direction:column;
+    justify-content:flex-start;
+    box-sizing:border-box;
+    overflow:hidden;
+  }
+  .guestLandingMiniHeader{
+    display:grid;
+    grid-template-columns:40px minmax(0,1fr);
+    align-items:start;
+    gap:10px;
+    margin-bottom:10px;
+    min-width:0;
+  }
+  .guestLandingMiniHeader > *{ min-width:0; }
+  .guestLandingMiniIcon{
+    width:40px;
+    height:40px;
+    flex:0 0 40px;
+  }
+  .guestLandingMiniTitle{
+    font-size:13px;
+    line-height:.94;
+    letter-spacing:-.05em;
+    overflow-wrap:anywhere;
+  }
+  .guestLandingMiniText{
+    margin-top:0;
+    font-size:11px;
+    line-height:1.14;
+    letter-spacing:-.02em;
+    overflow-wrap:anywhere;
+  }
+  .guestLandingSourcesCard{
+    order:6;
+    width:100%;
+    max-width:100%;
+    min-width:0;
+    margin-top:10px;
+    padding:18px 14px 16px;
+    border-radius:28px;
+    background:#f8f8f8;
+    box-shadow:0 12px 30px rgba(0,0,0,.10);
+    box-sizing:border-box;
+    overflow:hidden;
+  }
+  .guestLandingSourcesTitleWrap{ min-height:96px; }
+  .guestLandingSourcesTitle{
+    max-width:190px;
+    font-size:20px;
+    line-height:1.02;
+    letter-spacing:-.055em;
+  }
+  .guestLandingSourcesGlobe{ width:76px; height:76px; top:0; right:2px; }
+  .guestLandingSourcesMarquee{ margin-top:8px; }
+  .guestLandingSourceImgWrap{ width:30px; height:30px; border-radius:8px; }
+  .guestLandingSourceImg{ width:18px; height:18px; }
+  .guestLandingSourceLabel{ font-size:17px; }
+  .guestLandingWidgets{
+    order:8;
+    display:grid !important;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:14px;
+    margin-top:14px;
+  }
+  .guestLandingWidget,
+  .guestLandingWidget > .widgetCard{
+    min-width:0;
+  }
+  .guestLandingWidget > .widgetCard{
+    border-radius:22px;
+    border:1px solid #ddd;
+    background:#fff;
+    box-shadow:none;
+  }
+  .guestLandingHistory{
+    order:9;
+    display:block !important;
+    margin-top:14px;
+  }
+  .guestLandingHistoryTop{
+    display:grid;
+    grid-template-columns:1fr auto;
+    align-items:end;
+    gap:10px;
+  }
+  .guestLandingHistoryTitle{
+    margin:0 0 2px;
+    font-size:16px;
+    line-height:1.1;
+  }
+  .guestLandingHistoryControls{ gap:8px; }
+  .guestLandingHistoryControl{
+    width:34px;
+    height:34px;
+    border-radius:11px;
+    font-size:18px;
+  }
+  .guestLandingHistoryGrid{
+    grid-template-columns:1fr 146px;
+    gap:12px;
+    align-items:start;
+  }
+  .guestLandingHistoryChart{
+    grid-column:1 / -1;
+    order:2;
+    min-height:0;
+    padding:8px;
+    border-radius:18px;
+  }
+  .guestLandingHistoryStats{
+    border-radius:18px;
+    padding:14px 14px;
+  }
+  .guestLandingHistoryStat{
+    padding:10px 0;
+    font-size:14px;
+  }
+  .guestLandingHistoryStat strong{ font-size:15px; }
+}
+
+@media (max-width: 480px){
+  #guestLanding{ padding:20px 14px 0; }
+  .guestLandingCta{
+    min-width:148px;
+    height:60px;
+    border-radius:18px;
+    font-size:18px;
+  }
+  .guestLandingHeroTitle{ font-size:19px; }
+  .guestLandingHeroMetaRow{ grid-template-columns:86px 1fr; gap:10px; }
+  .guestLandingScorePill{ min-width:82px; height:36px; font-size:15px; }
+  .guestLandingHeroMeta{ font-size:11px; }
+  .guestLandingMetaGrid{ gap:8px; }
+  .guestLandingMiniFeature{ padding:12px 10px 12px; border-radius:22px; }
+  .guestLandingMiniHeader{ grid-template-columns:34px minmax(0,1fr); gap:8px; }
+  .guestLandingMiniIcon{ width:34px; height:34px; flex-basis:34px; }
+  .guestLandingMiniTitle{ font-size:12px; }
+  .guestLandingMiniText{ font-size:10.5px; line-height:1.12; }
+  .guestLandingSourcesCard{ padding:16px 12px 14px; border-radius:24px; }
+  .guestLandingSourcesTitleWrap{ min-height:88px; }
+  .guestLandingSourcesTitle{ max-width:172px; font-size:18px; }
+  .guestLandingSourcesGlobe{ width:68px; height:68px; right:0; }
+  .guestLandingWidgets{ gap:12px; }
+  .guestLandingHistoryGrid{ grid-template-columns:1fr 132px; }
+  .guestLandingHistoryStats{ padding:12px 12px; }
 }
 </style>
 
@@ -6600,8 +6895,8 @@ body.guestLandingActive #guestLanding *::after{
           <img class="guestLandingBrandIcon" src="/static/icons/Logo.svg" alt="">
           <div class="guestLandingBrandText">CHECKNE.</div>
         </div>
-        <h1 class="guestLandingTitle">See which news you can rely on.</h1>
-        <p class="guestLandingSub">Compare sources, track credibility signals, and stay updated as information evolves.</p>
+        <h1 class="guestLandingTitle">See which news<br>you can rely on.</h1>
+        <p class="guestLandingSub">Compare sources, track credibility signals, and<br>stay updated as information evolves.</p>
         <div class="guestLandingActions">
           <button id="guestLandingStartBtn" class="guestLandingCta" type="button">Start free</button>
         </div>
