@@ -3,8 +3,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import time
 import uuid
+from functools import lru_cache
+from pathlib import Path
 from typing import Optional
 
 # Load .env automatically for local development
@@ -16,7 +19,7 @@ except Exception:
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.gzip import GZipMiddleware
@@ -243,12 +246,51 @@ if not is_production():
     app.include_router(debug_router)
 
 # ---------- SPA ----------
-SPA_INDEX = os.path.join("src", "web", "index.html")
+SPA_TEMPLATE_DIR = Path("src") / "app" / "spa_templates"
+SPA_TEMPLATE_FILES = (
+    "spa_shell.html",
+    "head.html",
+    "layout_main.html",
+    "overlays.html",
+    "assets.html",
+)
+
+
+def _spa_template_mtime_key() -> str:
+    mtimes: list[str] = []
+    for name in SPA_TEMPLATE_FILES:
+        path = SPA_TEMPLATE_DIR / name
+        mtimes.append(str(path.stat().st_mtime_ns))
+    return "|".join(mtimes)
+
+
+def _minify_spa_html(html: str) -> str:
+    html = re.sub(r"(?s)<!--(?!\[if).*?-->", "", html)
+    html = re.sub(r">\s+<", "><", html)
+    return html.strip()
+
+
+@lru_cache(maxsize=4)
+def _render_spa_html(_mtime_key: str) -> str:
+    shell = (SPA_TEMPLATE_DIR / "spa_shell.html").read_text(encoding="utf-8")
+    parts = {
+        "HEAD": (SPA_TEMPLATE_DIR / "head.html").read_text(encoding="utf-8").strip(),
+        "LAYOUT": (SPA_TEMPLATE_DIR / "layout_main.html").read_text(encoding="utf-8").strip(),
+        "OVERLAYS": (SPA_TEMPLATE_DIR / "overlays.html").read_text(encoding="utf-8").strip(),
+        "ASSETS": (SPA_TEMPLATE_DIR / "assets.html").read_text(encoding="utf-8").strip(),
+    }
+    for key, value in parts.items():
+        shell = shell.replace(f"{{{{{key}}}}}", value)
+    return _minify_spa_html(shell)
+
+
+def _spa_response() -> HTMLResponse:
+    return HTMLResponse(_render_spa_html(_spa_template_mtime_key()))
 
 
 @app.get("/", include_in_schema=False)
 def spa_root():
-    return FileResponse(SPA_INDEX)
+    return _spa_response()
 
 
 @app.get("/{full_path:path}", include_in_schema=False)
@@ -257,7 +299,7 @@ def spa_fallback(full_path: str):
         return Response(status_code=404)
     if full_path in ("favicon.ico",):
         return Response(status_code=404)
-    return FileResponse(SPA_INDEX)
+    return _spa_response()
 
 
 _auto_task: Optional[asyncio.Task] = None

@@ -1,25 +1,4 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <!-- Prevent aggressive caching (helps updates show without hard refresh) -->
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-  <meta http-equiv="Pragma" content="no-cache" />
-  <meta http-equiv="Expires" content="0" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>CHECKNE.</title>
-
-  <!-- Favicon (prevents noisy /favicon.ico 404s in logs) -->
-  <link rel="icon" href="/static/icons/Prev.svg" type="image/png">
-  <link rel="apple-touch-icon" href="/static/icons/Prev.svg">
-  <!-- Fonts: Jersey 25 (logo) + Inter (UI) -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700&family=Jersey+25&display=swap" rel="stylesheet">
-  <!-- Animations are inlined below (no extra CSS files). -->
-
- <style>
-    :root{
+:root{
       /* Clean flat look closer to the Figma reference */
       --bg:#ffffff;
       --panel:#ffffff;
@@ -6229,7 +6208,7 @@ body.guestLandingActive #guestLanding *::after{
   gap:20px;
   align-items:center;
   min-width:max-content;
-  animation:guestLandingMarquee 34s linear infinite;
+  animation:guestLandingMarquee 68s linear infinite;
   will-change:transform;
 }
 .guestLandingSourceItem{
@@ -6483,39 +6462,6 @@ body.guestLandingActive #guestLanding *::after{
   .guestLandingHistoryGrid{ grid-template-columns:minmax(0,1fr) 170px; }
 }
 
-@media (min-width: 1025px) and (max-width: 1180px){
-  .guestLandingMetaGrid{
-    grid-template-columns:repeat(3,minmax(0,240px));
-    justify-content:flex-start;
-    align-items:stretch;
-    max-width:780px;
-    gap:14px;
-  }
-  .guestLandingMiniFeature{
-    min-height:0;
-    aspect-ratio:1 / 1;
-    padding:20px 16px 16px;
-    display:flex;
-    flex-direction:column;
-    justify-content:flex-start;
-  }
-  .guestLandingMiniHeader{
-    display:grid;
-    grid-template-columns:44px minmax(0,1fr);
-    align-items:start;
-    gap:12px;
-    margin-bottom:14px;
-  }
-  .guestLandingMiniHeader > *{ min-width:0; }
-  .guestLandingMiniTitle{ font-size:17px; line-height:.96; }
-  .guestLandingMiniText{ font-size:13px; line-height:1.18; }
-  .guestLandingSourcesCard{
-    width:100%;
-    max-width:780px;
-    box-sizing:border-box;
-  }
-}
-
 @media (min-width: 641px) and (max-width: 1024px){
   #guestLanding{ max-width:none; padding:24px 18px 0; }
   .guestLandingShell{ grid-template-columns:1fr; gap:22px; }
@@ -6680,49 +6626,33 @@ body.guestLandingActive #guestLanding *::after{
     order:5;
     margin-top:0;
     grid-template-columns:repeat(3,minmax(0,1fr));
-    gap:10px;
-    align-items:stretch;
+    gap:12px;
   }
   .guestLandingMiniFeature{
-    min-height:0;
-    aspect-ratio:1 / 1;
-    min-width:0;
-    padding:14px 12px 12px;
-    border-radius:24px;
+    min-height:150px;
+    padding:16px 14px 14px;
+    border-radius:26px;
     background:#f8f8f8;
     box-shadow:0 10px 28px rgba(0,0,0,.10);
-    display:flex;
-    flex-direction:column;
-    justify-content:flex-start;
-    box-sizing:border-box;
-    overflow:hidden;
   }
   .guestLandingMiniHeader{
-    display:grid;
-    grid-template-columns:40px minmax(0,1fr);
-    align-items:start;
-    gap:10px;
-    margin-bottom:10px;
-    min-width:0;
+    align-items:flex-start;
+    gap:12px;
+    margin-bottom:12px;
   }
-  .guestLandingMiniHeader > *{ min-width:0; }
   .guestLandingMiniIcon{
     width:40px;
     height:40px;
     flex:0 0 40px;
   }
   .guestLandingMiniTitle{
-    font-size:13px;
-    line-height:.94;
-    letter-spacing:-.05em;
-    overflow-wrap:anywhere;
+    font-size:16px;
+    line-height:.98;
   }
   .guestLandingMiniText{
     margin-top:0;
-    font-size:11px;
-    line-height:1.14;
-    letter-spacing:-.02em;
-    overflow-wrap:anywhere;
+    font-size:13px;
+    line-height:1.18;
   }
   .guestLandingSourcesCard{
     order:6;
@@ -6734,21 +6664,49 @@ body.guestLandingActive #guestLanding *::after{
     border-radius:28px;
     background:#f8f8f8;
     box-shadow:0 12px 30px rgba(0,0,0,.10);
+    overflow:hidden;
     box-sizing:border-box;
+  }
+  .guestLandingSourcesTitleWrap{
+    min-height:88px;
+    padding-right:86px;
     overflow:hidden;
   }
-  .guestLandingSourcesTitleWrap{ min-height:96px; }
   .guestLandingSourcesTitle{
-    max-width:190px;
+    max-width:none;
     font-size:20px;
     line-height:1.02;
     letter-spacing:-.055em;
+    overflow-wrap:anywhere;
   }
-  .guestLandingSourcesGlobe{ width:76px; height:76px; top:0; right:2px; }
-  .guestLandingSourcesMarquee{ margin-top:8px; }
+ .guestLandingSourcesGlobe{
+    width:50px;
+    height:50px;
+    top:10px;
+    right:90px;
+  }
+  .guestLandingSourcesMarquee{
+    width:100%;
+    max-width:100%;
+    min-width:0;
+    margin-top:8px;
+    padding:8px 0 6px;
+    overflow:hidden;
+    box-sizing:border-box;
+  }
+  .guestLandingSourcesMarquee::before,
+  .guestLandingSourcesMarquee::after{
+    width:20px;
+  }
+  .guestLandingSourcesTrack{
+    gap:16px;
+  }
+  .guestLandingSourceItem{
+    gap:8px;
+  }
   .guestLandingSourceImgWrap{ width:30px; height:30px; border-radius:8px; }
   .guestLandingSourceImg{ width:18px; height:18px; }
-  .guestLandingSourceLabel{ font-size:17px; }
+  .guestLandingSourceLabel{ font-size:15px; }
   .guestLandingWidgets{
     order:8;
     display:grid !important;
@@ -6824,740 +6782,42 @@ body.guestLandingActive #guestLanding *::after{
   .guestLandingHeroMetaRow{ grid-template-columns:86px 1fr; gap:10px; }
   .guestLandingScorePill{ min-width:82px; height:36px; font-size:15px; }
   .guestLandingHeroMeta{ font-size:11px; }
-  .guestLandingMetaGrid{ gap:8px; }
-  .guestLandingMiniFeature{ padding:12px 10px 12px; border-radius:22px; }
-  .guestLandingMiniHeader{ grid-template-columns:34px minmax(0,1fr); gap:8px; }
-  .guestLandingMiniIcon{ width:34px; height:34px; flex-basis:34px; }
-  .guestLandingMiniTitle{ font-size:12px; }
-  .guestLandingMiniText{ font-size:10.5px; line-height:1.12; }
-  .guestLandingSourcesCard{ padding:16px 12px 14px; border-radius:24px; }
-  .guestLandingSourcesTitleWrap{ min-height:88px; }
-  .guestLandingSourcesTitle{ max-width:172px; font-size:18px; }
-  .guestLandingSourcesGlobe{ width:68px; height:68px; right:0; }
+  .guestLandingMiniFeature{ min-height:140px; padding:14px 12px 14px; }
+  .guestLandingMiniHeader{ gap:10px; }
+  .guestLandingMiniIcon{ width:36px; height:36px; flex-basis:36px; }
+  .guestLandingMiniTitle{ font-size:15px; }
+  .guestLandingMiniText{ font-size:12px; }
+  .guestLandingSourcesTitleWrap{
+    min-height:82px;
+    padding-right:76px;
+  }
+  .guestLandingSourcesTitle{
+    max-width:none;
+    font-size:17px;
+  }
+ .guestLandingSourcesGlobe{
+    width:50px;
+    height:50px;
+    top:10px;
+    right:70px;
+  }
+  .guestLandingSourceLabel{ font-size:14px; }
   .guestLandingWidgets{ gap:12px; }
   .guestLandingHistoryGrid{ grid-template-columns:1fr 132px; }
   .guestLandingHistoryStats{ padding:12px 12px; }
 }
-</style>
 
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
-</head>
+/* === MOBILE LANDING: HIDE 3RD WIDGET (TOP HEADLINES) === */
+@media (max-width: 640px){
+  .guestLandingWidgets{
+    grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+    gap:14px !important;
+  }
+  .guestLandingWidgets > .guestLandingWidget:nth-child(3){
+    display:none !important;
+  }
+}
 
-<body>
-  <header id="siteHeader" class="siteHeader">
-    <div class="headerInner">
-      <div id="brand" class="brand" aria-label="ONE news" role="button" tabindex="0">
-        <img class="brandLogo" src="/static/icons/Logo.svg" alt="Logo" />
-        <div class="brandText"><div class="top">CHECKNE.</div></div>
-      </div>
-
-      <div class="headerCenter"></div>
-
-      <div class="headerRight">
-        <button id="btnTracking" class="trackBtn" type="button" aria-label="Tracking">
-          <span>Tracking</span>
-          <span id="trackingCount" class="trackBadge">0</span>
-        </button>
-        <div class="accountWrap">
-          <button id="btnAccount" class="loginBtn" type="button" aria-label="Account">
-            <span id="accountAvatar" class="accountAvatar" aria-hidden="true">V</span>
-            <span id="accountName" class="accountName">Account</span>
-            <span id="accountPlanPill" class="accountPlanPill" style="display:none;">Pro</span>
-          </button>
-
-          <div id="accountMenu" class="accountMenu">
-            <div class="accountMenuHeader">
-              <div class="menuEmailRow">
-                <span class="menuEmailDot" aria-hidden="true"></span>
-                <div id="menuEmail" class="menuEmailPlain"></div>
-              </div>
-            </div>
-
-            <div class="accountMenuDivider"></div>
-
-            <button id="menuProfile" type="button"><span data-i18n="profile.menu">Profile</span><span id="menuPlanBadge" class="menuPlanBadge" style="display:none;">FREE</span></button>
-            <button id="menuPricing" type="button" data-i18n="pricing.menu">Pricing</button>
-            <button id="menuLogout" type="button">Log out</button>
-          </div>
-        </div>
-
-        <button id="btnRefresh" class="btn hiddenCompat" type="button">Refresh</button>
-      </div>
-    </div>
-  </header>
-
-  <div id="viewShade" class="viewShade" aria-hidden="true"><div class="dotLoader" aria-hidden="true"><span></span><span></span><span></span></div></div>
-
-<section id="guestLanding" aria-label="Guest landing preview">
-    <div class="guestLandingShell">
-      <div class="guestLandingLeft">
-        <div class="guestLandingBrand" aria-label="CHECKNE.">
-          <img class="guestLandingBrandIcon" src="/static/icons/Logo.svg" alt="">
-          <div class="guestLandingBrandText">CHECKNE.</div>
-        </div>
-        <h1 class="guestLandingTitle">See which news<br>you can rely on.</h1>
-        <p class="guestLandingSub">Compare sources, track credibility signals, and<br>stay updated as information evolves.</p>
-        <div class="guestLandingActions">
-          <button id="guestLandingStartBtn" class="guestLandingCta" type="button">Start free</button>
-        </div>
-      <div class="guestLandingMetaGrid">
-  <div class="guestLandingMiniFeature guestLandingFeatureCard">
-    <div class="guestLandingMiniHeader">
-      <span class="guestLandingMiniIcon guestLandingMiniIcon--eye" aria-hidden="true"><img src="/static/icons/Eye.svg" alt=""></span>
-      <div class="guestLandingMiniTitle">Real-time tracking</div>
-    </div>
-    <div class="guestLandingMiniText">
-      Follow important events and get updates as credibility signals change.
-    </div>
-  </div>
-
-  <div class="guestLandingMiniFeature guestLandingFeatureCard">
-    <div class="guestLandingMiniHeader">
-      <span class="guestLandingMiniIcon guestLandingMiniIcon--layers" aria-hidden="true"><img src="/static/icons/structure.svg" alt=""></span>
-      <div class="guestLandingMiniTitle">Multiple sources</div>
-    </div>
-    <div class="guestLandingMiniText">
-      Analyze coverage across a wide range of news outlets.
-    </div>
-  </div>
-
-  <div class="guestLandingMiniFeature guestLandingFeatureCard">
-    <div class="guestLandingMiniHeader">
-      <span class="guestLandingMiniIcon guestLandingMiniIcon--camera" aria-hidden="true"><img src="/static/icons/camera.svg" alt=""></span>
-      <div class="guestLandingMiniTitle">Image search</div>
-    </div>
-    <div class="guestLandingMiniText">
-      Upload a photo or screenshot to find related news instantly.
-    </div>
-  </div>
-</div>
-
-<div id="guestLandingSources" class="guestLandingSourcesCard">
-  <div class="guestLandingSourcesHead">
-    <div class="guestLandingSourcesTitleWrap">
-      <h2 class="guestLandingSourcesTitle">
-        Based On Data From<br>
-        Diverse News Sources:
-      </h2>
-      <div class="guestLandingSourcesGlobe guestLandingMiniIcon guestLandingMiniIcon--globe" aria-hidden="true">
-        <img src="/static/icons/news.svg" alt="">
-      </div>
-    </div>
-  </div>
-
-  <div class="guestLandingSourcesMarquee">
-    <div class="guestLandingSourcesTrack">
-      <!-- тут твои source items -->
-    </div>
-  </div>
-</div>
-
-</div> <!-- guestLandingLeft -->
-
-<div class="guestLandingRight">
-  <div class="guestLandingPreview">
-    <div id="guestLandingPreviewInner" class="guestLandingPreviewInner"></div>
-  </div>
-</div>
-
-</div> <!-- guestLandingShell -->
-  </section>
-
-  <div id="pageLayout" class="pageLayout">
-  <aside id="leftSidebar" class="sidebar" aria-label="Left widgets"></aside>
-  <div id="feedView" class="mainCol">
-
-
-    <!-- Top stories (🔥) — driven by server feed (is_trending) -->
-    <div id="topStories" class="topStories" aria-label="Top stories">
-      <div class="topCarousel" id="topCarousel" data-ready="0">
-        <div class="topCarouselViewport" id="topCarouselViewport">
-          <div class="topCarouselTrack" id="topCarouselTrack"></div>
-        </div>
-        <div id="topCarouselDots" class="topDots" aria-label="Top stories navigation"></div>
-      </div>
-    </div>
-
-    <div class="panel">
-      <div class="searchRow">
-        <div class="searchWrap">
-          <div class="searchIcon" aria-hidden="true"></div>
-          <input id="search" type="text" placeholder="Search topics or paste a link" data-i18n-placeholder="ui.search_placeholder" />
-          <button id="btnVisualSearch" class="visualSearchBtn" type="button" aria-label="Search from image" title="Search from image"></button>
-          <input id="visualSearchInput" class="visualSearchInput" type="file" accept="image/*" />
-        </div>
-
-        <!-- Kept for compatibility with existing logic -->
-        <button id="btnSearch" class="btn hiddenCompat" type="button" data-i18n="ui.search">Search</button>
-        <button id="btnSave" class="btn hiddenCompat" type="button" data-i18n="ui.save">Save</button>
-      </div>
-
-      <div class="filtersRow">
-        <div class="field fieldCountry">
-          <div class="fieldLabel" data-i18n="ui.country">Country</div>
-
-          <!-- Custom country picker (keeps popover anchored correctly on iOS/Safari when ancestors are transformed) -->
-          <div class="selectWrap" id="countryWrap">
-            <button id="countryBtn" class="selectBtn" type="button" aria-haspopup="menu" aria-expanded="false">
-              <span id="countryBtnValue" class="selectValue">World</span>
-              <span class="selectCaret" aria-hidden="true">▾</span>
-            </button>
-
-            <div id="countryMenu" class="selectMenu" role="menu" aria-label="Country" hidden></div>
-
-            <!-- Keep the native select for compatibility/state, but visually hide it -->
-            <select id="country" class="srOnlySelect" tabindex="-1" aria-hidden="true">
-              <option value="world">World</option>
-              <option value="us">US</option>
-              <option value="gb">GB</option>
-              <option value="de">DE</option>
-              <option value="fr">FR</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="field fieldLanguage">
-          <div class="fieldLabel" data-i18n="ui.language">Language</div>
-
-          <!-- Custom language picker (prevents Safari native select popover misplacement when ancestors are transformed) -->
-          <div class="selectWrap" id="languageWrap">
-            <button id="languageBtn" class="selectBtn" type="button" aria-haspopup="menu" aria-expanded="false">
-              <span id="languageBtnValue" class="selectValue">EN</span>
-              <span class="selectCaret" aria-hidden="true">▾</span>
-            </button>
-
-            <div id="languageMenu" class="selectMenu" role="menu" aria-label="Language" hidden></div>
-
-            <!-- Keep the native select for compatibility/state, but visually hide it -->
-            <select id="language" class="srOnlySelect" tabindex="-1" aria-hidden="true">
-              <option value="en">EN</option>
-              <option value="de">DE</option>
-              <option value="fr">FR</option>
-            </select>
-          </div>
-        </div>
-        <div class="sortWrap" id="sortWrap">
-          <button id="sortBtn" class="sortBtn" type="button" aria-haspopup="menu" aria-expanded="false">
-            <span class="sortLabel">Sort:</span>
-            <span id="sortBtnValue" class="sortValue">Newest</span>
-            <span class="sortCaret" aria-hidden="true">▾</span>
-          </button>
-
-          <div id="sortMenu" class="sortMenu" role="menu" aria-label="Sort and rating filter" hidden>
-            <div class="sortMenuSection">
-              <label class="radioRow" role="menuitemradio">
-                <input type="radio" name="sortOrder" value="newest" checked>
-                <span>Newest</span>
-              </label>
-              <label class="radioRow" role="menuitemradio">
-                <input type="radio" name="sortOrder" value="low">
-                <span>Low to High</span>
-              </label>
-              <label class="radioRow" role="menuitemradio">
-                <input type="radio" name="sortOrder" value="high">
-                <span>High to Low</span>
-              </label>
-            </div>
-
-            <div class="rangeRow">
-              <input id="scoreMin" class="pillInput" type="number" min="0" max="100" step="1" value="0" inputmode="numeric" />
-              <span class="rangeSep">to</span>
-              <input id="scoreMax" class="pillInput" type="number" min="0" max="100" step="1" value="100" inputmode="numeric" />
-            </div>
-
-            <div class="sortMenuDivider" aria-hidden="true"></div>
-
-            <div class="checkSection" aria-label="Extra filters">
-              <label class="checkRow">
-                <input id="onlyConfirmed" type="checkbox" />
-                <span>Only confirmed (2+ sources)</span>
-              </label>
-              <label class="checkRow">
-                <input id="onlyAiSummary" type="checkbox" />
-                <span>Only with AI summary</span>
-              </label>
-            </div>
-            <button id="sortResetBtn" class="sortResetBtn" type="button">Reset to defolt</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="tagsBar">
-        <div class="tags" id="tags"></div>
-        <div class="thumbToggleWrap" aria-label="Миниатюры">
-          <div class="thumbToggleLabel" data-i18n="ui.miniatures">Miniatures</div>
-          <label class="switch" aria-label="Show/hide thumbnails"><input id="thumbToggle" type="checkbox" /><span class="slider"></span></label>
-        </div>
-      </div>
-    </div>
-
-    <!-- Optional legacy header (tabs, reload, status) kept but visually minimal -->
-    <div style="margin-top:14px;" class="topline">
-      <div class="muted" id="status"></div>
-      <!-- Tabs kept for compatibility with existing JS, but hidden in the new header design -->
-      <div class="tabs hiddenCompat">
-        <div id="tabFeed" class="tab on">Feed</div>
-        <div id="tabFav" class="tab">Favorites (<span id="favCount">0</span>)</div>
-      </div>
-      <button id="btnReload" class="btn hiddenCompat" type="button">Reload</button>
-    </div>
-    <div id="lastUpdated" class="muted" style="margin-top:8px;"></div>
-    <div id="trackingHint" class="muted" style="margin-top:10px; display:none;" data-i18n="ui.tip_drag_remove">Tip: drag a card onto the 🗑️ to remove it from Tracking.</div>
-
-    <div id="trackingSettings" class="trackingSettings" style="display:none;">
-      <div class="trackingSettingsLeft">
-        <div class="trackingSettingsTitle" data-i18n="ui.email_notifications">Email notifications</div>
-        <div class="trackingSettingsSub" data-i18n="ui.email_notifications_sub">Send me an email when any tracked event changes</div>
-      </div>
-      <label class="switch">
-        <input id="emailAlertsToggle" type="checkbox" />
-        <span class="slider"></span>
-      </label>
-    </div>
-
-    
-
-    <div id="trackingLimitBar" class="trackingLimitBar" hidden>
-      <div class="trackingLimitBarTop">
-        <div>
-          <div class="tlTitle">Tracking</div>
-          <div class="tlSub">Free plan limit</div>
-        </div>
-        <div class="tlPill">0/3</div>
-      </div>
-      <div class="tlProg"><div class="tlFill" style="width:0%"></div></div>
-    </div>
-
-<div id="cards" class="cards"></div>
-  
-  </div>
-  <aside id="rightSidebar" class="sidebar" aria-label="Right widgets"></aside>
-</div>
-<section id="profileSection" class="profilePage" aria-label="Account" data-i18n-aria="profile.account_title" style="display:none;">
-    <div class="profileHero">
-      <h2 data-i18n="profile.account_title">Account</h2>
-      <p data-i18n="profile.account_sub">Manage your profile and subscription.</p>
-    </div>
-
-    <div class="profileGrid" role="list">
-      <div class="profileCard" role="listitem">
-        <div class="profileCardTitle" data-i18n="profile.card_profile">Profile</div>
-        <div class="profileRows">
-          <div class="profileRow"><span class="profileKey" data-i18n="profile.name">Name</span><span id="profileName" class="profileVal">—</span></div>
-          <div class="profileRow"><span class="profileKey" data-i18n="profile.email">Email</span><span id="profileEmail" class="profileVal">—</span></div>
-        </div>
-      </div>
-
-      <div class="profileCard" role="listitem">
-        <div class="profileCardTitle" data-i18n="profile.subscription">Subscription</div>
-        <div class="profilePills">
-          <span id="profilePlanPill" class="profilePill">Free</span>
-          <span id="profileStatusPill" class="profilePill status">Active</span>
-        </div>
-        <div id="profileRenewText" class="profileMeta"></div>
-
-        <div class="profileActions">
-          <button id="profileManageBtn" class="profileBtn primary" type="button" data-i18n="profile.manage_plan">Manage plan</button>
-          <button id="profileCancelBtn" class="profileBtn ghost" type="button" style="display:none;" data-i18n="profile.cancel_subscription">Cancel subscription</button>
-          <button id="profileResumeBtn" class="profileBtn ghost" type="button" style="display:none;" data-i18n="profile.resume_subscription">Resume subscription</button>
-        </div>
-
-        <div id="profileCancelHint" class="muted" style="margin-top:10px; display:none;"></div>
-      </div>
-    </div>
-  </section>
-  <section id="pricingSection" class="pricingPage" aria-label="Pricing" data-i18n-aria="pricing.menu" style="display:none;">
-    <div class="pricingHero">
-      <h2 data-i18n="pricing.hero_title">Track credibility. Stay informed.</h2>
-      <p data-i18n="pricing.hero_sub">Follow important news events and get updates when trust changes.</p>
-    </div>
-
-    <div class="billingToggle">
-  <div class="togglePill" role="tablist" aria-label="Billing interval">
-    <button id="billMonthly" type="button" class="on" aria-selected="true">
-      <span data-i18n="pricing.monthly">Monthly</span>
-    </button>
-
-    <button id="billYearly" type="button" aria-selected="false">
-      <span data-i18n="pricing.yearly">Yearly</span> <span class="saveTag" data-i18n="pricing.save_20">Save 20%</span>
-    </button>
-  </div>
-</div>
-
-
-    <div class="pricingGrid" role="list">
-      <div class="planCard" data-plan="free" role="listitem" tabindex="0">
-        <div class="planHead">
-          <div class="planName">Free</div>
-          <div class="planPrice planPriceBig" data-price-monthly="$0.00" data-price-yearly="$0.00">
-            <span class="priceWas"></span>
-            <span class="priceNow">$0.00</span>
-            <span class="priceSave"></span>
-          </div>
-        </div>
-        <div class="planBody">
-          <ul>
-            <li>News feed capacity <b>120 news</b></li>
-            <li>Track up to <b>3 events</b></li>
-            <li>View current trust score</li>
-            <li>Real-time trust score updates</li>
-            <li>Access to all news sources</li>
-          </ul>
-        </div>
-      </div>
-
-      <div class="planCard popular" data-plan="pro" role="listitem" tabindex="0">
-        <div class="planBadge">Most popular</div>
-        <div class="planHead">
-          <div class="planName">Pro</div>
-          <div class="planPrice planPriceBig" data-price-monthly="$4.99" data-price-yearly="$49.99">
-            <span class="priceWas"></span>
-            <span class="priceNow">$4.99</span>
-            <span class="priceSave"></span>
-          </div>
-        </div>
-        <div class="planBody">
-          <ul>
-            <li>News feed capacity <b>300 news</b></li>
-            <li>Track up to <b>30 events</b></li>
-            <li>Access to <b>6</b> advanced analytics widgets</li>
-            <li>Trust score graph</li>
-            <li>Email alerts</li>
-            <li>Real-time trust score updates</li>
-            <li>Access to all news sources</li>
-          </ul>
-        </div>
-      </div>
-
-      <div class="planCard" data-plan="analyst" role="listitem" tabindex="0">
-        <div class="planHead">
-          <div class="planName">Analyst</div>
-          <div class="planPrice planPriceBig" data-price-monthly="$15.99" data-price-yearly="$159.99">
-            <span class="priceWas"></span>
-            <span class="priceNow">$15.99</span>
-            <span class="priceSave"></span>
-          </div>
-        </div>
-        <div class="planBody">
-          <ul>
-            <li>News feed capacity <b>400 news</b></li>
-            <li><b>Unlimited</b> event tracking</li>
-            <li>Access to <b>6</b> advanced analytics widgets</li>
-            <li>Trust score graph</li>
-            <li>All advanced widgets</li>
-            <li>Email alerts</li>
-            <li>Real-time trust score updates</li>
-            <li>Access to all news sources</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-
-    <div class="pricingCtaRow">
-      <button id="pricingMainCta" class="pricingMainBtn" type="button" data-i18n="pricing.get_free">Get Free</button>
-    </div>
-
-    <div class="pricingTrust" data-i18n="pricing.trusted_by">Trusted by journalists, analysts and researchers.</div>
-
-    <div class="pricingCompareWrap">
-
-      <!-- Mobile: show ONE plan at a time (no JS) -->
-      <div class="pricingCompareMobile" aria-label="Plan comparison mobile">
-        <input class="planSel" type="radio" name="planSel" id="planSelFree" checked>
-        <input class="planSel" type="radio" name="planSel" id="planSelPro">
-        <input class="planSel" type="radio" name="planSel" id="planSelAnalyst">
-
-        <div class="planSwitch" role="tablist" aria-label="Select plan">
-          <label for="planSelFree" role="tab" aria-controls="planFree">Free</label>
-          <label for="planSelPro" role="tab" aria-controls="planPro">Pro</label>
-          <label for="planSelAnalyst" role="tab" aria-controls="planAnalyst">Analyst</label>
-        </div>
-
-        <div class="onePlan onePlanFree" id="planFree">
-          <table class="pricingOne" aria-label="Free plan features">
-            <tbody>
-              <tr><th>Plan</th><td>Free</td></tr>
-              <tr><th>Tracked events</th><td>3</td></tr>
-              <tr><th>News feed capacity</th><td>120</td></tr>
-              <tr><th>Trust score graph</th><td>×</td></tr>
-              <tr><th>Advanced widgets</th><td>×</td></tr>
-              <tr><th>Email alerts</th><td>×</td></tr>
-              <tr><th>Trust score graph</th><td>×</td></tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div class="onePlan onePlanPro" id="planPro">
-          <table class="pricingOne" aria-label="Pro plan features">
-            <tbody>
-              <tr><th>Plan</th><td>Pro</td></tr>
-              <tr><th>Tracked events</th><td>20</td></tr>
-              <tr><th>News feed capacity</th><td>300</td></tr>
-              <tr><th>Trust score graph</th><td>✓</td></tr>
-              <tr><th>Advanced widgets</th><td>6</td></tr>
-              <tr><th>Email alerts</th><td>✓</td></tr>
-              <tr><th>Trust score graph</th><td>✓</td></tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div class="onePlan onePlanAnalyst" id="planAnalyst">
-          <table class="pricingOne" aria-label="Analyst plan features">
-            <tbody>
-              <tr><th>Plan</th><td>Analyst</td></tr>
-              <tr><th>Tracked events</th><td>Unlimited</td></tr>
-              <tr><th>News feed capacity</th><td>400</td></tr>
-              <tr><th>Trust score graph</th><td>✓</td></tr>
-              <tr><th>Advanced widgets</th><td>6</td></tr>
-              <tr><th>Email alerts</th><td>✓</td></tr>
-              <tr><th>Trust score graph</th><td>✓</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="pricingCompareDesktop">
-        <table class="pricingTable" aria-label="Plan comparison">
-          <thead>
-            <tr>
-              <th>Plan</th>
-              <th>Free</th>
-              <th>Pro</th>
-              <th>Analyst</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Tracked events</td>
-              <td>3</td>
-              <td>20</td>
-              <td>Unlimited</td>
-            </tr>
-            <tr>
-              <td>News feed capacity</td>
-              <td>120</td>
-              <td>300</td>
-              <td>400</td>
-            </tr>
-            <tr>
-              <td>Trust score graph</td>
-              <td><span class="pricingMark">×</span></td>
-              <td><span class="pricingMark">✓</span></td>
-              <td><span class="pricingMark">✓</span></td>
-            </tr>
-            <tr>
-              <td>Advanced widgets</td>
-              <td><span class="pricingMark">×</span></td>
-              <td>6</td>
-              <td>6</td>
-            </tr>
-            <tr>
-              <td>Email alerts</td>
-              <td><span class="pricingMark">×</span></td>
-              <td><span class="pricingMark">✓</span></td>
-              <td><span class="pricingMark">✓</span></td>
-            </tr>
-            <tr>
-              <td>Trust score graph</td>
-              <td><span class="pricingMark">×</span></td>
-              <td><span class="pricingMark">✓</span></td>
-              <td><span class="pricingMark">✓</span></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </section>
-  
-  <!-- Info / Legal / Support pages (SPA, header stays visible) -->
-  <section id="infoSection" class="infoSection" aria-label="Information pages">
-    <div class="infoShell">
-      <div class="infoCard">
-        <div class="infoTopRow">
-          <div class="infoHeadText">
-            <div class="infoKicker">CHECKNE • Info</div>
-            <h1 id="infoTitle" class="infoTitle">Title</h1>
-            <div id="infoMeta" class="infoMeta">Last updated: 2026-02-21</div>
-          </div>
-          <button id="infoBackBtn" class="infoBack" type="button" aria-label="Back to home">← Back</button>
-        </div>
-
-        <div id="infoBody" class="infoBody">
-          <!-- injected by app.js -->
-        </div>
-      </div>
-    </div>
-  </section>
-
-<footer class="siteFooter" aria-label="Site footer">
-  <div class="footerInner">
-    <div class="footerGrid">
-      <!-- Brand -->
-      <div class="footerBrand">
-        <a class="footerLogo" href="/" id="footerHomeLink" aria-label="CHECKNE home">
-          <img class="footerLogoImg" src="/static/icons/Logo.svg" alt="CHECKNE logo" />
-          <div class="footerBrandText">
-            <div class="top">CHECKNE.</div>
-          </div>
-        </a>
-
-        <div class="footerTagline">AI-powered news tracking<br/>and signal intelligence.</div>
-
-        <a class="footerEmail" href="mailto:contact@checkne.com">contact@checkne.com</a>
-          <div class="footerSocial" aria-label="Social links">
-      <a class="socialBtn" href="mailto:contact@checkne.com" aria-label="Email">
-        <img src="/static/icons/gmailfooter.svg" alt="" />
-      </a>
-      <a class="socialBtn" href="https://www.tiktok.com/@checkneee" aria-label="TikTok" target="_blank">
-        <img src="/static/icons/tiktofooter.svg" alt="" />
-      </a>
-      <a class="socialBtn" href="https://www.threads.net/@checkneee" aria-label="Threads" target="_blank">
-        <img src="/static/icons/tredsfooter.svg" alt="" />
-      </a>
-      <a class="socialBtn" href="https://x.com/checkneee" aria-label="X" target="_blank">
-        <img src="/static/icons/xfooter.svg" alt="" />
-      </a>
-    </div>
-      </div>
-
-      <!-- Product -->
-      <div class="footerCol">
-        <div class="footerColTitle">Product</div>
-        <nav class="footerLinks" aria-label="Product links">
-          <a class="footerLink" href="/tracking" data-footer-nav="tracking">Tracking</a>
-          <a class="footerLink" href="/pricing" data-footer-nav="pricing">Pricing</a>
-        </nav>
-      </div>
-
-      <!-- Support -->
-      <div class="footerCol">
-        <div class="footerColTitle">Support</div>
-        <nav class="footerLinks" aria-label="Support links">
-          <a class="footerLink" href="/contact" data-footer-nav="contact">Contact</a>
-          <a class="footerLink" href="/status" data-footer-nav="status">Status</a>
-          <a class="footerLink" href="https://mail.google.com/mail/?view=cm&fs=1&to=support%40checkne.com&su=Help%20request%20%E2%80%94%20CHECKNE&body=Hi%20CHECKNE%20support%2C%0A%0AI%20need%20help%20with%3A%0A%0A%E2%80%94%20What%20I%20expected%3A%0A%E2%80%94%20What%20happened%20instead%3A%0A%E2%80%94%20Steps%20to%20reproduce%3A%0A%E2%80%94%20Device%20/%20browser%3A%0A%0AThanks%21" target="_blank" rel="noopener" data-footer-mail="help">Help</a>
-          <a class="footerLink" href="https://mail.google.com/mail/?view=cm&fs=1&to=support%40checkne.com&su=Bug%20report%20%E2%80%94%20CHECKNE&body=Hi%20CHECKNE%20support%2C%0A%0AI%20found%20a%20bug%3A%0A%0A%E2%80%94%20What%20I%20did%3A%0A%E2%80%94%20What%20I%20expected%3A%0A%E2%80%94%20What%20happened%20instead%3A%0A%E2%80%94%20Screenshots%20/%20links%20%28if%20any%29%3A%0A%E2%80%94%20Device%20/%20browser%3A%0A%0AThanks%21" target="_blank" rel="noopener" data-footer-mail="bug">Report a bug</a>
-        </nav>
-      </div>
-
-      <!-- Legal -->
-      <div class="footerCol">
-        <div class="footerColTitle">Legal</div>
-        <nav class="footerLinks" aria-label="Legal links">
-          <a class="footerLink" href="/privacy" data-footer-nav="privacy">Privacy Policy</a>
-          <a class="footerLink" href="/terms" data-footer-nav="terms">Terms of Service</a>
-          <a class="footerLink" href="/cookies" data-footer-nav="cookies">Cookie Policy</a>
-          <a class="footerLink" href="/impressum" data-footer-nav="impressum">Impressum</a>
-        </nav>
-      </div>
-    </div>
-  </div>
-
-  <div class="footerDivider" role="presentation"></div>
-
-  <div class="footerBottom">
-    <div class="footerCopy">© 2026 CHECKNE. All rights reserved.</div>
-
-  </div>
-</footer>
-
-
-
-  <!-- Tracking: drag cards here to delete (shown only in Tracking tab) -->
-  <div id="trashZone" class="trashZone" aria-hidden="true">
-    <img src="/static/icons/Delete.svg" alt="Delete" />
-  </div>
-
-  <!-- Auth modal -->
-  <div id="authBackdrop" class="authBackdrop" aria-hidden="true">
-    <div class="authModal" role="dialog" aria-modal="true" aria-labelledby="authTitle">
-      <div class="authModalInner">
-        <div class="authBrand">
-          <div class="footerLogo">
-            <img class="footerLogoImg" src="/static/icons/Logo.svg" alt="Logo" />
-            <div class="footerBrandText"><div class="top">CHECKNE.</div></div>
-          </div>
-          <button id="authClose" class="authClose" type="button" aria-label="Close" data-i18n-aria="ui.close">✕</button>
-        </div>
-
-        <!-- Step 1: choose method -->
-        <div id="authStepChoose">
-          <div id="authTitle" class="authTitle" data-i18n="auth.title">Create an account to continue</div>
-          <div class="authSub" data-i18n="auth.sub">Track news credibility, save events, and get updates when trust changes.</div>
-
-          <div class="authActions">
-            <button id="btnGoogle" class="authBtn" type="button">
-              <img class="authIcon" src="/static/icons/Gmail.svg" alt="">
-              <span data-i18n="ui.continue_with_google">Continue with Google</span>
-            </button>
-
-            <div class="authDivider" data-i18n="ui.or">or</div>
-
-            <button id="btnEmail" class="authBtn" type="button">
-              <img class="authIcon" src="/static/icons/Email.svg" alt="">
-              <span data-i18n="ui.continue_with_email">Continue with email</span>
-            </button>
-          </div>
-
-          <div class="authNote" data-i18n="auth.note">No spam. We only send updates for events you track.</div>
-        </div>
-
-        <!-- Step 2: email form -->
-        <div id="authStepEmail" style="display:none;">
-          <div id="authEmailTitle" class="authTitle" data-i18n="auth.title">Create an account to continue</div>
-<div class="authSub" data-i18n="auth.sub">Track news credibility, save events, and get updates when trust changes.</div>
-          <div class="authFieldLabel" data-i18n="ui.email_address">Email address</div>
-          <input id="authEmail" class="authInput" type="email" placeholder="Email" data-i18n-placeholder="ui.email" autocomplete="email" />
-
-          <div class="authFieldLabel" data-i18n="ui.password">Password</div>
-          <input id="authPassword" class="authInput" type="password" placeholder="At least 8 characters" data-i18n-placeholder="auth.password_hint" autocomplete="current-password" />
-
-          <div class="authError" id="authError"></div>
-
-          <div class="authActions" style="margin-top: 18px;">
-            <button id="authSubmit" class="authBtn authBtnPrimary" type="button" data-i18n="auth.login_signup">Login in/Sign up</button>
-          </div>
-
-          <div class="authRowBetween">
-            <a id="authBack" class="authLink" href="#" data-i18n="ui.back">&lt; Back</a>
-            <a id="authForgot" class="authLink" href="#" data-i18n="auth.forgot">Forgot password?</a>
-          </div>
-        </div>
-
-        <!-- Step 3: forgot -->
-        <div id="authStepForgot" style="display:none;">
-          <div class="authTitle" data-i18n="auth.reset_title">Reset your password</div>
-          <div class="authSub" data-i18n="auth.reset_sub">Enter your email and we’ll send a reset link.</div>
-          <div class="authFieldLabel" data-i18n="ui.email_address">Email address</div>
-          <input id="authForgotEmail" class="authInput" type="email" placeholder="Email" data-i18n-placeholder="ui.email" autocomplete="email" />
-          <div class="authError" id="authForgotError"></div>
-          <div class="authActions" style="margin-top: 18px;">
-            <button id="authForgotSubmit" class="authBtn authBtnPrimary" type="button" data-i18n="auth.send_reset">Send reset link</button>
-          </div>
-          <div class="authRowBetween">
-            <a id="authForgotBack" class="authLink" href="#" data-i18n="ui.back">&lt; Back</a>
-          </div>
-        </div>
-
-        <!-- Step 4: reset -->
-        <div id="authStepReset" style="display:none;">
-          <div class="authTitle" data-i18n="auth.new_password_title">Create a new password</div>
-          <div class="authSub" data-i18n="auth.new_password_sub">Choose a strong password (letters + digits).</div>
-          <div class="authFieldLabel" data-i18n="auth.new_password_label">New password</div>
-          <input id="authResetPassword" class="authInput" type="password" placeholder="At least 8 characters" data-i18n-placeholder="auth.password_hint" autocomplete="new-password" />
-          <div class="authError" id="authResetError"></div>
-          <div class="authActions" style="margin-top: 18px;">
-            <button id="authResetSubmit" class="authBtn authBtnPrimary" type="button" data-i18n="auth.update_password">Update password</button>
-          </div>
-        </div>
-
-      </div>
-      <div class="authFoot" data-i18n-html="auth.foot">By continuing, you agree to CHECKNE.’ <a class="authFootLink" href="/terms" data-footer-nav="terms">Terms of Service</a> and <a class="authFootLink" href="/privacy" data-footer-nav="privacy">Privacy Policy</a>.</div>
-    </div>
-  </div>
-
- 
-<style id="event-map-styles">
 .eventMapMini{margin-top:12px;height:260px;border:1px solid var(--border);border-radius:28px;overflow:hidden;background:#f3f4f7;}
 .eventMapActions{display:flex;justify-content:flex-end;margin-top:14px;}
 .eventMapOpenBtn{border:1px solid var(--border);background:var(--card);border-radius:999px;padding:14px 22px;font-size:16px;font-weight:700;cursor:pointer;}
@@ -7598,199 +6858,14 @@ body.eventMapModalOpen{overflow:hidden;}
   #eventMapCanvas{height:58vh;min-height:420px;border-radius:24px;}
 }
 
-</style>
 
-<!-- Cache-bust static JS on deploy by bumping v=... -->
- <!-- App (split into responsibility-based files; keep order) -->
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="" defer></script>
-<script src="/static/js/core.js?v=2026-03-15-share-drag-restore" defer></script>
-<script src="/static/js/state.js?v=2026-02-24" defer></script>
-<script src="/static/js/mode.js?v=2026-03-06-1" defer></script>
-<link rel="stylesheet" href="/static/css/motion-system.css?v=2026-03-18-ui-fixes-3">
-<link rel="stylesheet" href="/static/css/onboarding.css?v=2026-03-18-4">
-<script src="/static/js/tracking.js?v=2026-02-24" defer></script>
-<script src="/static/js/auth.js?v=2026-03-18-onboarding-fix" defer></script>
-<script src="/static/js/onboarding.js?v=2026-03-18-4" defer></script>
-  <script src="/static/js/interests.js?v=2026-03-01"></script>
-<script src="/static/js/pricing.js?v=2026-03-08-relative-time" defer></script>
-<script src="/static/js/carousel.js?v=2026-02-24" defer></script>
-<script src="/static/js/feed.js?v=personal-reco-2" defer></script>
-<script src="/static/js/news-map.js?v=2026-03-06-eventmap2" defer></script>
-<script src="/static/js/report.js?v=2026-03-01" defer></script>
-<script src="/static/js/widgets.js?v=2026-03-20-media-bias-chip-wrap-2" defer></script>
-<script src="/static/js/promo.js?v=2026-03-09-sharepromo" defer></script>
-<script src="/static/js/dropdowns.js?v=2026-02-24" defer></script>
-<script src="/static/js/motion-system.js?v=2026-03-18-ui-fixes-3" defer></script>
-<script src="/static/js/landing.js?v=2026-03-25-guest-preview-3" defer></script>
-<script src="/static/js/bootstrap.js?v=2026-03-18-ui-fixes-3" defer></script>
-<!-- Share modal -->
-<div id="shareBackdrop" class="shareBackdrop" aria-hidden="true">
-  <div class="shareModal" role="dialog" aria-modal="true" aria-labelledby="shareHeroTitle">
-
-    <div class="shareBody">
-      <div class="shareHero">
-        <h1 id="shareHeroTitle" data-i18n="share.title">Share this event</h1>
-        <p data-i18n="share.sub">Share a news event you find important or relevant.</p>
-      </div>
-
-      <div class="sharePanel">
-        <div class="sharePanelLabel" data-i18n="share.preview_label">ARTICLE PREVIEW</div>
-        <div class="sharePreviewFrame">
-          <div class="sharePreviewCanvas">
-            <img id="sharePreviewImg" class="sharePreviewImg" alt="Share preview" />
-            <div id="sharePhotoDragPane" class="sharePhotoDragPane" aria-label="Adjust photo crop">
-              <div id="sharePhotoViewport" class="sharePhotoViewport">
-                <img id="sharePhotoDragImg" class="sharePhotoDragImg" alt="" />
-              </div>
-            </div>
-          </div>
-          <div class="sharePhotoHint" data-i18n="share.photo_hint">Drag the photo to adjust the crop</div>
-        </div>
-      </div>
-
-      <!-- keep these ids for JS, but hidden by CSS -->
-      <div class="shareMeta" style="display:none;">
-        <div id="shareHeadline" class="shareHeadline"></div>
-        <div id="shareSubline" class="shareSubline"></div>
-      </div>
-
-      <div class="shareActions">
-        <button id="shareToXBtn" class="shareAction primary" type="button">
-          <img src="/static/icons/x.png" alt="X" />
-          <span data-i18n="share.on_x">Share on X</span>
-        </button>
-
-        <button id="shareToThreadsBtn" class="shareAction secondary" type="button">
-          <img src="/static/icons/treds.png" alt="Threads" />
-          <span data-i18n="share.on_threads">Share on Threads</span>
-        </button>
-
-        <button id="shareCopyBtn" class="shareAction ghost" type="button">
-          <img src="/static/icons/copy.png" alt="Copy" />
-          <span>Copy link</span>
-        </button>
-      </div>
-
-      <button id="shareNoThanks" class="shareNoThanks" type="button" data-i18n="share.no_thanks">No thanks!</button>
-    </div>
-
-  </div>
-</div>
-
-
-<!-- Report modal -->
-<div id="reportBackdrop" class="reportBackdrop" aria-hidden="true">
-  <div class="reportModal" role="dialog" aria-modal="true" aria-labelledby="reportTitle">
-    <div class="reportHeader">
-      <div class="reportHeaderLeft">
-        <div id="reportTitle" class="reportTitle">Report this news</div>
-        <div class="reportSub">Cluster ID: <span id="reportClusterId"></span></div>
-      </div>
-      <button class="reportClose" type="button" data-report-close="1" aria-label="Close">✕</button>
-    </div>
-
-    <div class="reportBody">
-      <div class="reportField">
-        <div class="reportLabel">Reason</div>
-        <select id="reportReason" class="reportSelect" aria-label="Reason"></select>
-      </div>
-
-      <div class="reportField">
-        <div class="reportLabel">Details</div>
-        <textarea id="reportMessage" class="reportTextarea" placeholder="Optional: explain what’s wrong…"></textarea>
-      </div>
-    </div>
-
-    <div class="reportFooter">
-      <button class="reportBtnGhost" type="button" data-report-close="1">Cancel</button>
-      <button id="reportSendBtn" class="reportBtnPrimary" type="button">Send report</button>
-    </div>
-  </div>
-</div>
-
-
-<!-- Side widgets: add/configure modal -->
-<div id="widgetModal" class="widgetModal" aria-hidden="true">
-  <div class="backdrop" data-widget-close="1"></div>
-  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="widgetModalTitle">
-    <div class="sheetHeader">
-      <div id="widgetModalTitle" class="sheetTitle" data-i18n="widgets.add_widget">Add widget</div>
-      <button class="iconBtn" type="button" data-widget-close="1" aria-label="Close" data-i18n-aria="ui.close">✕</button>
-    </div>
-    <div id="widgetModalBody"></div>
-    <div class="sheetFooter" id="widgetModalFooter" style="display:none;"></div>
-  </div>
-</div>
-
-<!-- Cookie banner (essential cookies) -->
-<div id="cookie-banner" style="display:none;">
-  <div class="cookie-banner__inner">
-    <div class="cookie-banner__text">
-      We use essential cookies to make CHECK news work (sign-in, security, preferences).
-      <a href="/privacy" class="cookie-banner__link">Learn more</a>
-    </div>
-    <button id="cookie-accept" class="cookie-banner__btn">OK</button>
-  </div>
-</div>
-
-  <!-- Upgrade modal (Tracking limit) -->
-  <div id="upgradeModal" class="ckModal" aria-hidden="true" role="dialog" aria-modal="true">
-    <div class="ckModal__backdrop" data-ck-close="1"></div>
-    <div class="ckModal__card" role="document">
-      <button class="ckModal__close" type="button" aria-label="Close" data-ck-close="1">✕</button>
-
-      <div class="ckModal__top">
-        <div class="ckModal__icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
-            <path d="M12 2l3 7 7 .7-5.2 4.5 1.6 7.1L12 17.8 5.6 21.3l1.6-7.1L2 9.7 9 9l3-7z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
-          </svg>
-        </div>
-        <div class="ckModal__copy">
-          <div id="upgradeModalEyebrow" class="ckModal__eyebrow">Tracking limit reached</div>
-          <div id="upgradeModalTitle" class="ckModal__title">Upgrade</div>
-          <div id="upgradeModalDesc" class="ckModal__desc">To track more stories, upgrade your plan.</div>
-        </div>
-      </div>
-
-      <div class="ckModal__grid">
-        <div class="ckMetric">
-          <div class="ckMetric__k">Your plan</div>
-          <div class="ckMetric__v"><span id="upgradeModalPlanPill" class="ckPill">Free</span></div>
-        </div>
-        <div class="ckMetric">
-          <div class="ckMetric__k">Tracking limit</div>
-          <div class="ckMetric__v" id="upgradeModalLimit">—</div>
-        </div>
-        <div class="ckMetric">
-          <div class="ckMetric__k">Recommended</div>
-          <div class="ckMetric__v"><span id="upgradeModalRecoPill" class="ckPill ckPill--brand">Pro</span></div>
-        </div>
-      </div>
-
-      <div class="ckModal__actions">
-        <button id="upgradeModalCta" class="btn ckBtnBrand" type="button">See plans</button>
-        <button id="upgradeModalCancel" class="btn" type="button" data-ck-close="1">Not now</button>
-      </div>
-    </div>
-  </div>
-
-
-<div id="eventMapModal" class="eventMapModal" aria-hidden="true">
-  <div class="eventMapModal__backdrop" data-event-map-close="1"></div>
-  <div class="eventMapModal__sheet" role="dialog" aria-modal="true" aria-labelledby="eventMapTitle">
-    <div class="eventMapModal__top">
-      <div id="eventMapTitle" class="eventMapModal__title" data-i18n="map.event_map">Event map</div>
-      <div class="eventMapModal__right">
-        <button type="button" class="eventMapWindowBtn" data-map-window="24h">24h</button>
-        <button type="button" class="eventMapWindowBtn isOn" data-map-window="3d">3d</button>
-        <button type="button" class="eventMapWindowBtn" data-map-window="7d">7d</button>
-        <button type="button" class="eventMapCloseBtn" data-event-map-close="1" title="Close" data-i18n-title="ui.close">✕</button>
-      </div>
-    </div>
-    <div id="eventMapMeta">0 mapped stories · 0 locations</div>
-    <div id="eventMapCanvas"></div>
-  </div>
-</div>
-
-</body>
-</html>
+/* === MOBILE LANDING: HIDE 3RD WIDGET (TOP HEADLINES) === */
+@media (max-width: 640px){
+  .guestLandingWidgets{
+    grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+    gap:14px !important;
+  }
+  .guestLandingWidgets > .guestLandingWidget:nth-child(3){
+    display:none !important;
+  }
+}
