@@ -67,6 +67,26 @@ def _human_age(dt: Optional[datetime]) -> str:
     days = hours // 24
     return f"Update {days}d ago"
 
+
+
+def _resolve_score(meta: dict, score_row: dict) -> int:
+    candidates = [
+        score_row.get("credibility_score"),
+        score_row.get("score"),
+        meta.get("credibility_score"),
+        meta.get("score"),
+        meta.get("trust_score"),
+        meta.get("rating"),
+    ]
+    for value in candidates:
+        try:
+            if value is None or value == "":
+                continue
+            return max(0, min(100, int(round(float(value)))))
+        except Exception:
+            continue
+    return 0
+
 def _query_float(request: Request, name: str, default: float) -> float:
     raw = (request.query_params.get(name) or '').strip()
     if not raw:
@@ -354,8 +374,7 @@ def share_image(cluster_id: int, request: Request):
         raise HTTPException(status_code=404, detail="Cluster not found")
 
     score_row = db.get_score(int(cluster_id)) or {}
-    score = int(score_row.get("credibility_score") or 0)
-    score = max(0, min(100, score))
+    score = _resolve_score(meta, score_row)
 
     summary_row = db.get_summary(int(cluster_id)) or {}
     summary = (summary_row.get("summary_text") or "").strip()
@@ -376,7 +395,7 @@ def share_image(cluster_id: int, request: Request):
     updated_at = score_row.get("computed_at") or meta.get("updated_at") or meta.get("created_at") or ""
     dt = _parse_dt(updated_at)
     v = str(int(dt.timestamp())) if dt else str(int(time.time()))
-    version = f"{meta.get('title','')}|{summary}|{score}|{top_source}|{outlets_count}|{img_url}|{updated_at}|{focus_x:.4f}|{focus_y:.4f}|v9"
+    version = f"{meta.get('title','')}|{summary}|{score}|{top_source}|{outlets_count}|{img_url}|{updated_at}|{focus_x:.4f}|{focus_y:.4f}|v10"
     out_path = _cache_path(int(cluster_id), version)
 
     if os.path.exists(out_path):
@@ -384,148 +403,126 @@ def share_image(cluster_id: int, request: Request):
             data = f.read()
         return Response(content=data, media_type="image/png", headers={"Cache-Control": "public, max-age=3600"})
 
-    canvas = Image.new("RGB", (OG_W, OG_H), (255, 255, 255))
+    canvas = Image.new("RGB", (OG_W, OG_H), (244, 244, 246))
     cd = ImageDraw.Draw(canvas)
-
-    left_w = 530
-    right_x0 = left_w
-    right_w = OG_W - left_w
 
     art = _download_image(img_url)
     if art is None:
-        art = Image.new("RGB", (left_w, OG_H), (235, 235, 240))
+        art = Image.new("RGB", (OG_W, OG_H), (228, 230, 234))
         ad = ImageDraw.Draw(art)
-        ad.text((34, 34), "No related image", font=_font(28, weight="bold"), fill=(110, 110, 120))
-    art = _cover_resize(art, left_w, OG_H, focus_x=focus_x, focus_y=focus_y)
+        ad.text((44, 40), "No related image", font=_font(28, weight="bold"), fill=(105, 110, 118))
+
+    art = _cover_resize(art, OG_W, OG_H, focus_x=focus_x, focus_y=focus_y)
     canvas.paste(art, (0, 0))
 
-    cd.rectangle((right_x0, 0, OG_W, OG_H), fill=(255, 255, 255))
-    cd.line((right_x0, 0, right_x0, OG_H), fill=(235, 235, 235), width=2)
+    # Atmospheric overlays for better text legibility.
+    top_fade = Image.new("RGBA", (OG_W, OG_H), (0, 0, 0, 0))
+    td = ImageDraw.Draw(top_fade)
+    td.rectangle((0, 0, OG_W, 150), fill=(8, 12, 18, 34))
+    td.rectangle((0, OG_H - 260, OG_W, OG_H), fill=(5, 8, 12, 34))
+    canvas = Image.alpha_composite(canvas.convert("RGBA"), top_fade)
 
-    logo_path = os.path.join("src", "web", "icons", "Logo.png")
-    brand_x = right_x0 + 52
-    brand_y = 34
-    if os.path.exists(logo_path):
-        try:
-            logo = Image.open(logo_path).convert("RGBA")
-            max_w, max_h = 128, 56
-            lw, lh = logo.size
-            scale = min(max_w / lw, max_h / lh)
-            logo = logo.resize((int(lw * scale), int(lh * scale)), Image.Resampling.LANCZOS)
-            canvas.paste(logo, (brand_x, brand_y), logo)
-            wx = brand_x + logo.size[0] + 12
-        except Exception:
-            wx = brand_x
-    else:
-        wx = brand_x
+    # Stronger bottom gradient.
+    gradient = Image.new("L", (1, OG_H), 0)
+    for y_px in range(OG_H):
+        if y_px < OG_H * 0.46:
+            alpha = 0
+        else:
+            t = (y_px - OG_H * 0.46) / max(1, (OG_H * 0.54))
+            alpha = int(max(0, min(220, 220 * (t ** 1.65))))
+        gradient.putpixel((0, y_px), alpha)
+    gradient = gradient.resize((OG_W, OG_H))
+    shadow = Image.new("RGBA", (OG_W, OG_H), (0, 0, 0, 0))
+    shadow.putalpha(gradient)
+    canvas = Image.alpha_composite(canvas, shadow)
 
-    cd.text((wx, brand_y - 2), "CHECKNE.", font=_font(34, family="jersey", weight="regular"), fill=(15, 15, 15))
+    cd = ImageDraw.Draw(canvas)
 
-    pie_cx = right_x0 + right_w // 2
-    pie_cy = 180
-    pie_r = 74
-    _draw_trust_pie(cd, (pie_cx, pie_cy), pie_r, score)
+    def draw_glass_pill(x1: int, y1: int, x2: int, y2: int, *, alpha: int = 122, outline_alpha: int = 92):
+        pill = Image.new("RGBA", (OG_W, OG_H), (0, 0, 0, 0))
+        pd = ImageDraw.Draw(pill)
+        pd.rounded_rectangle((x1, y1, x2, y2), radius=26, fill=(22, 28, 36, alpha), outline=(255, 255, 255, outline_alpha), width=2)
+        canvas.alpha_composite(pill)
 
-    label_font = _font(40, weight="light")
-    score_font = _font(38, weight="regular")
-    cd.text((pie_cx, pie_cy + pie_r + 45), "Trust score", font=label_font, fill=(35, 35, 35), anchor="mm")
-    cd.text((pie_cx, pie_cy + pie_r + 92), f"{score}/100", font=score_font, fill=(15, 15, 15), anchor="mm")
+    # Top pills
+    trust_label = f"Trust {int(max(0, min(100, score)))}/100"
+    trust_font = _font(30, weight="bold")
+    pill_pad_x = 28
+    pill_h = 86
+    trust_w = int(cd.textlength(trust_label, font=trust_font)) + pill_pad_x * 2
+    trust_x1 = 52
+    trust_y1 = 46
+    draw_glass_pill(trust_x1, trust_y1, trust_x1 + trust_w, trust_y1 + pill_h)
+    cd.text((trust_x1 + trust_w // 2, trust_y1 + pill_h // 2 - 2), trust_label, font=trust_font, fill=(255, 255, 255), anchor="mm")
 
-    updated_label = _human_age(_parse_dt(updated_at))
-    updated_y = pie_cy + pie_r + 138
-    if updated_label:
-        cd.text((pie_cx, updated_y), updated_label, font=_font(23, weight="regular"), fill=(180, 180, 180), anchor="mm")
-    headline_start_y = updated_y + 36
+    brand_label = "CHECKNE."
+    brand_font = _font(28, family="jersey", weight="regular")
+    brand_w = max(250, int(cd.textlength(brand_label, font=brand_font)) + 78)
+    brand_x2 = OG_W - 52
+    brand_x1 = brand_x2 - brand_w
+    brand_y1 = 46
+    draw_glass_pill(brand_x1, brand_y1, brand_x2, brand_y1 + pill_h)
+    cd.text(((brand_x1 + brand_x2) // 2, brand_y1 + pill_h // 2 - 2), brand_label, font=brand_font, fill=(255, 255, 255), anchor="mm")
+
+    # Main bottom story block — smaller and cleaner.
+    panel_margin_x = 56
+    panel_h = 244
+    panel_x1 = panel_margin_x
+    panel_x2 = OG_W - panel_margin_x
+    panel_y2 = OG_H - 28
+    panel_y1 = panel_y2 - panel_h
+    panel = Image.new("RGBA", (OG_W, OG_H), (0, 0, 0, 0))
+    pd = ImageDraw.Draw(panel)
+    pd.rounded_rectangle((panel_x1, panel_y1, panel_x2, panel_y2), radius=34, fill=(10, 16, 24, 158), outline=(255, 255, 255, 92), width=2)
+    canvas.alpha_composite(panel)
+    cd = ImageDraw.Draw(canvas)
 
     title = (meta.get("title") or "").strip()
     desc_text = (summary or "").strip()
     if not desc_text:
-        sources_for_desc = db.get_cluster_sources(int(cluster_id)) or []
-        desc_text = (sources_for_desc[0].get("description") if sources_for_desc else "") or ""
+        desc_text = (sources[0].get("description") if sources else "") or ""
 
-    text_x = right_x0 + 34
-    max_text_w = right_w - 68
+    text_x = panel_x1 + 46
+    text_y = panel_y1 + 42
+    text_w = panel_x2 - panel_x1 - 92
 
-    disclaimer_lines = [
-        "CHECKNE. is an informational service and does not provide factual determinations.",
-        "Trust scores reflect automated analysis and may change as new information becomes available.",
-    ]
-    disclaimer_font = _font(10)
-    disclaimer_line_h = int(disclaimer_font.size * 1.20)
-    disclaimer_h = disclaimer_line_h * len(disclaimer_lines) + 8
-    footer_font = _font(16)
-    footer_h = int(footer_font.size * 1.25) + 10
-
-    footer_y = OG_H - disclaimer_h - footer_h - 18
-    y_max = footer_y - 18
-
-    y = headline_start_y
-
-    body_font = _font(18, weight="regular")
-    line_h_body = int(body_font.size * 1.35)
-
-    TARGET_TITLE_LINES = 2
-    title_lines = []
     title_font = None
-
-    for size in (26, 24, 22, 20, 18, 16):
-        tf = _font(size, weight="semibold")
-        lines = _wrap_by_pixels(cd, title, tf, max_text_w)
-        if len(lines) <= TARGET_TITLE_LINES:
+    title_lines = []
+    for size in (64, 60, 56, 52, 48, 44):
+        tf = _font(size, weight="bold")
+        lines = _wrap_by_pixels(cd, title, tf, text_w)
+        if len(lines) <= 3:
             title_font = tf
-            title_lines = lines
+            title_lines = lines[:3]
             break
-
     if not title_font:
-        title_font = _font(16, weight="semibold")
-        title_lines = _wrap_by_pixels(cd, title, title_font, max_text_w)
-        title_lines = title_lines[:TARGET_TITLE_LINES]
+        title_font = _font(42, weight="bold")
+        title_lines = _wrap_by_pixels(cd, title, title_font, text_w)[:3]
+        if len(title_lines) == 3:
+            title_lines[-1] = _ellipsize(cd, title_lines[-1], title_font, text_w)
 
-    line_h_title = int(title_font.size * 1.18)
+    title_line_h = int(title_font.size * 1.08)
+    for i, ln in enumerate(title_lines):
+        cd.text((text_x, text_y + i * title_line_h), ln, font=title_font, fill=(255, 255, 255))
 
-    title_block_h = len(title_lines) * line_h_title + 10
-    available_for_desc_px = (y_max - (y + title_block_h))
+    meta_font = _font(24, weight="semibold")
+    meta_parts = []
+    if top_source:
+        meta_parts.append(str(top_source).strip())
+    if outlets_count:
+        meta_parts.append(f"{int(outlets_count)} outlets")
+    meta_line = " • ".join(meta_parts)
+    if meta_line:
+        meta_y = panel_y2 - 50
+        cd.text((text_x, meta_y), _ellipsize(cd, meta_line, meta_font, text_w), font=meta_font, fill=(235, 235, 235))
 
-    for ln in title_lines:
-        if y + line_h_title > y_max:
-            break
-        cd.text((text_x, y), ln, font=title_font, fill=(20, 20, 20))
-        y += line_h_title
-    y += 10
-
-    desc_raw = (desc_text or "").strip()
-    desc_lines_all = _wrap_by_pixels(cd, desc_raw, body_font, max_text_w)
-
-    MAX_DESC_LINES = 2
-    lines_fit = int(available_for_desc_px // line_h_body) if available_for_desc_px > 0 else 0
-    lines_to_draw = max(0, min(MAX_DESC_LINES, lines_fit))
-
-    if desc_lines_all and lines_to_draw > 0:
-        drawn = desc_lines_all[:lines_to_draw]
-        if len(desc_lines_all) > len(drawn):
-            drawn[-1] = _ellipsize(cd, drawn[-1] + " …", body_font, max_text_w)
-
-        for ln in drawn:
-            cd.text((text_x, y), ln, font=body_font, fill=(65, 65, 65))
-            y += line_h_body
-
-    footer = ""
-    if top_source and outlets_count:
-        footer = f"{top_source}      {outlets_count} outlets"
-    elif outlets_count:
-        footer = f"{outlets_count} outlets"
-    elif top_source:
-        footer = top_source
-    if footer:
-        cd.text((text_x, footer_y), footer, font=footer_font, fill=(170, 170, 170))
-
-    dy = OG_H - disclaimer_h - 10
-    for ln in disclaimer_lines:
-        cd.text((text_x, dy), ln, font=disclaimer_font, fill=(210, 210, 210))
-        dy += disclaimer_line_h
+    # Subtle source credit on the frame itself.
+    if top_source:
+        source_credit = f"Source: {top_source}"
+        cd.text((OG_W - 54, OG_H - 12), source_credit, font=_font(14, weight="regular"), fill=(230, 230, 230), anchor="rd")
 
     buf = io.BytesIO()
-    canvas.save(buf, format="PNG", optimize=True)
+    canvas.convert("RGB").save(buf, format="PNG", optimize=True)
     data = buf.getvalue()
 
     try:
@@ -543,8 +540,7 @@ def share_page(cluster_id: int, request: Request):
         raise HTTPException(status_code=404, detail="Not found")
 
     score_row = db.get_score(int(cluster_id)) or {}
-    score = int(score_row.get("credibility_score") or 0)
-    score = max(0, min(100, score))
+    score = _resolve_score(meta, score_row)
 
     summary_row = db.get_summary(int(cluster_id)) or {}
     summary = (summary_row.get("summary_text") or "").strip()

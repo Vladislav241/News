@@ -80,9 +80,9 @@
     .brandText .bottom { font-size: 40px; }
 
 .tagline{
-  flex: 0 0 auto;      /* НЕ растягиваем */
+  flex: 0 0 auto;      /* Р  РЎСљР  РІР‚Сћ Р РЋР вЂљР  Р’В°Р РЋР С“Р РЋРІР‚С™Р РЋР РЏР  РЎвЂ“Р  РЎвЂР  Р вЂ Р  Р’В°Р  Р’ВµР  РЎВ */
   text-align: left;
-  margin-left: 12px;   /* расстояние от лого */
+  margin-left: 12px;   /* Р РЋР вЂљР  Р’В°Р РЋР С“Р РЋР С“Р РЋРІР‚С™Р  РЎвЂўР РЋР РЏР  Р вЂ¦Р  РЎвЂР  Р’Вµ Р  РЎвЂўР РЋРІР‚С™ Р  Р’В»Р  РЎвЂўР  РЎвЂ“Р  РЎвЂў */
   margin-bottom: -20px;
   font-size: 18px;
   letter-spacing: .08em;
@@ -90,7 +90,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 520px;    /* чтобы не налезало на кнопки */
+  max-width: 520px;    /* Р РЋРІР‚РЋР РЋРІР‚С™Р  РЎвЂўР  Р’В±Р РЋРІР‚в„– Р  Р вЂ¦Р  Р’Вµ Р  Р вЂ¦Р  Р’В°Р  Р’В»Р  Р’ВµР  Р’В·Р  Р’В°Р  Р’В»Р  РЎвЂў Р  Р вЂ¦Р  Р’В° Р  РЎвЂќР  Р вЂ¦Р  РЎвЂўР  РЎвЂ”Р  РЎвЂќР  РЎвЂ */
 }
 
 
@@ -102,9 +102,9 @@
   align-items:center;
   gap: 10px;
 
-  margin-left: 0;             /* ✅ убрали auto */
+  margin-left: 0;             /* Р Р†РЎС™РІР‚В¦ Р РЋРЎвЂњР  Р’В±Р РЋР вЂљР  Р’В°Р  Р’В»Р  РЎвЂ auto */
   justify-content:flex-end;
-  flex: 0 0 auto;             /* ✅ не растягиваем */
+  flex: 0 0 auto;             /* Р Р†РЎС™РІР‚В¦ Р  Р вЂ¦Р  Р’Вµ Р РЋР вЂљР  Р’В°Р РЋР С“Р РЋРІР‚С™Р РЋР РЏР  РЎвЂ“Р  РЎвЂР  Р вЂ Р  Р’В°Р  Р’ВµР  РЎВ */
 }
 
 
@@ -126,7 +126,7 @@
 }
 
     .trackBtn:hover {
-  background: rgba(28, 41, 73, 0.06); /* мягкий серый */
+  background: rgba(28, 41, 73, 0.06); /* Р  РЎВР РЋР РЏР  РЎвЂ“Р  РЎвЂќР  РЎвЂР  РІвЂћвЂ“ Р РЋР С“Р  Р’ВµР РЋР вЂљР РЋРІР‚в„–Р  РІвЂћвЂ“ */
 }
     .trackBadge {
       min-width: 22px;
@@ -181,7 +181,7 @@
     .muted { color:var(--muted); font-size: 13px; }
 
     /* -----------------------------
-       Top stories carousel (🔥)
+       Top stories carousel (РЎР‚РЎСџРІР‚СњРўС’)
        ----------------------------- */
     .topStories{
       margin-top: 22px;
@@ -395,14 +395,14 @@
     .searchRow { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
     .searchWrap{
   width: 100%;
-  max-width: 980px;   /* <-- увеличивай: 900 / 1000 / 1100 */
+  max-width: 980px;   /* <-- Р РЋРЎвЂњР  Р вЂ Р  Р’ВµР  Р’В»Р  РЎвЂР РЋРІР‚РЋР  РЎвЂР  Р вЂ Р  Р’В°Р  РІвЂћвЂ“: 900 / 1000 / 1100 */
   margin: 0 auto;
 
   display:flex;
   align-items:center;
   gap: 14px;
 
-  padding: 16px 22px; /* чуть больше воздуха */
+  padding: 16px 22px; /* Р РЋРІР‚РЋР РЋРЎвЂњР РЋРІР‚С™Р РЋР Р‰ Р  Р’В±Р  РЎвЂўР  Р’В»Р РЋР Р‰Р РЋРІвЂљВ¬Р  Р’Вµ Р  Р вЂ Р  РЎвЂўР  Р’В·Р  РўвЂР РЋРЎвЂњР РЋРІР‚В¦Р  Р’В° */
   border-radius: 14px;
 
   background:#fff;
@@ -410,7 +410,7 @@
 }
 
 .searchWrap input{
-  font-size: 18px;    /* было 14/18 */
+  font-size: 18px;    /* Р  Р’В±Р РЋРІР‚в„–Р  Р’В»Р  РЎвЂў 14/18 */
   padding-top: 5px; 
   line-height: 1.2;
 }
@@ -1523,7 +1523,7 @@ body.visualSearchLock{ overflow:hidden; }
       margin-left: 10px;
       flex-shrink:0;
     }
-    details[open] > .accordionSummary::after, .accordionSummary[aria-expanded="true"]::after { content:"−"; }
+    details[open] > .accordionSummary::after, .accordionSummary[aria-expanded="true"]::after { content:"-"; }
     .accordionSummary[aria-expanded="false"]::after { content:"+"; }
     .newsCard.isLow .accordionSummary::after { border-color: rgba(255,255,255,.14); background: rgba(17,17,19,.25); color: #fff; }
 
@@ -1607,7 +1607,7 @@ body.visualSearchLock{ overflow:hidden; }
     .newsCard.isLow .iconBtn { border-color: rgba(255,255,255,.14); background: rgba(17,17,19,.25); color: #fff; }
     .iconBtn.on { color: #fbbf24; }
 
-    /* Legacy blocks (tabs etc.) — kept for logic, lightly styled */
+    /* Legacy blocks (tabs etc.) Р Р†Р вЂљРІР‚Сњ kept for logic, lightly styled */
     .topline { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
     .tabs { display:flex; gap:8px; align-items:center; }
     .tab { padding:8px 10px; border-radius: 12px; border:1px solid var(--stroke); background:#fff; cursor:pointer; font-size: 13px; box-shadow: 0 8px 18px rgba(2,6,23,.06); }
@@ -1658,11 +1658,11 @@ body.visualSearchLock{ overflow:hidden; }
 .footerSocial .socialBtn img{
   width: 35px;
   height: 35px;
-  opacity: 1;                 /* можно оставить .8 если хочешь */
-  filter: brightness(0) saturate(100%); /* ← делает чёрным */
+  opacity: 1;                 /* Р  РЎВР  РЎвЂўР  Р’В¶Р  Р вЂ¦Р  РЎвЂў Р  РЎвЂўР РЋР С“Р РЋРІР‚С™Р  Р’В°Р  Р вЂ Р  РЎвЂР РЋРІР‚С™Р РЋР Р‰ .8 Р  Р’ВµР РЋР С“Р  Р’В»Р  РЎвЂ Р РЋРІР‚В¦Р  РЎвЂўР РЋРІР‚РЋР  Р’ВµР РЋРІвЂљВ¬Р РЋР Р‰ */
+  filter: brightness(0) saturate(100%); /* Р Р†РІР‚ РЎвЂ™ Р  РўвЂР  Р’ВµР  Р’В»Р  Р’В°Р  Р’ВµР РЋРІР‚С™ Р РЋРІР‚РЋР РЋРІР‚ВР РЋР вЂљР  Р вЂ¦Р РЋРІР‚в„–Р  РЎВ */
 }
 
-/* Info pages (Legal / Support) — premium */
+/* Info pages (Legal / Support) Р Р†Р вЂљРІР‚Сњ premium */
 .infoSection{
   display:none;
   padding: 34px 16px 72px;
@@ -1757,7 +1757,7 @@ body.visualSearchLock{ overflow:hidden; }
   .infoCard{ padding: 18px 16px; }
 }
    .copyright {
-  padding: 25px 0;      /* ✅ сильнее сверху и снизу */
+  padding: 25px 0;      /* Р Р†РЎС™РІР‚В¦ Р РЋР С“Р  РЎвЂР  Р’В»Р РЋР Р‰Р  Р вЂ¦Р  Р’ВµР  Р’Вµ Р РЋР С“Р  Р вЂ Р  Р’ВµР РЋР вЂљР РЋРІР‚В¦Р РЋРЎвЂњ Р  РЎвЂ Р РЋР С“Р  Р вЂ¦Р  РЎвЂР  Р’В·Р РЋРЎвЂњ */
   text-align: center;
   color: rgba(15,23,42,.55);
   font-size: 12px;
@@ -1795,13 +1795,13 @@ body.visualSearchLock{ overflow:hidden; }
   flex: 0 0 auto;
 
   gap: 0;
-  padding: 0 4px;        /* было 2px */
-  block-size: 45px;        /* фиксируем высоту ровно под кружок */
+  padding: 0 4px;        /* Р  Р’В±Р РЋРІР‚в„–Р  Р’В»Р  РЎвЂў 2px */
+  block-size: 45px;        /* Р РЋРІР‚С›Р  РЎвЂР  РЎвЂќР РЋР С“Р  РЎвЂР РЋР вЂљР РЋРЎвЂњР  Р’ВµР  РЎВ Р  Р вЂ Р РЋРІР‚в„–Р РЋР С“Р  РЎвЂўР РЋРІР‚С™Р РЋРЎвЂњ Р РЋР вЂљР  РЎвЂўР  Р вЂ Р  Р вЂ¦Р  РЎвЂў Р  РЎвЂ”Р  РЎвЂўР  РўвЂ Р  РЎвЂќР РЋР вЂљР РЋРЎвЂњР  Р’В¶Р  РЎвЂўР  РЎвЂќ */
   min-block-size: 34px;
   overflow: hidden;
 
   transition:
-    inline-size .42s cubic-bezier(.22,1,.36,1),   /* было .26s */
+    inline-size .42s cubic-bezier(.22,1,.36,1),   /* Р  Р’В±Р РЋРІР‚в„–Р  Р’В»Р  РЎвЂў .26s */
     padding .30s ease,
     gap .30s ease,
     box-shadow .22s ease;
@@ -1812,7 +1812,7 @@ body.visualSearchLock{ overflow:hidden; }
   height: 34px;
   padding: 0;
   flex: 0 0 34px;
-  line-height: 34px;       /* помогает визуально центрировать */
+  line-height: 34px;       /* Р  РЎвЂ”Р  РЎвЂўР  РЎВР  РЎвЂўР  РЎвЂ“Р  Р’В°Р  Р’ВµР РЋРІР‚С™ Р  Р вЂ Р  РЎвЂР  Р’В·Р РЋРЎвЂњР  Р’В°Р  Р’В»Р РЋР Р‰Р  Р вЂ¦Р  РЎвЂў Р РЋРІР‚ Р  Р’ВµР  Р вЂ¦Р РЋРІР‚С™Р РЋР вЂљР  РЎвЂР РЋР вЂљР  РЎвЂўР  Р вЂ Р  Р’В°Р РЋРІР‚С™Р РЋР Р‰ */
 }
      .scoreBadgeCopy{
   max-inline-size: 0;
@@ -1952,20 +1952,20 @@ body.visualSearchLock{ overflow:hidden; }
   color: #ffffff;
 }
 
-/* Заголовки */
+/* Р  РІР‚вЂќР  Р’В°Р  РЎвЂ“Р  РЎвЂўР  Р’В»Р  РЎвЂўР  Р вЂ Р  РЎвЂќР  РЎвЂ */
 .news-card.dark h1,
 .news-card.dark h2,
 .news-card.dark h3 {
   color: #ffffff;
 }
 
-/* AI summary текст */
+/* AI summary Р РЋРІР‚С™Р  Р’ВµР  РЎвЂќР РЋР С“Р РЋРІР‚С™ */
 .news-card.dark .ai-summary,
 .news-card.dark .ai-summary p {
   color: rgba(255, 255, 255, 0.92);
 }
 
-/* Подписи / мета */
+/* Р  РЎСџР  РЎвЂўР  РўвЂР  РЎвЂ”Р  РЎвЂР РЋР С“Р  РЎвЂ / Р  РЎВР  Р’ВµР РЋРІР‚С™Р  Р’В° */
 .news-card.dark .meta,
 .news-card.dark .meta span {
   color: rgba(255, 255, 255, 0.7);
@@ -1976,7 +1976,7 @@ body.visualSearchLock{ overflow:hidden; }
   color: rgba(255, 255, 255, 0.85);
 }
 
-/* Ссылки */
+/* Р  Р Р‹Р РЋР С“Р РЋРІР‚в„–Р  Р’В»Р  РЎвЂќР  РЎвЂ */
 .news-card.dark a {
   color: #6ea8ff;
 }
@@ -1989,7 +1989,7 @@ body.visualSearchLock{ overflow:hidden; }
   display: none;
 }
 
-/* Кнопка по центру снизу */
+/* Р  РЎв„ўР  Р вЂ¦Р  РЎвЂўР  РЎвЂ”Р  РЎвЂќР  Р’В° Р  РЎвЂ”Р  РЎвЂў Р РЋРІР‚ Р  Р’ВµР  Р вЂ¦Р РЋРІР‚С™Р РЋР вЂљР РЋРЎвЂњ Р РЋР С“Р  Р вЂ¦Р  РЎвЂР  Р’В·Р РЋРЎвЂњ */
 .show-more-wrapper {
   display: flex;
   justify-content: center;
@@ -2041,8 +2041,8 @@ body.visualSearchLock{ overflow:hidden; }
   height: 1px;
   background: var(--stroke);
 
-  margin-top: 50px;   /* ✅ большой отступ сверху */
-  margin-bottom: 30px; /* ✅ отступ перед copyright */
+  margin-top: 50px;   /* Р Р†РЎС™РІР‚В¦ Р  Р’В±Р  РЎвЂўР  Р’В»Р РЋР Р‰Р РЋРІвЂљВ¬Р  РЎвЂўР  РІвЂћвЂ“ Р  РЎвЂўР РЋРІР‚С™Р РЋР С“Р РЋРІР‚С™Р РЋРЎвЂњР  РЎвЂ” Р РЋР С“Р  Р вЂ Р  Р’ВµР РЋР вЂљР РЋРІР‚В¦Р РЋРЎвЂњ */
+  margin-bottom: 30px; /* Р Р†РЎС™РІР‚В¦ Р  РЎвЂўР РЋРІР‚С™Р РЋР С“Р РЋРІР‚С™Р РЋРЎвЂњР  РЎвЂ” Р  РЎвЂ”Р  Р’ВµР РЋР вЂљР  Р’ВµР  РўвЂ copyright */
 }
 
 /* --------------------
@@ -2090,7 +2090,7 @@ body.visualSearchLock{ overflow:hidden; }
   padding: 70px 52px 40px;
 }
 #authStepChoose{
-  margin-top: 40px; /* двигает вниз только заголовок + кнопки */
+  margin-top: 40px; /* Р  РўвЂР  Р вЂ Р  РЎвЂР  РЎвЂ“Р  Р’В°Р  Р’ВµР РЋРІР‚С™ Р  Р вЂ Р  Р вЂ¦Р  РЎвЂР  Р’В· Р РЋРІР‚С™Р  РЎвЂўР  Р’В»Р РЋР Р‰Р  РЎвЂќР  РЎвЂў Р  Р’В·Р  Р’В°Р  РЎвЂ“Р  РЎвЂўР  Р’В»Р  РЎвЂўР  Р вЂ Р  РЎвЂўР  РЎвЂќ + Р  РЎвЂќР  Р вЂ¦Р  РЎвЂўР  РЎвЂ”Р  РЎвЂќР  РЎвЂ */
 }
 .authBrand{
   display:flex;
@@ -2142,7 +2142,7 @@ body.visualSearchLock{ overflow:hidden; }
 .authBtn{
   display:flex;
   align-items:center;
-  justify-content:flex-start; /* ✅ влево */
+  justify-content:flex-start; /* Р Р†РЎС™РІР‚В¦ Р  Р вЂ Р  Р’В»Р  Р’ВµР  Р вЂ Р  РЎвЂў */
   gap: 12px;
 
   width: 100%;
@@ -2154,15 +2154,15 @@ body.visualSearchLock{ overflow:hidden; }
   border-radius: 16px;
   height: 56px;
 
-  padding: 0 18px;           /* оставляем */
-  padding-left: 24px;        /* ✅ чуть левее как в фигме */
+  padding: 0 18px;           /* Р  РЎвЂўР РЋР С“Р РЋРІР‚С™Р  Р’В°Р  Р вЂ Р  Р’В»Р РЋР РЏР  Р’ВµР  РЎВ */
+  padding-left: 24px;        /* Р Р†РЎС™РІР‚В¦ Р РЋРІР‚РЋР РЋРЎвЂњР РЋРІР‚С™Р РЋР Р‰ Р  Р’В»Р  Р’ВµР  Р вЂ Р  Р’ВµР  Р’Вµ Р  РЎвЂќР  Р’В°Р  РЎвЂќ Р  Р вЂ  Р РЋРІР‚С›Р  РЎвЂР  РЎвЂ“Р  РЎВР  Р’Вµ */
 
   font-weight: 400;
   font-size: 17px;
   cursor:pointer;
 }
 .authBtn span{
-  font-weight: 300; /* тоньше текст */
+  font-weight: 300; /* Р РЋРІР‚С™Р  РЎвЂўР  Р вЂ¦Р РЋР Р‰Р РЋРІвЂљВ¬Р  Р’Вµ Р РЋРІР‚С™Р  Р’ВµР  РЎвЂќР РЋР С“Р РЋРІР‚С™ */
 }
 #authBackdrop .authModal .authBtn,
 #authBackdrop .authModal .authBtn * {
@@ -2232,7 +2232,7 @@ body.visualSearchLock{ overflow:hidden; }
   }
   .authTitle{
     font-size: 30px;
-    white-space: normal;           /* ✅ allow wrapping on mobile */
+    white-space: normal;           /* Р Р†РЎС™РІР‚В¦ allow wrapping on mobile */
   }
   .authSub{ font-size: 14px; }
   .authFoot{
@@ -2249,11 +2249,11 @@ body.visualSearchLock{ overflow:hidden; }
 .authError.isShow{ display:block; }
 
 .authNote{
-  max-width: 510px;   /* как у .authActions */
+  max-width: 510px;   /* Р  РЎвЂќР  Р’В°Р  РЎвЂќ Р РЋРЎвЂњ .authActions */
   margin: 10px auto 0;
   color:#9a9a9a;
   font-size: 10px;
-  text-align: left;   /* ✅ начинается от начала кнопки */
+  text-align: left;   /* Р Р†РЎС™РІР‚В¦ Р  Р вЂ¦Р  Р’В°Р РЋРІР‚РЋР  РЎвЂР  Р вЂ¦Р  Р’В°Р  Р’ВµР РЋРІР‚С™Р РЋР С“Р РЋР РЏ Р  РЎвЂўР РЋРІР‚С™ Р  Р вЂ¦Р  Р’В°Р РЋРІР‚РЋР  Р’В°Р  Р’В»Р  Р’В° Р  РЎвЂќР  Р вЂ¦Р  РЎвЂўР  РЎвЂ”Р  РЎвЂќР  РЎвЂ */
 }
 
 /* --------------------
@@ -2355,7 +2355,7 @@ body.visualSearchLock{ overflow:hidden; }
   .pricingGrid{ grid-template-columns: 1fr; }
 }
 
-/* ОДИНАКОВЫЙ РАЗМЕР для email/password и кнопки */
+/* Р  РЎвЂєР  РІР‚СњР  Р’ВР  РЎСљР  РЎвЂ™Р  РЎв„ўР  РЎвЂєР  РІР‚в„ўР  Р’В«Р  РІвЂћСћ Р   Р  РЎвЂ™Р  РІР‚вЂќР  РЎС™Р  РІР‚СћР    Р  РўвЂР  Р’В»Р РЋР РЏ email/password Р  РЎвЂ Р  РЎвЂќР  Р вЂ¦Р  РЎвЂўР  РЎвЂ”Р  РЎвЂќР  РЎвЂ */
 #authStepEmail .authFieldLabel,
 #authStepEmail .authInput,
 #authStepEmail #authSubmit{
@@ -2366,40 +2366,40 @@ body.visualSearchLock{ overflow:hidden; }
   display: block;
 }
 
-/* одинаковая высота */
+/* Р  РЎвЂўР  РўвЂР  РЎвЂР  Р вЂ¦Р  Р’В°Р  РЎвЂќР  РЎвЂўР  Р вЂ Р  Р’В°Р РЋР РЏ Р  Р вЂ Р РЋРІР‚в„–Р РЋР С“Р  РЎвЂўР РЋРІР‚С™Р  Р’В° */
 #authStepEmail .authInput,
 #authStepEmail #authSubmit{
   height: 56px;
   border-radius: 16px;
 }
 
-/* инпуты: убираем "высоту через padding", делаем как у кнопки */
+/* Р  РЎвЂР  Р вЂ¦Р  РЎвЂ”Р РЋРЎвЂњР РЋРІР‚С™Р РЋРІР‚в„–: Р РЋРЎвЂњР  Р’В±Р  РЎвЂР РЋР вЂљР  Р’В°Р  Р’ВµР  РЎВ "Р  Р вЂ Р РЋРІР‚в„–Р РЋР С“Р  РЎвЂўР РЋРІР‚С™Р РЋРЎвЂњ Р РЋРІР‚РЋР  Р’ВµР РЋР вЂљР  Р’ВµР  Р’В· padding", Р  РўвЂР  Р’ВµР  Р’В»Р  Р’В°Р  Р’ВµР  РЎВ Р  РЎвЂќР  Р’В°Р  РЎвЂќ Р РЋРЎвЂњ Р  РЎвЂќР  Р вЂ¦Р  РЎвЂўР  РЎвЂ”Р  РЎвЂќР  РЎвЂ */
 #authStepEmail .authInput{
-  padding: 0 16px;     /* вместо padding: 16px 16px; */
-  line-height: 56px;   /* чтобы текст был по центру по вертикали */
+  padding: 0 16px;     /* Р  Р вЂ Р  РЎВР  Р’ВµР РЋР С“Р РЋРІР‚С™Р  РЎвЂў padding: 16px 16px; */
+  line-height: 56px;   /* Р РЋРІР‚РЋР РЋРІР‚С™Р  РЎвЂўР  Р’В±Р РЋРІР‚в„– Р РЋРІР‚С™Р  Р’ВµР  РЎвЂќР РЋР С“Р РЋРІР‚С™ Р  Р’В±Р РЋРІР‚в„–Р  Р’В» Р  РЎвЂ”Р  РЎвЂў Р РЋРІР‚ Р  Р’ВµР  Р вЂ¦Р РЋРІР‚С™Р РЋР вЂљР РЋРЎвЂњ Р  РЎвЂ”Р  РЎвЂў Р  Р вЂ Р  Р’ВµР РЋР вЂљР РЋРІР‚С™Р  РЎвЂР  РЎвЂќР  Р’В°Р  Р’В»Р  РЎвЂ */
 }
 
-/* кнопка уже height:56 у .authBtn, но на всякий */
+/* Р  РЎвЂќР  Р вЂ¦Р  РЎвЂўР  РЎвЂ”Р  РЎвЂќР  Р’В° Р РЋРЎвЂњР  Р’В¶Р  Р’Вµ height:56 Р РЋРЎвЂњ .authBtn, Р  Р вЂ¦Р  РЎвЂў Р  Р вЂ¦Р  Р’В° Р  Р вЂ Р РЋР С“Р РЋР РЏР  РЎвЂќР  РЎвЂР  РІвЂћвЂ“ */
 #authStepEmail #authSubmit{
   padding: 0 18px;
 }
-/* Ряд Back / Forgot = такая же ширина как кнопка */
+/* Р   Р РЋР РЏР  РўвЂ Back / Forgot = Р РЋРІР‚С™Р  Р’В°Р  РЎвЂќР  Р’В°Р РЋР РЏ Р  Р’В¶Р  Р’Вµ Р РЋРІвЂљВ¬Р  РЎвЂР РЋР вЂљР  РЎвЂР  Р вЂ¦Р  Р’В° Р  РЎвЂќР  Р’В°Р  РЎвЂќ Р  РЎвЂќР  Р вЂ¦Р  РЎвЂўР  РЎвЂ”Р  РЎвЂќР  Р’В° */
 #authStepEmail .authRowBetween{
   max-width: 510px;
   width: 100%;
-  margin: 12px auto 0;   /* по центру под кнопкой */
-  padding: 0 4px;        /* маленький внутренний отступ */
+  margin: 12px auto 0;   /* Р  РЎвЂ”Р  РЎвЂў Р РЋРІР‚ Р  Р’ВµР  Р вЂ¦Р РЋРІР‚С™Р РЋР вЂљР РЋРЎвЂњ Р  РЎвЂ”Р  РЎвЂўР  РўвЂ Р  РЎвЂќР  Р вЂ¦Р  РЎвЂўР  РЎвЂ”Р  РЎвЂќР  РЎвЂўР  РІвЂћвЂ“ */
+  padding: 0 4px;        /* Р  РЎВР  Р’В°Р  Р’В»Р  Р’ВµР  Р вЂ¦Р РЋР Р‰Р  РЎвЂќР  РЎвЂР  РІвЂћвЂ“ Р  Р вЂ Р  Р вЂ¦Р РЋРЎвЂњР РЋРІР‚С™Р РЋР вЂљР  Р’ВµР  Р вЂ¦Р  Р вЂ¦Р  РЎвЂР  РІвЂћвЂ“ Р  РЎвЂўР РЋРІР‚С™Р РЋР С“Р РЋРІР‚С™Р РЋРЎвЂњР  РЎвЂ” */
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
-/* чтобы текст не "уезжал" и не ломал верстку */
+/* Р РЋРІР‚РЋР РЋРІР‚С™Р  РЎвЂўР  Р’В±Р РЋРІР‚в„– Р РЋРІР‚С™Р  Р’ВµР  РЎвЂќР РЋР С“Р РЋРІР‚С™ Р  Р вЂ¦Р  Р’Вµ "Р РЋРЎвЂњР  Р’ВµР  Р’В·Р  Р’В¶Р  Р’В°Р  Р’В»" Р  РЎвЂ Р  Р вЂ¦Р  Р’Вµ Р  Р’В»Р  РЎвЂўР  РЎВР  Р’В°Р  Р’В» Р  Р вЂ Р  Р’ВµР РЋР вЂљР РЋР С“Р РЋРІР‚С™Р  РЎвЂќР РЋРЎвЂњ */
 #authStepEmail .authRowBetween .authLink{
   white-space: nowrap;
   flex: 0 0 auto;
 }
-/* ===== Forgot password: input + button одинаковые ===== */
+/* ===== Forgot password: input + button Р  РЎвЂўР  РўвЂР  РЎвЂР  Р вЂ¦Р  Р’В°Р  РЎвЂќР  РЎвЂўР  Р вЂ Р РЋРІР‚в„–Р  Р’Вµ ===== */
 #authStepForgot .authFieldLabel,
 #authStepForgot .authInput,
 #authStepForgot .authActions,
@@ -2411,20 +2411,20 @@ body.visualSearchLock{ overflow:hidden; }
   display: block;
 }
 
-/* одинаковая высота */
+/* Р  РЎвЂўР  РўвЂР  РЎвЂР  Р вЂ¦Р  Р’В°Р  РЎвЂќР  РЎвЂўР  Р вЂ Р  Р’В°Р РЋР РЏ Р  Р вЂ Р РЋРІР‚в„–Р РЋР С“Р  РЎвЂўР РЋРІР‚С™Р  Р’В° */
 #authStepForgot .authInput,
 #authStepForgot #authForgotSubmit{
   height: 56px;
   border-radius: 16px;
 }
 
-/* инпут внутри ровный */
+/* Р  РЎвЂР  Р вЂ¦Р  РЎвЂ”Р РЋРЎвЂњР РЋРІР‚С™ Р  Р вЂ Р  Р вЂ¦Р РЋРЎвЂњР РЋРІР‚С™Р РЋР вЂљР  РЎвЂ Р РЋР вЂљР  РЎвЂўР  Р вЂ Р  Р вЂ¦Р РЋРІР‚в„–Р  РІвЂћвЂ“ */
 #authStepForgot .authInput{
   padding: 0 16px;
   font-size: 16px;
 }
 
-/* ✅ кнопка: текст строго по центру */
+/* Р Р†РЎС™РІР‚В¦ Р  РЎвЂќР  Р вЂ¦Р  РЎвЂўР  РЎвЂ”Р  РЎвЂќР  Р’В°: Р РЋРІР‚С™Р  Р’ВµР  РЎвЂќР РЋР С“Р РЋРІР‚С™ Р РЋР С“Р РЋРІР‚С™Р РЋР вЂљР  РЎвЂўР  РЎвЂ“Р  РЎвЂў Р  РЎвЂ”Р  РЎвЂў Р РЋРІР‚ Р  Р’ВµР  Р вЂ¦Р РЋРІР‚С™Р РЋР вЂљР РЋРЎвЂњ */
 #authStepForgot #authForgotSubmit{
   display: flex;
   align-items: center;
@@ -2433,17 +2433,17 @@ body.visualSearchLock{ overflow:hidden; }
   padding: 0;
   font-weight: 400;
 }
-/* ✅ Ошибки в модалке: такая же ширина и центр, как инпуты/кнопки */
+/* Р Р†РЎС™РІР‚В¦ Р  РЎвЂєР РЋРІвЂљВ¬Р  РЎвЂР  Р’В±Р  РЎвЂќР  РЎвЂ Р  Р вЂ  Р  РЎВР  РЎвЂўР  РўвЂР  Р’В°Р  Р’В»Р  РЎвЂќР  Р’Вµ: Р РЋРІР‚С™Р  Р’В°Р  РЎвЂќР  Р’В°Р РЋР РЏ Р  Р’В¶Р  Р’Вµ Р РЋРІвЂљВ¬Р  РЎвЂР РЋР вЂљР  РЎвЂР  Р вЂ¦Р  Р’В° Р  РЎвЂ Р РЋРІР‚ Р  Р’ВµР  Р вЂ¦Р РЋРІР‚С™Р РЋР вЂљ, Р  РЎвЂќР  Р’В°Р  РЎвЂќ Р  РЎвЂР  Р вЂ¦Р  РЎвЂ”Р РЋРЎвЂњР РЋРІР‚С™Р РЋРІР‚в„–/Р  РЎвЂќР  Р вЂ¦Р  РЎвЂўР  РЎвЂ”Р  РЎвЂќР  РЎвЂ */
 #authBackdrop .authError{
   max-width: 510px;
   width: 100%;
   margin: 10px auto 0;
-  padding: 0 4px;          /* чтобы совпало с рядом кнопок */
+  padding: 0 4px;          /* Р РЋРІР‚РЋР РЋРІР‚С™Р  РЎвЂўР  Р’В±Р РЋРІР‚в„– Р РЋР С“Р  РЎвЂўР  Р вЂ Р  РЎвЂ”Р  Р’В°Р  Р’В»Р  РЎвЂў Р РЋР С“ Р РЋР вЂљР РЋР РЏР  РўвЂР  РЎвЂўР  РЎВ Р  РЎвЂќР  Р вЂ¦Р  РЎвЂўР  РЎвЂ”Р  РЎвЂўР  РЎвЂќ */
   text-align: left;
   font-size: 14px;
 }
 
-/* если нужно чуть ниже под инпутом */
+/* Р  Р’ВµР РЋР С“Р  Р’В»Р  РЎвЂ Р  Р вЂ¦Р РЋРЎвЂњР  Р’В¶Р  Р вЂ¦Р  РЎвЂў Р РЋРІР‚РЋР РЋРЎвЂњР РЋРІР‚С™Р РЋР Р‰ Р  Р вЂ¦Р  РЎвЂР  Р’В¶Р  Р’Вµ Р  РЎвЂ”Р  РЎвЂўР  РўвЂ Р  РЎвЂР  Р вЂ¦Р  РЎвЂ”Р РЋРЎвЂњР РЋРІР‚С™Р  РЎвЂўР  РЎВ */
 #authStepForgot #authForgotError{
   margin-top: 14px;
 }
@@ -2519,7 +2519,7 @@ body.visualSearchLock{ overflow:hidden; }
   text-align:center;
   padding:34px 24px 26px;
   border-bottom:1.5px solid #111;
-  min-height:240px;   /* было меньше */
+  min-height:240px;   /* Р  Р’В±Р РЋРІР‚в„–Р  Р’В»Р  РЎвЂў Р  РЎВР  Р’ВµР  Р вЂ¦Р РЋР Р‰Р РЋРІвЂљВ¬Р  Р’Вµ */
   display:flex;
   flex-direction:column;
   justify-content:center;
@@ -2531,7 +2531,7 @@ body.visualSearchLock{ overflow:hidden; }
   align-items:center;
   justify-content:center;
   gap:8px;
-  min-height:128px;   /* фиксируем блок цены */
+  min-height:128px;   /* Р РЋРІР‚С›Р  РЎвЂР  РЎвЂќР РЋР С“Р  РЎвЂР РЋР вЂљР РЋРЎвЂњР  Р’ВµР  РЎВ Р  Р’В±Р  Р’В»Р  РЎвЂўР  РЎвЂќ Р РЋРІР‚ Р  Р’ВµР  Р вЂ¦Р РЋРІР‚в„– */
   text-align:center;
 }
 
@@ -2693,21 +2693,21 @@ body.visualSearchLock{ overflow:hidden; }
 
   box-shadow: 0 20px 50px rgba(0,0,0,0.10);
 
-  /* ✅ animation */
+  /* Р Р†РЎС™РІР‚В¦ animation */
   opacity: 0;
   transform: translateY(-10px);
   pointer-events: none;
   transition: all 0.25s ease;
 }
 
-/* ✅ when open */
+/* Р Р†РЎС™РІР‚В¦ when open */
 .accountMenu.open{
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
 }
 
-/* кнопки внутри */
+/* Р  РЎвЂќР  Р вЂ¦Р  РЎвЂўР  РЎвЂ”Р  РЎвЂќР  РЎвЂ Р  Р вЂ Р  Р вЂ¦Р РЋРЎвЂњР РЋРІР‚С™Р РЋР вЂљР  РЎвЂ */
 .accountMenu button{
   border: none;
   background: transparent;
@@ -2729,7 +2729,7 @@ body.visualSearchLock{ overflow:hidden; }
   background: rgba(0,0,0,0.06);
 }
 
-/* logout красным */
+/* logout Р  РЎвЂќР РЋР вЂљР  Р’В°Р РЋР С“Р  Р вЂ¦Р РЋРІР‚в„–Р  РЎВ */
 #menuLogout{
   color: #b00020;
 }
@@ -3062,12 +3062,12 @@ body.visualSearchLock{ overflow:hidden; }
 .shareBackdrop.isOpen{ display:flex; }
 
 .shareModal{
-  width: min(760px, 94vw);        /* больше, как на макете */
+  width: min(760px, 94vw);        /* Р  Р’В±Р  РЎвЂўР  Р’В»Р РЋР Р‰Р РЋРІвЂљВ¬Р  Р’Вµ, Р  РЎвЂќР  Р’В°Р  РЎвЂќ Р  Р вЂ¦Р  Р’В° Р  РЎВР  Р’В°Р  РЎвЂќР  Р’ВµР РЋРІР‚С™Р  Р’Вµ */
   background: #fff;
   border-radius: 34px;
   border: 1px solid rgba(0,0,0,0.18);
   box-shadow: 0 28px 80px rgba(0,0,0,0.20);
-  padding: 0;                    /* важно: не давим контент паддингом */
+  padding: 0;                    /* Р  Р вЂ Р  Р’В°Р  Р’В¶Р  Р вЂ¦Р  РЎвЂў: Р  Р вЂ¦Р  Р’Вµ Р  РўвЂР  Р’В°Р  Р вЂ Р  РЎвЂР  РЎВ Р  РЎвЂќР  РЎвЂўР  Р вЂ¦Р РЋРІР‚С™Р  Р’ВµР  Р вЂ¦Р РЋРІР‚С™ Р  РЎвЂ”Р  Р’В°Р  РўвЂР  РўвЂР  РЎвЂР  Р вЂ¦Р  РЎвЂ“Р  РЎвЂўР  РЎВ */
   overflow: hidden;
   animation: shareModalIn .25s ease;
 }
@@ -3077,13 +3077,13 @@ body.visualSearchLock{ overflow:hidden; }
 }
 
 .shareBody{
-  padding: 46px 44px 38px;       /* основной воздух внутри */
+  padding: 46px 44px 38px;       /* Р  РЎвЂўР РЋР С“Р  Р вЂ¦Р  РЎвЂўР  Р вЂ Р  Р вЂ¦Р  РЎвЂўР  РІвЂћвЂ“ Р  Р вЂ Р  РЎвЂўР  Р’В·Р  РўвЂР РЋРЎвЂњР РЋРІР‚В¦ Р  Р вЂ Р  Р вЂ¦Р РЋРЎвЂњР РЋРІР‚С™Р РЋР вЂљР  РЎвЂ */
   display: grid;
   gap: 18px;
   text-align: center;
 }
 
-/* Заголовок + подзаголовок */
+/* Р  РІР‚вЂќР  Р’В°Р  РЎвЂ“Р  РЎвЂўР  Р’В»Р  РЎвЂўР  Р вЂ Р  РЎвЂўР  РЎвЂќ + Р  РЎвЂ”Р  РЎвЂўР  РўвЂР  Р’В·Р  Р’В°Р  РЎвЂ“Р  РЎвЂўР  Р’В»Р  РЎвЂўР  Р вЂ Р  РЎвЂўР  РЎвЂќ */
 .shareHero h1{
   margin: 0;
   font-size: 44px;
@@ -3096,7 +3096,7 @@ body.visualSearchLock{ overflow:hidden; }
   color: rgba(0,0,0,0.55);
 }
 
-/* Панель ARTICLE PREVIEW */
+/* Р  РЎСџР  Р’В°Р  Р вЂ¦Р  Р’ВµР  Р’В»Р РЋР Р‰ ARTICLE PREVIEW */
 .sharePanel{
   margin: 10px auto 0;
   width: min(520px, 100%);
@@ -3114,7 +3114,7 @@ body.visualSearchLock{ overflow:hidden; }
   margin: 0 0 12px;
 }
 
-/* рамка под картинку */
+/* Р РЋР вЂљР  Р’В°Р  РЎВР  РЎвЂќР  Р’В° Р  РЎвЂ”Р  РЎвЂўР  РўвЂ Р  РЎвЂќР  Р’В°Р РЋР вЂљР РЋРІР‚С™Р  РЎвЂР  Р вЂ¦Р  РЎвЂќР РЋРЎвЂњ */
 .sharePreviewFrame{
   border-radius: 18px;
   overflow: hidden;
@@ -3175,7 +3175,7 @@ body.visualSearchLock{ overflow:hidden; }
   color: rgba(0,0,0,0.45);
 }
 
-/* Кнопки */
+/* Р  РЎв„ўР  Р вЂ¦Р  РЎвЂўР  РЎвЂ”Р  РЎвЂќР  РЎвЂ */
 .shareActions{
   width: min(520px, 100%);
   margin: 0 auto;
@@ -3195,7 +3195,7 @@ body.visualSearchLock{ overflow:hidden; }
   cursor: pointer;
 
   display: grid;
-  grid-template-columns: 52px 1fr 52px; /* иконка слева, текст по центру */
+  grid-template-columns: 52px 1fr 52px; /* Р  РЎвЂР  РЎвЂќР  РЎвЂўР  Р вЂ¦Р  РЎвЂќР  Р’В° Р РЋР С“Р  Р’В»Р  Р’ВµР  Р вЂ Р  Р’В°, Р РЋРІР‚С™Р  Р’ВµР  РЎвЂќР РЋР С“Р РЋРІР‚С™ Р  РЎвЂ”Р  РЎвЂў Р РЋРІР‚ Р  Р’ВµР  Р вЂ¦Р РЋРІР‚С™Р РЋР вЂљР РЋРЎвЂњ */
   align-items: center;
 }
 .shareAction img{
@@ -3228,7 +3228,7 @@ body.visualSearchLock{ overflow:hidden; }
 }
 .shareNoThanks:hover{ color: rgba(0,0,0,0.55); }
 
-.shareMeta{ display:none; } /* ты её всё равно скрываешь */
+.shareMeta{ display:none; } /* Р РЋРІР‚С™Р РЋРІР‚в„– Р  Р’ВµР РЋРІР‚В Р  Р вЂ Р РЋР С“Р РЋРІР‚В Р РЋР вЂљР  Р’В°Р  Р вЂ Р  Р вЂ¦Р  РЎвЂў Р РЋР С“Р  РЎвЂќР РЋР вЂљР РЋРІР‚в„–Р  Р вЂ Р  Р’В°Р  Р’ВµР РЋРІвЂљВ¬Р РЋР Р‰ */
 
 /* Mobile */
 @media (max-width: 640px){
@@ -3314,7 +3314,7 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
 @media (max-width: 640px){
   .wrap{ max-width: 100%; padding: 12px 12px 0; }
 
-  /* ✅ делаем 3 зоны: left / center / right */
+  /* Р Р†РЎС™РІР‚В¦ Р  РўвЂР  Р’ВµР  Р’В»Р  Р’В°Р  Р’ВµР  РЎВ 3 Р  Р’В·Р  РЎвЂўР  Р вЂ¦Р РЋРІР‚в„–: left / center / right */
   .headerInner{
     padding: 14px 12px;
     display: grid;
@@ -3331,7 +3331,7 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
     align-items: center;
     justify-content: flex-end;
     gap: 8px;
-    margin-left: 0; /* важно: не flex-auto */
+    margin-left: 0; /* Р  Р вЂ Р  Р’В°Р  Р’В¶Р  Р вЂ¦Р  РЎвЂў: Р  Р вЂ¦Р  Р’Вµ flex-auto */
   }
 
   .brandLogo{ width: 34px; height: 34px; }
@@ -3361,10 +3361,10 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
   .searchWrap input::placeholder{ font-size: 16px; }
 }
 .headerCenter{
-  flex: 1;                     /* ✅ занимает всё между левым и правым */
+  flex: 1;                     /* Р Р†РЎС™РІР‚В¦ Р  Р’В·Р  Р’В°Р  Р вЂ¦Р  РЎвЂР  РЎВР  Р’В°Р  Р’ВµР РЋРІР‚С™ Р  Р вЂ Р РЋР С“Р РЋРІР‚В Р  РЎВР  Р’ВµР  Р’В¶Р  РўвЂР РЋРЎвЂњ Р  Р’В»Р  Р’ВµР  Р вЂ Р РЋРІР‚в„–Р  РЎВ Р  РЎвЂ Р  РЎвЂ”Р РЋР вЂљР  Р’В°Р  Р вЂ Р РЋРІР‚в„–Р  РЎВ */
   display: flex;
   align-items: right;
-  justify-content: right;      /* ✅ Tracking по центру */
+  justify-content: right;      /* Р Р†РЎС™РІР‚В¦ Tracking Р  РЎвЂ”Р  РЎвЂў Р РЋРІР‚ Р  Р’ВµР  Р вЂ¦Р РЋРІР‚С™Р РЋР вЂљР РЋРЎвЂњ */
 }
 /* Extra-tight phones */
 @media (max-width: 420px){
@@ -3382,50 +3382,50 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
 }
 /* === Interests / tags layout fix (mobile) === */
 
-/* База: пусть бар умеет переноситься и держит toggle справа */
+/* Р  РІР‚ВР  Р’В°Р  Р’В·Р  Р’В°: Р  РЎвЂ”Р РЋРЎвЂњР РЋР С“Р РЋРІР‚С™Р РЋР Р‰ Р  Р’В±Р  Р’В°Р РЋР вЂљ Р РЋРЎвЂњР  РЎВР  Р’ВµР  Р’ВµР РЋРІР‚С™ Р  РЎвЂ”Р  Р’ВµР РЋР вЂљР  Р’ВµР  Р вЂ¦Р  РЎвЂўР РЋР С“Р  РЎвЂР РЋРІР‚С™Р РЋР Р‰Р РЋР С“Р РЋР РЏ Р  РЎвЂ Р  РўвЂР  Р’ВµР РЋР вЂљР  Р’В¶Р  РЎвЂР РЋРІР‚С™ toggle Р РЋР С“Р  РЎвЂ”Р РЋР вЂљР  Р’В°Р  Р вЂ Р  Р’В° */
 .tagsBar{
   display:flex;
   align-items:center;
   justify-content: space-between;
   gap: 12px;
-  flex-wrap: wrap;              /* важно */
+  flex-wrap: wrap;              /* Р  Р вЂ Р  Р’В°Р  Р’В¶Р  Р вЂ¦Р  РЎвЂў */
 }
 
 .tags{
-  flex: 1 1 240px;              /* можно сжиматься/расти */
+  flex: 1 1 240px;              /* Р  РЎВР  РЎвЂўР  Р’В¶Р  Р вЂ¦Р  РЎвЂў Р РЋР С“Р  Р’В¶Р  РЎвЂР  РЎВР  Р’В°Р РЋРІР‚С™Р РЋР Р‰Р РЋР С“Р РЋР РЏ/Р РЋР вЂљР  Р’В°Р РЋР С“Р РЋРІР‚С™Р  РЎвЂ */
   min-width: 0;
   display:flex;
   flex-wrap: wrap;
   gap: 10px;
 }
 
-/* Чипы: чтобы выглядели «пиллами» и не растягивались на всю ширину */
+/* Р  Р’В§Р  РЎвЂР  РЎвЂ”Р РЋРІР‚в„–: Р РЋРІР‚РЋР РЋРІР‚С™Р  РЎвЂўР  Р’В±Р РЋРІР‚в„– Р  Р вЂ Р РЋРІР‚в„–Р  РЎвЂ“Р  Р’В»Р РЋР РЏР  РўвЂР  Р’ВµР  Р’В»Р  РЎвЂ Р вЂ™Р’В«Р  РЎвЂ”Р  РЎвЂР  Р’В»Р  Р’В»Р  Р’В°Р  РЎВР  РЎвЂР вЂ™Р’В» Р  РЎвЂ Р  Р вЂ¦Р  Р’Вµ Р РЋР вЂљР  Р’В°Р РЋР С“Р РЋРІР‚С™Р РЋР РЏР  РЎвЂ“Р  РЎвЂР  Р вЂ Р  Р’В°Р  Р’В»Р  РЎвЂР РЋР С“Р РЋР Р‰ Р  Р вЂ¦Р  Р’В° Р  Р вЂ Р РЋР С“Р РЋР вЂ№ Р РЋРІвЂљВ¬Р  РЎвЂР РЋР вЂљР  РЎвЂР  Р вЂ¦Р РЋРЎвЂњ */
 .tag{
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  width: auto;                  /* важно: не 100% */
+  width: auto;                  /* Р  Р вЂ Р  Р’В°Р  Р’В¶Р  Р вЂ¦Р  РЎвЂў: Р  Р вЂ¦Р  Р’Вµ 100% */
   max-width: 100%;
   white-space: nowrap;
 }
 
-/* Toggle справа */
+/* Toggle Р РЋР С“Р  РЎвЂ”Р РЋР вЂљР  Р’В°Р  Р вЂ Р  Р’В° */
 .thumbToggleWrap{
   flex: 0 0 auto;
-  margin-left: auto;            /* прижимаем вправо */
+  margin-left: auto;            /* Р  РЎвЂ”Р РЋР вЂљР  РЎвЂР  Р’В¶Р  РЎвЂР  РЎВР  Р’В°Р  Р’ВµР  РЎВ Р  Р вЂ Р  РЎвЂ”Р РЋР вЂљР  Р’В°Р  Р вЂ Р  РЎвЂў */
   padding-top: 0;
 }
 
-/* На очень узких (типа iPhone SE) делаем 2 колонки чипов как на фото 2 */
+/* Р  РЎСљР  Р’В° Р  РЎвЂўР РЋРІР‚РЋР  Р’ВµР  Р вЂ¦Р РЋР Р‰ Р РЋРЎвЂњР  Р’В·Р  РЎвЂќР  РЎвЂР РЋРІР‚В¦ (Р РЋРІР‚С™Р  РЎвЂР  РЎвЂ”Р  Р’В° iPhone SE) Р  РўвЂР  Р’ВµР  Р’В»Р  Р’В°Р  Р’ВµР  РЎВ 2 Р  РЎвЂќР  РЎвЂўР  Р’В»Р  РЎвЂўР  Р вЂ¦Р  РЎвЂќР  РЎвЂ Р РЋРІР‚РЋР  РЎвЂР  РЎвЂ”Р  РЎвЂўР  Р вЂ  Р  РЎвЂќР  Р’В°Р  РЎвЂќ Р  Р вЂ¦Р  Р’В° Р РЋРІР‚С›Р  РЎвЂўР РЋРІР‚С™Р  РЎвЂў 2 */
 @media (max-width: 420px){
   .tags{
     display:grid;
-    grid-template-columns: repeat(2, max-content); /* 2 колонки «по контенту» */
+    grid-template-columns: repeat(2, max-content); /* 2 Р  РЎвЂќР  РЎвЂўР  Р’В»Р  РЎвЂўР  Р вЂ¦Р  РЎвЂќР  РЎвЂ Р вЂ™Р’В«Р  РЎвЂ”Р  РЎвЂў Р  РЎвЂќР  РЎвЂўР  Р вЂ¦Р РЋРІР‚С™Р  Р’ВµР  Р вЂ¦Р РЋРІР‚С™Р РЋРЎвЂњР вЂ™Р’В» */
     gap: 10px;
     align-content: start;
   }
 
-  /* если вдруг не влазит — пусть чипы могут переносить текст */
+  /* Р  Р’ВµР РЋР С“Р  Р’В»Р  РЎвЂ Р  Р вЂ Р  РўвЂР РЋР вЂљР РЋРЎвЂњР  РЎвЂ“ Р  Р вЂ¦Р  Р’Вµ Р  Р вЂ Р  Р’В»Р  Р’В°Р  Р’В·Р  РЎвЂР РЋРІР‚С™ Р Р†Р вЂљРІР‚Сњ Р  РЎвЂ”Р РЋРЎвЂњР РЋР С“Р РЋРІР‚С™Р РЋР Р‰ Р РЋРІР‚РЋР  РЎвЂР  РЎвЂ”Р РЋРІР‚в„– Р  РЎВР  РЎвЂўР  РЎвЂ“Р РЋРЎвЂњР РЋРІР‚С™ Р  РЎвЂ”Р  Р’ВµР РЋР вЂљР  Р’ВµР  Р вЂ¦Р  РЎвЂўР РЋР С“Р  РЎвЂР РЋРІР‚С™Р РЋР Р‰ Р РЋРІР‚С™Р  Р’ВµР  РЎвЂќР РЋР С“Р РЋРІР‚С™ */
   .tag{ white-space: normal; }
 }
 /* === Mobile: move all card controls to the RIGHT === */
@@ -3435,7 +3435,7 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
     align-items: center;
   }
 
-  /* ВЕСЬ блок с 🔥 toggle score ↗ уезжает вправо */
+  /* Р  РІР‚в„ўР  РІР‚СћР  Р Р‹Р  Р’В¬ Р  Р’В±Р  Р’В»Р  РЎвЂўР  РЎвЂќ Р РЋР С“ РЎР‚РЎСџРІР‚СњРўС’ toggle score Р Р†РІР‚ РІР‚вЂќ Р РЋРЎвЂњР  Р’ВµР  Р’В·Р  Р’В¶Р  Р’В°Р  Р’ВµР РЋРІР‚С™ Р  Р вЂ Р  РЎвЂ”Р РЋР вЂљР  Р’В°Р  Р вЂ Р  РЎвЂў */
   .newsTopRight{
     margin-left: auto;
     display: flex;
@@ -3447,12 +3447,12 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
 /* === Interests: free-flow chips (NOT strict rows) === */
 .tags{
   display: flex;
-  flex-wrap: wrap;        /* 🔥 ключ */
-  gap: 10px 12px;         /* вертикаль / горизонталь */
+  flex-wrap: wrap;        /* РЎР‚РЎСџРІР‚СњРўС’ Р  РЎвЂќР  Р’В»Р РЋР вЂ№Р РЋРІР‚РЋ */
+  gap: 10px 12px;         /* Р  Р вЂ Р  Р’ВµР РЋР вЂљР РЋРІР‚С™Р  РЎвЂР  РЎвЂќР  Р’В°Р  Р’В»Р РЋР Р‰ / Р  РЎвЂ“Р  РЎвЂўР РЋР вЂљР  РЎвЂР  Р’В·Р  РЎвЂўР  Р вЂ¦Р РЋРІР‚С™Р  Р’В°Р  Р’В»Р РЋР Р‰ */
   align-items: flex-start;
 }
 
-/* Чипы не тянутся и имеют разную ширину */
+/* Р  Р’В§Р  РЎвЂР  РЎвЂ”Р РЋРІР‚в„– Р  Р вЂ¦Р  Р’Вµ Р РЋРІР‚С™Р РЋР РЏР  Р вЂ¦Р РЋРЎвЂњР РЋРІР‚С™Р РЋР С“Р РЋР РЏ Р  РЎвЂ Р  РЎвЂР  РЎВР  Р’ВµР РЋР вЂ№Р РЋРІР‚С™ Р РЋР вЂљР  Р’В°Р  Р’В·Р  Р вЂ¦Р РЋРЎвЂњР РЋР вЂ№ Р РЋРІвЂљВ¬Р  РЎвЂР РЋР вЂљР  РЎвЂР  Р вЂ¦Р РЋРЎвЂњ */
 .tag{
   width: auto;
   white-space: nowrap;
@@ -3477,17 +3477,17 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
   cursor: pointer;
 }
 
-/* когда юзер залогинен — делаем компактнее и “премиумнее” */
+/* Р  РЎвЂќР  РЎвЂўР  РЎвЂ“Р  РўвЂР  Р’В° Р РЋР вЂ№Р  Р’В·Р  Р’ВµР РЋР вЂљ Р  Р’В·Р  Р’В°Р  Р’В»Р  РЎвЂўР  РЎвЂ“Р  РЎвЂР  Р вЂ¦Р  Р’ВµР  Р вЂ¦ Р Р†Р вЂљРІР‚Сњ Р  РўвЂР  Р’ВµР  Р’В»Р  Р’В°Р  Р’ВµР  РЎВ Р  РЎвЂќР  РЎвЂўР  РЎВР  РЎвЂ”Р  Р’В°Р  РЎвЂќР РЋРІР‚С™Р  Р вЂ¦Р  Р’ВµР  Р’Вµ Р  РЎвЂ Р Р†Р вЂљРЎС™Р  РЎвЂ”Р РЋР вЂљР  Р’ВµР  РЎВР  РЎвЂР РЋРЎвЂњР  РЎВР  Р вЂ¦Р  Р’ВµР  Р’ВµР Р†Р вЂљРЎСљ */
 .loginBtn.isAuth{
   padding: 8px 12px;
   border-radius: 16px;
 }
 
-/* Круглый аватар (вместо S в квадратике) */
+/* Р  РЎв„ўР РЋР вЂљР РЋРЎвЂњР  РЎвЂ“Р  Р’В»Р РЋРІР‚в„–Р  РІвЂћвЂ“ Р  Р’В°Р  Р вЂ Р  Р’В°Р РЋРІР‚С™Р  Р’В°Р РЋР вЂљ (Р  Р вЂ Р  РЎВР  Р’ВµР РЋР С“Р РЋРІР‚С™Р  РЎвЂў S Р  Р вЂ  Р  РЎвЂќР  Р вЂ Р  Р’В°Р  РўвЂР РЋР вЂљР  Р’В°Р РЋРІР‚С™Р  РЎвЂР  РЎвЂќР  Р’Вµ) */
 .accountAvatar{
   width: 34px;
   height: 34px;
-  border-radius: 999px;         /* круг */
+  border-radius: 999px;         /* Р  РЎвЂќР РЋР вЂљР РЋРЎвЂњР  РЎвЂ“ */
   display: grid;
   place-items: center;
   font-weight: 800;
@@ -3497,7 +3497,7 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
   flex: 0 0 auto;
 }
 
-/* Если вместо букв используешь фото */
+/* Р  РІР‚СћР РЋР С“Р  Р’В»Р  РЎвЂ Р  Р вЂ Р  РЎВР  Р’ВµР РЋР С“Р РЋРІР‚С™Р  РЎвЂў Р  Р’В±Р РЋРЎвЂњР  РЎвЂќР  Р вЂ  Р  РЎвЂР РЋР С“Р  РЎвЂ”Р  РЎвЂўР  Р’В»Р РЋР Р‰Р  Р’В·Р РЋРЎвЂњР  Р’ВµР РЋРІвЂљВ¬Р РЋР Р‰ Р РЋРІР‚С›Р  РЎвЂўР РЋРІР‚С™Р  РЎвЂў */
 .accountAvatar img{
   width: 100%;
   height: 100%;
@@ -3506,7 +3506,7 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
   display: block;
 }
 
-/* Имя рядом с аватаром */
+/* Р  Р’ВР  РЎВР РЋР РЏ Р РЋР вЂљР РЋР РЏР  РўвЂР  РЎвЂўР  РЎВ Р РЋР С“ Р  Р’В°Р  Р вЂ Р  Р’В°Р РЋРІР‚С™Р  Р’В°Р РЋР вЂљР  РЎвЂўР  РЎВ */
 .accountName{
   font-weight: 800;
   font-size: 16px;
@@ -3517,12 +3517,12 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
   text-overflow: ellipsis;
 }
 
-/* На мобилке можно скрыть имя и оставить только кружок */
+/* Р  РЎСљР  Р’В° Р  РЎВР  РЎвЂўР  Р’В±Р  РЎвЂР  Р’В»Р  РЎвЂќР  Р’Вµ Р  РЎВР  РЎвЂўР  Р’В¶Р  Р вЂ¦Р  РЎвЂў Р РЋР С“Р  РЎвЂќР РЋР вЂљР РЋРІР‚в„–Р РЋРІР‚С™Р РЋР Р‰ Р  РЎвЂР  РЎВР РЋР РЏ Р  РЎвЂ Р  РЎвЂўР РЋР С“Р РЋРІР‚С™Р  Р’В°Р  Р вЂ Р  РЎвЂР РЋРІР‚С™Р РЋР Р‰ Р РЋРІР‚С™Р  РЎвЂўР  Р’В»Р РЋР Р‰Р  РЎвЂќР  РЎвЂў Р  РЎвЂќР РЋР вЂљР РЋРЎвЂњР  Р’В¶Р  РЎвЂўР  РЎвЂќ */
 @media (max-width: 520px){
   .accountName{ display: none; }
 }
 
-/* ✅ Fix: on mobile, guest button became empty (avatar is hidden + name was hidden).
+/* Р Р†РЎС™РІР‚В¦ Fix: on mobile, guest button became empty (avatar is hidden + name was hidden).
    Show the label when NOT authenticated. */
 @media (max-width: 520px){
   .loginBtn:not(.isAuth) .accountName{ display: inline; }
@@ -3532,7 +3532,7 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
    Account menu (dropdown)
    ========================= */
 .menu{
-  width: 280px;                 /* чтобы не ломалось */
+  width: 280px;                 /* Р РЋРІР‚РЋР РЋРІР‚С™Р  РЎвЂўР  Р’В±Р РЋРІР‚в„– Р  Р вЂ¦Р  Р’Вµ Р  Р’В»Р  РЎвЂўР  РЎВР  Р’В°Р  Р’В»Р  РЎвЂўР РЋР С“Р РЋР Р‰ */
   border-radius: 18px;
   border: 2px solid rgba(0,0,0,.12);
   background: #fff;
@@ -3540,7 +3540,7 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
   overflow: hidden;
 }
 
-/* верхний блок как на твоём втором скрине */
+/* Р  Р вЂ Р  Р’ВµР РЋР вЂљР РЋРІР‚В¦Р  Р вЂ¦Р  РЎвЂР  РІвЂћвЂ“ Р  Р’В±Р  Р’В»Р  РЎвЂўР  РЎвЂќ Р  РЎвЂќР  Р’В°Р  РЎвЂќ Р  Р вЂ¦Р  Р’В° Р РЋРІР‚С™Р  Р вЂ Р  РЎвЂўР РЋРІР‚ВР  РЎВ Р  Р вЂ Р РЋРІР‚С™Р  РЎвЂўР РЋР вЂљР  РЎвЂўР  РЎВ Р РЋР С“Р  РЎвЂќР РЋР вЂљР  РЎвЂР  Р вЂ¦Р  Р’Вµ */
 .accountMenuHeader{
   display: flex;
   align-items: center;
@@ -3548,7 +3548,7 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
   padding: 14px 14px 12px 14px;
 }
 
-/* аватар в меню */
+/* Р  Р’В°Р  Р вЂ Р  Р’В°Р РЋРІР‚С™Р  Р’В°Р РЋР вЂљ Р  Р вЂ  Р  РЎВР  Р’ВµР  Р вЂ¦Р РЋР вЂ№ */
 .accountMenuAvatar{
   width: 44px;
   height: 44px;
@@ -3618,7 +3618,7 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
   display: flex;
   flex-direction: column;
   gap: 3px;
-  min-width: 0; /* чтобы ellipsis работал */
+  min-width: 0; /* Р РЋРІР‚РЋР РЋРІР‚С™Р  РЎвЂўР  Р’В±Р РЋРІР‚в„– ellipsis Р РЋР вЂљР  Р’В°Р  Р’В±Р  РЎвЂўР РЋРІР‚С™Р  Р’В°Р  Р’В» */
 }
 
 #accountMenu .menuName{
@@ -3629,7 +3629,7 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
   color: #0f0f10;
 }
 
-/* ✅ Premium email line */
+/* Р Р†РЎС™РІР‚В¦ Premium email line */
 #accountMenu .menuEmail{
   font-size: 13px;
   font-weight: 520;
@@ -3637,13 +3637,13 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
   line-height: 1.15;
   color: rgba(15,15,16,.55);
 
-  /* эллипсис красиво */
+  /* Р РЋР РЉР  Р’В»Р  Р’В»Р  РЎвЂР  РЎвЂ”Р РЋР С“Р  РЎвЂР РЋР С“ Р  РЎвЂќР РЋР вЂљР  Р’В°Р РЋР С“Р  РЎвЂР  Р вЂ Р  РЎвЂў */
   max-width: 220px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 
-  /* "премиум" ощущения */
+  /* "Р  РЎвЂ”Р РЋР вЂљР  Р’ВµР  РЎВР  РЎвЂР РЋРЎвЂњР  РЎВ" Р  РЎвЂўР РЋРІР‚В°Р РЋРЎвЂњР РЋРІР‚В°Р  Р’ВµР  Р вЂ¦Р  РЎвЂР РЋР РЏ */
   padding: 4px 8px;
   border-radius: 999px;
   background: rgba(15,15,16,.04);
@@ -3651,7 +3651,7 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
   width: fit-content;
 }
 
-/* если меню узкое на мобиле */
+/* Р  Р’ВµР РЋР С“Р  Р’В»Р  РЎвЂ Р  РЎВР  Р’ВµР  Р вЂ¦Р РЋР вЂ№ Р РЋРЎвЂњР  Р’В·Р  РЎвЂќР  РЎвЂўР  Р’Вµ Р  Р вЂ¦Р  Р’В° Р  РЎВР  РЎвЂўР  Р’В±Р  РЎвЂР  Р’В»Р  Р’Вµ */
 @media (max-width: 520px){
   #accountMenu .menuEmail{ max-width: 170px; }
 }
@@ -3682,7 +3682,7 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
 }
 /* ===== Account dropdown (premium) ===== */
 .accountMenu{
-  width: 260px;                 /* было 190 — слишком узко */
+  width: 260px;                 /* Р  Р’В±Р РЋРІР‚в„–Р  Р’В»Р  РЎвЂў 190 Р Р†Р вЂљРІР‚Сњ Р РЋР С“Р  Р’В»Р  РЎвЂР РЋРІвЂљВ¬Р  РЎвЂќР  РЎвЂўР  РЎВ Р РЋРЎвЂњР  Р’В·Р  РЎвЂќР  РЎвЂў */
   padding: 10px;
   border-radius: 18px;
   border: 1px solid rgba(0,0,0,0.14);
@@ -3750,7 +3750,7 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
   background: rgba(0,0,0,0.05);
 }
 
-/* Logout red, but premium (not too “громко”) */
+/* Logout red, but premium (not too Р Р†Р вЂљРЎС™Р  РЎвЂ“Р РЋР вЂљР  РЎвЂўР  РЎВР  РЎвЂќР  РЎвЂўР Р†Р вЂљРЎСљ) */
 #menuLogout{
   color: #b00020;
 }
@@ -3767,7 +3767,7 @@ button:active, .btn:active, .trackBtn:active, .loginBtn:active { transform: scal
 
 html, body{ overflow-x: hidden; }
 
-/* Dimmed/blurred backdrop during view switch – subtle “iOS sheet” feel */
+/* Dimmed/blurred backdrop during view switch Р Р†Р вЂљРІР‚Сљ subtle Р Р†Р вЂљРЎС™iOS sheetР Р†Р вЂљРЎСљ feel */
 /* Premium brand overlay during Feed <-> Tracking transitions */
 .brandOverlay{
   position: fixed;
@@ -3908,7 +3908,7 @@ body.story-opening .viewShade{ opacity: 1; pointer-events: auto; }
   will-change: transform, opacity;
 }
 
-/* When switching, make it feel like a premium “page” floating above */
+/* When switching, make it feel like a premium Р Р†Р вЂљРЎС™pageР Р†Р вЂљРЎСљ floating above */
 body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
 
 /* "Page out" (we add .page-transition + direction class) */
@@ -4306,9 +4306,9 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
 .filtersBtn:hover .filtersDot{
   animation: filterPulse 1.8s cubic-bezier(.22,1,.36,1) infinite;
 }
-/* Мини-thumbnails в summary: не вырываем из layout, а плавно прячем */
+/* Р  РЎС™Р  РЎвЂР  Р вЂ¦Р  РЎвЂ-thumbnails Р  Р вЂ  summary: Р  Р вЂ¦Р  Р’Вµ Р  Р вЂ Р РЋРІР‚в„–Р РЋР вЂљР РЋРІР‚в„–Р  Р вЂ Р  Р’В°Р  Р’ВµР  РЎВ Р  РЎвЂР  Р’В· layout, Р  Р’В° Р  РЎвЂ”Р  Р’В»Р  Р’В°Р  Р вЂ Р  Р вЂ¦Р  РЎвЂў Р  РЎвЂ”Р РЋР вЂљР РЋР РЏР РЋРІР‚РЋР  Р’ВµР  РЎВ */
 .newsThumbWrap{
-  max-height: 84px;              /* подбери под свой размер */
+  max-height: 84px;              /* Р  РЎвЂ”Р  РЎвЂўР  РўвЂР  Р’В±Р  Р’ВµР РЋР вЂљР  РЎвЂ Р  РЎвЂ”Р  РЎвЂўР  РўвЂ Р РЋР С“Р  Р вЂ Р  РЎвЂўР  РІвЂћвЂ“ Р РЋР вЂљР  Р’В°Р  Р’В·Р  РЎВР  Р’ВµР РЋР вЂљ */
   overflow: hidden;
   transition: opacity 220ms cubic-bezier(.16,1,.3,1),
               transform 220ms cubic-bezier(.16,1,.3,1),
@@ -4316,7 +4316,7 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
   will-change: opacity, transform, max-height;
 }
 
-/* Когда карточка открыта */
+/* Р  РЎв„ўР  РЎвЂўР  РЎвЂ“Р  РўвЂР  Р’В° Р  РЎвЂќР  Р’В°Р РЋР вЂљР РЋРІР‚С™Р  РЎвЂўР РЋРІР‚РЋР  РЎвЂќР  Р’В° Р  РЎвЂўР РЋРІР‚С™Р  РЎвЂќР РЋР вЂљР РЋРІР‚в„–Р РЋРІР‚С™Р  Р’В° */
 .newsDetails[open] .newsThumbWrap{
   opacity: 0;
   transform: translateY(-4px) scale(.99);
@@ -4330,14 +4330,14 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
   transform: translateY(0) scale(1);
   max-height: 999px;
 }
-/* Резервируем место под hero image, чтобы не было layout shift */
+/* Р   Р  Р’ВµР  Р’В·Р  Р’ВµР РЋР вЂљР  Р вЂ Р  РЎвЂР РЋР вЂљР РЋРЎвЂњР  Р’ВµР  РЎВ Р  РЎВР  Р’ВµР РЋР С“Р РЋРІР‚С™Р  РЎвЂў Р  РЎвЂ”Р  РЎвЂўР  РўвЂ hero image, Р РЋРІР‚РЋР РЋРІР‚С™Р  РЎвЂўР  Р’В±Р РЋРІР‚в„– Р  Р вЂ¦Р  Р’Вµ Р  Р’В±Р РЋРІР‚в„–Р  Р’В»Р  РЎвЂў layout shift */
 .newsImageWrap{
-  aspect-ratio: 16 / 9;     /* или твой формат */
+  aspect-ratio: 16 / 9;     /* Р  РЎвЂР  Р’В»Р  РЎвЂ Р РЋРІР‚С™Р  Р вЂ Р  РЎвЂўР  РІвЂћвЂ“ Р РЋРІР‚С›Р  РЎвЂўР РЋР вЂљР  РЎВР  Р’В°Р РЋРІР‚С™ */
   width: 100%;
   overflow: hidden;
 }
 
-/* Чтобы img не ломал высоту */
+/* Р  Р’В§Р РЋРІР‚С™Р  РЎвЂўР  Р’В±Р РЋРІР‚в„– img Р  Р вЂ¦Р  Р’Вµ Р  Р’В»Р  РЎвЂўР  РЎВР  Р’В°Р  Р’В» Р  Р вЂ Р РЋРІР‚в„–Р РЋР С“Р  РЎвЂўР РЋРІР‚С™Р РЋРЎвЂњ */
 .newsImage{
   width: 100%;
   height: 100%;
@@ -4375,7 +4375,7 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
   overflow: visible;
 }
 
-/* Stats card – no negative margins, no fixed width so it never overlaps */
+/* Stats card Р Р†Р вЂљРІР‚Сљ no negative margins, no fixed width so it never overlaps */
 .trustStatsCard{
   width: auto;
   height: auto;
@@ -4462,7 +4462,7 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
     gap: 10px;
   }
 
-  /* чтобы не “раздувало” справа */
+  /* Р РЋРІР‚РЋР РЋРІР‚С™Р  РЎвЂўР  Р’В±Р РЋРІР‚в„– Р  Р вЂ¦Р  Р’Вµ Р Р†Р вЂљРЎС™Р РЋР вЂљР  Р’В°Р  Р’В·Р  РўвЂР РЋРЎвЂњР  Р вЂ Р  Р’В°Р  Р’В»Р  РЎвЂўР Р†Р вЂљРЎСљ Р РЋР С“Р  РЎвЂ”Р РЋР вЂљР  Р’В°Р  Р вЂ Р  Р’В° */
   .account-pill {
     max-width: 180px;
   }
@@ -4580,7 +4580,7 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
     }
 
     /* ===== Mobile widgets dock (bottom bar) =====
-       On phones there are no side columns — keep widgets reachable via a bottom dock.
+       On phones there are no side columns Р Р†Р вЂљРІР‚Сњ keep widgets reachable via a bottom dock.
     */
     @media (max-width: 980px){
       /* Collapse the 3-column layout to one column and hide sidebars */
@@ -5265,7 +5265,7 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
     .trackActions{ display:flex; gap: 10px; }
 
 
-/* Multi-select (chips + search) — used in Widget settings */
+/* Multi-select (chips + search) Р Р†Р вЂљРІР‚Сњ used in Widget settings */
 .msWrap{ width:100%; }
 .msChips{ display:flex; flex-wrap:wrap; gap:8px; padding: 2px 0 10px; }
 .msHint{ font-size:12px; color: rgba(15,23,42,.55); padding: 6px 2px; }
@@ -5349,7 +5349,7 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
 /* iOS Safari link color FIX    */
 /* ============================= */
 
-/* Кнопка "+" и все круглые action-кнопки */
+/* Р  РЎв„ўР  Р вЂ¦Р  РЎвЂўР  РЎвЂ”Р  РЎвЂќР  Р’В° "+" Р  РЎвЂ Р  Р вЂ Р РЋР С“Р  Р’Вµ Р  РЎвЂќР РЋР вЂљР РЋРЎвЂњР  РЎвЂ“Р  Р’В»Р РЋРІР‚в„–Р  Р’Вµ action-Р  РЎвЂќР  Р вЂ¦Р  РЎвЂўР  РЎвЂ”Р  РЎвЂќР  РЎвЂ */
 .addBtn,
 .addBtn:link,
 .addBtn:visited,
@@ -5360,12 +5360,12 @@ body.view-switching #feedView{ box-shadow: none; border-radius: 0; }
   text-decoration: none !important;
 }
 
-/* Если внутри используется SVG */
+/* Р  РІР‚СћР РЋР С“Р  Р’В»Р  РЎвЂ Р  Р вЂ Р  Р вЂ¦Р РЋРЎвЂњР РЋРІР‚С™Р РЋР вЂљР  РЎвЂ Р  РЎвЂР РЋР С“Р  РЎвЂ”Р  РЎвЂўР  Р’В»Р РЋР Р‰Р  Р’В·Р РЋРЎвЂњР  Р’ВµР РЋРІР‚С™Р РЋР С“Р РЋР РЏ SVG */
 .addBtn svg {
   fill: #111 !important;
 }
 
-/* Убрать синюю подсветку при тапе */
+/* Р  Р в‚¬Р  Р’В±Р РЋР вЂљР  Р’В°Р РЋРІР‚С™Р РЋР Р‰ Р РЋР С“Р  РЎвЂР  Р вЂ¦Р РЋР вЂ№Р РЋР вЂ№ Р  РЎвЂ”Р  РЎвЂўР  РўвЂР РЋР С“Р  Р вЂ Р  Р’ВµР РЋРІР‚С™Р  РЎвЂќР РЋРЎвЂњ Р  РЎвЂ”Р РЋР вЂљР  РЎвЂ Р РЋРІР‚С™Р  Р’В°Р  РЎвЂ”Р  Р’Вµ */
 .addBtn {
   -webkit-tap-highlight-color: transparent;
 }
@@ -6168,8 +6168,8 @@ body.guestLandingActive #guestLanding *::after{
 
 .guestLandingSourcesGlobe{
   position:absolute;
-  top:16px;     /* ⬇️ опускаем ниже */
-  right:50px;  /* ⬅️ двигаем левее */
+  top:16px;     /* Р Р†Р’В¬РІР‚РЋР С—РЎвЂР РЏ Р  РЎвЂўР  РЎвЂ”Р РЋРЎвЂњР РЋР С“Р  РЎвЂќР  Р’В°Р  Р’ВµР  РЎВ Р  Р вЂ¦Р  РЎвЂР  Р’В¶Р  Р’Вµ */
+  right:50px;  /* Р Р†Р’В¬РІР‚В¦Р С—РЎвЂР РЏ Р  РўвЂР  Р вЂ Р  РЎвЂР  РЎвЂ“Р  Р’В°Р  Р’ВµР  РЎВ Р  Р’В»Р  Р’ВµР  Р вЂ Р  Р’ВµР  Р’Вµ */
   width:86px;
   height:86px;
 }
@@ -6867,5 +6867,242 @@ body.eventMapModalOpen{overflow:hidden;}
   }
   .guestLandingWidgets > .guestLandingWidget:nth-child(3){
     display:none !important;
+  }
+}
+
+
+/* --- Share preview: restored clean composition with draggable image stage --- */
+.sharePanel{
+  margin: 10px auto 0;
+  width: min(560px, 100%);
+}
+.sharePreviewFrame{
+  border-radius: 28px;
+  overflow: hidden;
+  background: #f7f7f7;
+  border: 1px solid rgba(0,0,0,0.12);
+  padding: 18px;
+}
+.sharePreviewCanvas{
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1200 / 630;
+  border-radius: 24px;
+  overflow: hidden;
+  background: #18181b;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06);
+}
+.sharePhotoDragPane{
+  position: absolute;
+  inset: 0;
+  width: auto;
+  overflow: hidden;
+  border-radius: 24px;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.sharePhotoViewport{
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.sharePhotoDragImg{
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: auto;
+  height: auto;
+  max-width: none;
+  max-height: none;
+  transform: translate(0,0);
+  will-change: transform;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.sharePreviewShade{
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+.sharePreviewShade--top{
+  top: 0;
+  height: 28%;
+  background: linear-gradient(180deg, rgba(0,0,0,0.32), rgba(0,0,0,0));
+}
+.sharePreviewShade--bottom{
+  bottom: 0;
+  height: 42%;
+  background: linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,0.72));
+}
+.shareTrustBadge,
+.shareBrandBadge{
+  position: absolute;
+  top: 20px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 16px;
+  padding: 0 16px;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 800;
+  background: rgba(0,0,0,0.42);
+  border: 1px solid rgba(255,255,255,0.22);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 3;
+}
+.shareTrustBadge{ left: 20px; }
+.shareBrandBadge{
+  right: 20px;
+  font-family: "Jersey 25", Inter, system-ui;
+  letter-spacing: .02em;
+}
+.shareHeadlineBox{
+  position: absolute;
+
+  left: 50%; 
+  transform: translateX(-50%);  
+
+  bottom: 22px;
+  z-index: 3;
+
+  width: 360px;
+  max-width: 62%;
+
+  border-radius: 16px;
+  padding: 10px 12px;
+
+  background: rgba(0,0,0,0.36);
+  border: 1px solid rgba(255,255,255,0.18);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.shareHeadline{
+  margin: 0;
+  color: #fff;
+  font-size: 24px;
+  line-height: 1.12;
+  font-weight: 800;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-align: left;
+  text-wrap: balance;
+}
+.shareSubline{
+  margin-top: 7px;
+  color: rgba(255,255,255,0.84);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+}
+@media (max-width: 640px){
+  .shareBody{ padding: 28px 18px 22px; }
+  .shareHero h1{ font-size: 34px; }
+  .shareHero p{ font-size: 15px; }
+  .sharePreviewFrame{ padding: 12px; border-radius: 22px; }
+  .sharePreviewCanvas,
+  .sharePhotoDragPane{ border-radius: 18px; }
+  .shareTrustBadge,
+  .shareBrandBadge{
+    top: 12px;
+    min-height: 34px;
+    border-radius: 13px;
+    padding: 0 12px;
+    font-size: 13px;
+  }
+  .shareTrustBadge{ left: 12px; }
+  .shareBrandBadge{ right: 12px; }
+
+  .shareHeadline{
+    font-size: 16px;
+    line-height: 1.16;
+  }
+  .shareSubline{
+    margin-top: 6px;
+    font-size: 12px;
+  }
+}
+/* FIX: make share text box smaller properly */
+/* FIX: actually make share text box smaller */
+.shareHeadlineBox{
+  width: 360px !important;
+  max-width: 62% !important;
+  padding: 10px 12px !important;
+  border-radius: 16px !important;
+}
+
+.shareHeadline{
+  font-size: 18px !important;
+  line-height: 1.08 !important;
+}
+
+.shareSubline{
+  font-size: 11px !important;
+  margin-top: 4px !important;
+}
+@media (max-width: 640px){
+  .sharePreviewFrame{
+    padding: 10px;
+    border-radius: 20px;
+  }
+
+  .sharePreviewCanvas,
+  .sharePhotoDragPane{
+    border-radius: 16px;
+  }
+
+  .shareTrustBadge,
+  .shareBrandBadge{
+    top: 8px !important;
+    min-height: 24px !important;
+    padding: 0 8px !important;
+    font-size: 9px !important;
+    border-radius: 9px !important;
+  }
+
+  .shareTrustBadge{
+    left: 8px !important;
+  }
+
+  .shareBrandBadge{
+    right: 8px !important;
+  }
+
+  .shareHeadlineBox{
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    right: auto !important;
+
+    bottom: 8px !important;
+    width: 170px !important;
+    max-width: 68% !important;
+
+    padding: 6px 7px !important;
+    border-radius: 10px !important;
+  }
+
+  .shareHeadline{
+    font-size: 9px !important;
+    line-height: 1.08 !important;
+    -webkit-line-clamp: 2 !important;
+  }
+
+  .shareSubline{
+    margin-top: 2px !important;
+    font-size: 8px !important;
+    line-height: 1.1 !important;
+  }
+
+  .sharePhotoHint{
+    font-size: 8px !important;
+    margin-top: 6px !important;
   }
 }

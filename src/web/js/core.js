@@ -338,7 +338,7 @@ async function maybeOpenDeepLinkedArticle() {
 // --- Share (OG card page) ---
 
 async function shareCluster(item) {
-  const id = item?.id ?? item?.cluster_id ?? item?.clusterId;
+  const id = item?.cluster_id ?? item?.clusterId ?? item?.event_id ?? item?.eventId ?? item?.id;
   if (!id) return;
 
   const baseUrl = location.origin;
@@ -354,8 +354,9 @@ async function shareCluster(item) {
     v,
     id,
     title: item?.title || 'CHECKNE.',
-    score: item?.score ?? item?.trust_score ?? null,
-    outlets: item?.sources_count ?? item?.outlet_count ?? null,
+    score: item?.score ?? item?.credibility_score ?? item?.credibility ?? item?.trust_score ?? item?.rating ?? null,
+    outlets: item?.sources_count ?? item?.outlet_count ?? (Array.isArray(item?.sources) ? item.sources.length : null),
+    sourceName: item?.primary_source || (Array.isArray(item?.sources) ? String(item.sources?.[0]?.source_name || '').trim() : ''),
     imageUrl: item?.image || item?.thumbnail || item?.thumb || item?.image_url || item?.imageUrl || item?.urlToImage || item?.thumbnail_url || item?.thumb_url || item?.hero_image || item?.heroImage || item?.lead_image_url || item?.leadImageUrl || item?.og_image || item?.ogImage || item?.open_graph_image || item?.openGraphImage || '',
   });
 }
@@ -526,8 +527,70 @@ function __shareUrlWithCrop(url) {
   }
 }
 
+
+function __ensureShareModalDom(){
+  let backdrop = document.getElementById('shareBackdrop');
+  if (backdrop) return backdrop;
+  const html = `
+  <div id="shareBackdrop" class="shareBackdrop" aria-hidden="true">
+    <div class="shareModal" role="dialog" aria-modal="true" aria-labelledby="shareHeroTitle">
+      <div class="shareBody">
+        <div class="shareHero">
+          <h1 id="shareHeroTitle">Share this event</h1>
+          <p>Share a news event you find important or relevant.</p>
+        </div>
+        <div class="sharePanel">
+          <div class="sharePanelLabel">ARTICLE PREVIEW</div>
+          <div class="sharePreviewFrame">
+            <div class="sharePreviewCanvas">
+              <img id="sharePreviewImg" class="sharePreviewImg" alt="" />
+              <div id="sharePhotoDragPane" class="sharePhotoDragPane" aria-label="Adjust photo crop">
+                <div id="sharePhotoViewport" class="sharePhotoViewport">
+                  <img id="sharePhotoDragImg" class="sharePhotoDragImg" alt="" />
+                </div>
+              </div>
+              <div class="sharePreviewShade sharePreviewShade--top" aria-hidden="true"></div>
+              <div class="sharePreviewShade sharePreviewShade--bottom" aria-hidden="true"></div>
+              <div id="shareTrustBadge" class="shareTrustBadge" aria-hidden="true">Trust 0/100</div>
+              <div class="shareBrandBadge" aria-hidden="true">CHECKNE.</div>
+              <div class="shareHeadlineBox">
+                <div id="shareHeadline" class="shareHeadline"></div>
+                <div id="shareSubline" class="shareSubline"></div>
+              </div>
+            </div>
+            <div class="sharePhotoHint">Drag the photo to adjust the crop</div>
+          </div>
+        </div>
+        <div class="shareActions">
+          <button id="shareToXBtn" class="shareAction primary" type="button"><img src="/static/icons/x.png" alt="X" /><span>Share on X</span></button>
+          <button id="shareToThreadsBtn" class="shareAction secondary" type="button"><img src="/static/icons/treds.png" alt="Threads" /><span>Share on Threads</span></button>
+          <button id="shareCopyBtn" class="shareAction ghost" type="button"><img src="/static/icons/copy.png" alt="Copy" /><span>Copy link</span></button>
+        </div>
+        <button id="shareNoThanks" class="shareNoThanks" type="button">No thanks!</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  return document.getElementById('shareBackdrop');
+}
+
+function __shareScoreValue(data){
+  const raw = Number(data?.score ?? data?.credibility_score ?? data?.credibility ?? data?.trust_score ?? data?.rating ?? 0);
+  if (!Number.isFinite(raw)) return 0;
+  return Math.max(0, Math.min(100, Math.round(raw)));
+}
+
+function __shareSublineText(data){
+  const parts = [];
+  const source = String(data?.sourceName || data?.primary_source || '').trim();
+  const outlets = Number(data?.outlets);
+  if (source) parts.push(source);
+  if (Number.isFinite(outlets) && outlets > 0) parts.push(`${Math.round(outlets)} outlets`);
+  return parts.join(' • ');
+}
+
 function openShareModal(data) {
-  const backdrop = document.getElementById('shareBackdrop');
+  const backdrop = __ensureShareModalDom();
   const closeBtn = document.getElementById('shareCloseBtn'); // may be null if removed in UI
   const noThanks = document.getElementById('shareNoThanks');
   const img = document.getElementById('sharePreviewImg');
@@ -535,14 +598,17 @@ function openShareModal(data) {
   const toX = document.getElementById('shareToXBtn');
   const toThreads = document.getElementById('shareToThreadsBtn');
   const copyBtn = document.getElementById('shareCopyBtn');
+  const trustBadge = document.getElementById('shareTrustBadge');
+  const subline = document.getElementById('shareSubline');
 
   if (!backdrop || !img || !headline || !toX || !toThreads || !copyBtn) {
-    // Safety fallback: just copy link
     return copyShareLink(data.url);
   }
 
   // Populate UI
   headline.textContent = data.title || 'Share';
+  if (trustBadge) trustBadge.textContent = `Trust ${__shareScoreValue(data)}/100`;
+  if (subline) subline.textContent = __shareSublineText(data);
   img.style.display = '';
   img.src = `/api/share-image/${encodeURIComponent(data.id)}.png?dpr=2&v=${encodeURIComponent(data.v || Date.now())}`;
   __setupSharePhotoDrag(data);
@@ -615,9 +681,10 @@ async function copyShareLink(url){
   try{
     await navigator.clipboard.writeText(url);
     if (typeof toast === 'function') toast('Link copied');
-    else alert('Link copied');
+    return true;
   }catch(e){
-    prompt('Copy link:', url);
+    try { window.prompt('Copy link:', url); } catch {}
+    return false;
   }
 }
 

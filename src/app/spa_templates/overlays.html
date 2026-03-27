@@ -11,21 +11,23 @@
         <div class="sharePanelLabel" data-i18n="share.preview_label">ARTICLE PREVIEW</div>
         <div class="sharePreviewFrame">
           <div class="sharePreviewCanvas">
-            <img id="sharePreviewImg" class="sharePreviewImg" alt="Share preview" />
+            <img id="sharePreviewImg" class="sharePreviewImg" alt="" />
             <div id="sharePhotoDragPane" class="sharePhotoDragPane" aria-label="Adjust photo crop">
               <div id="sharePhotoViewport" class="sharePhotoViewport">
                 <img id="sharePhotoDragImg" class="sharePhotoDragImg" alt="" />
               </div>
             </div>
+            <div class="sharePreviewShade sharePreviewShade--top" aria-hidden="true"></div>
+            <div class="sharePreviewShade sharePreviewShade--bottom" aria-hidden="true"></div>
+            <div id="shareTrustBadge" class="shareTrustBadge" aria-hidden="true">Trust 0/100</div>
+            <div class="shareBrandBadge" aria-hidden="true">CHECKNE.</div>
+            <div class="shareHeadlineBox">
+              <div id="shareHeadline" class="shareHeadline"></div>
+              <div id="shareSubline" class="shareSubline"></div>
+            </div>
           </div>
           <div class="sharePhotoHint" data-i18n="share.photo_hint">Drag the photo to adjust the crop</div>
         </div>
-      </div>
-
-      <!-- keep these ids for JS, but hidden by CSS -->
-      <div class="shareMeta" style="display:none;">
-        <div id="shareHeadline" class="shareHeadline"></div>
-        <div id="shareSubline" class="shareSubline"></div>
       </div>
 
       <div class="shareActions">
