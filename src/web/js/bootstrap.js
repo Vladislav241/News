@@ -72,66 +72,83 @@ if(menuPricing){
 if (menuLogout) menuLogout.addEventListener("click", async () => {
   if (accountMenu) accountMenu.classList.remove("open");
 
+  let res = null;
   try {
-    // Cookie session logout
-    const res = await fetch("/api/auth/logout", {
+    res = await fetch("/api/auth/logout", {
       method: "POST",
       credentials: "include",
     });
+  } catch (e) {
+    console.error('Logout request failed:', e);
+    try {
+      if (typeof window.uiAlert === 'function') {
+        await window.uiAlert('Please check your connection and try again.', {
+          title: 'Could not log out',
+          meta: 'Account',
+        });
+      } else if (typeof window.toast === 'function') {
+        window.toast('Could not log out. Try again.', 'error');
+      }
+    } catch {}
+    return;
+  }
 
-    // 2) если у тебя токены в localStorage/sessionStorage — очищаем на всякий
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    sessionStorage.removeItem("access_token");
-    sessionStorage.removeItem("token");
+  if (!res || !res.ok) {
+    const txt = await res?.text?.().catch(() => "") || "";
+    console.error("Logout failed:", res?.status, txt);
+    try {
+      if (typeof window.uiAlert === 'function') {
+        await window.uiAlert('Something went wrong while ending your session.', {
+          title: 'Could not log out',
+          meta: 'Account',
+        });
+      } else if (typeof window.toast === 'function') {
+        window.toast('Could not log out. Try again.', 'error');
+      }
+    } catch {}
+    return;
+  }
 
-    if (!res.ok) {
-      // иногда backend возвращает 204 без тела — это ок, но !ok значит 4xx/5xx
-      const txt = await res.text().catch(() => "");
-      console.error("Logout failed:", res.status, txt);
-      alert("Logout failed. Check console.");
-      return;
-    }
+  try { localStorage.removeItem("access_token"); } catch {}
+  try { localStorage.removeItem("token"); } catch {}
+  try { localStorage.removeItem("user"); } catch {}
+  try { sessionStorage.removeItem("access_token"); } catch {}
+  try { sessionStorage.removeItem("token"); } catch {}
 
-    // Update in-memory state + UI
+  try {
     authState = { authenticated: false, user: null };
     window.authState = authState;
-    billingState = null;
-    updateAuthUI();
-    updatePricingUI();
+  } catch (e) { console.error('logout auth state cleanup failed', e); }
 
-    // Clear Tracking UI state so nothing from the previous account is visible.
-    try {
-      const trackingCountEl = document.getElementById('trackingCount');
-      if (trackingCountEl) trackingCountEl.textContent = '0';
-    } catch {}
-    try {
-      state.trackingItems = [];
-      if (state.mode === 'fav') {
-        renderCards([], { incremental: false });
-      }
-    } catch {}
+  try { billingState = null; } catch (e) { console.error('logout billing cleanup failed', e); }
+  try { if (typeof updateAuthUI === 'function') updateAuthUI(); } catch (e) { console.error('logout updateAuthUI failed', e); }
+  try { if (typeof updatePricingUI === 'function') updatePricingUI(); } catch (e) { console.error('logout updatePricingUI failed', e); }
 
-    try {
-      window.dispatchEvent(new CustomEvent('checkne:auth-state', { detail: { authenticated: false, user: null, wasAuthenticated: true } }));
-    } catch {}
+  try {
+    const trackingCountEl = document.getElementById('trackingCount');
+    if (trackingCountEl) trackingCountEl.textContent = '0';
+  } catch (e) { console.error('logout tracking count cleanup failed', e); }
 
-    try {
-      if (typeof window.__navigate === 'function') {
-        window.__navigate('/');
-        try { if (typeof window.__syncGuestLandingVisibility === 'function') window.__syncGuestLandingVisibility(); } catch {}
-        try { window.dispatchEvent(new Event('popstate')); } catch {}
-      } else {
-        window.location.href = '/';
-      }
-    } catch {
+  try {
+    state.trackingItems = [];
+    if (state.mode === 'fav') renderCards([], { incremental: false });
+  } catch (e) { console.error('logout tracking cleanup failed', e); }
+
+  try {
+    window.dispatchEvent(new CustomEvent('checkne:auth-state', { detail: { authenticated: false, user: null, wasAuthenticated: true } }));
+  } catch (e) { console.error('logout auth-state event failed', e); }
+
+  try {
+    if (typeof window.__navigate === 'function') {
+      window.__navigate('/');
+      try { if (typeof window.__syncGuestLandingVisibility === 'function') window.__syncGuestLandingVisibility(); } catch {}
+      try { window.dispatchEvent(new Event('popstate')); } catch {}
+    } else {
       window.location.href = '/';
     }
-
   } catch (e) {
-    console.error(e);
-    alert("Network error while logging out.");
+    console.error('logout navigation failed', e);
+    window.location.href = '/';
   }
 });
 

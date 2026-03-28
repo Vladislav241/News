@@ -302,19 +302,6 @@ def _utc_days_ago_iso(days: int) -> str:
     return dt.replace(microsecond=0).isoformat()
 
 
-def _parse_iso_utc(value: Any) -> Optional[datetime]:
-    raw = str(value or '').strip()
-    if not raw:
-        return None
-    try:
-        dt = datetime.fromisoformat(raw.replace('Z', '+00:00'))
-    except Exception:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
-
-
 class Database:
     def __init__(self) -> None:
         self._lock = threading.RLock()
@@ -805,44 +792,18 @@ class Database:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_media_bias_cache_expires ON media_bias_cache(expires_at);")
         conn.commit()
 
-    def _normalize_subscription_row(self, row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
-        if not row:
-            return None
-
-        out = dict(row)
-        plan = str(out.get("plan") or "free").strip().lower()
-        status = str(out.get("status") or "active").strip().lower()
-        cancel_at_period_end = bool(out.get("cancel_at_period_end"))
-        current_period_end = _parse_iso_utc(out.get("current_period_end"))
-        now = datetime.now(timezone.utc)
-
-        terminal_statuses = {"canceled", "cancelled", "incomplete_expired", "unpaid"}
-
-        should_expire = False
-        if plan in ("pro", "analyst"):
-            if status in terminal_statuses:
-                should_expire = True
-            elif cancel_at_period_end and current_period_end and current_period_end <= now:
-                should_expire = True
-
-        if should_expire:
-            out["plan"] = "free"
-            out["status"] = "active"
-            out["billing_interval"] = "monthly"
-            out["cancel_at_period_end"] = False
-            out["current_period_end"] = None
-            out["stripe_subscription_id"] = None
-            return out
-
-        return out
-
     def get_user_subscription(self, user_id: int) -> Optional[dict[str, Any]]:
         conn = self.connect()
         row = conn.execute(
             "SELECT * FROM user_subscriptions WHERE user_id = ?",
             (int(user_id),),
         ).fetchone()
-        row = self._normalize_subscription_row(dict(row) if row else None)
+        if row and self._is_subscription_overdue(dict(row)):
+            self.expire_overdue_subscriptions(int(user_id))
+            row = conn.execute(
+                "SELECT * FROM user_subscriptions WHERE user_id = ?",
+                (int(user_id),),
+            ).fetchone()
 
         # Active promotional rewards (e.g. share campaign) should behave like a real Pro plan
         # across all feature gates, but must not override a paid Pro/Analyst subscription.
@@ -882,6 +843,60 @@ class Database:
                 "promo_source": reward.get("source") or "share_campaign",
             }
         return None
+
+    def _is_subscription_overdue(self, sub: Optional[dict[str, Any]]) -> bool:
+        if not sub:
+            return False
+        plan = str((sub.get("plan") or "free")).strip().lower()
+        if plan not in ("pro", "analyst"):
+            return False
+        status = str((sub.get("status") or "")).strip().lower()
+        if status in ("expired", "free"):
+            return False
+        current_period_end = sub.get("current_period_end")
+        if not current_period_end:
+            return False
+        try:
+            ends_at = datetime.fromisoformat(str(current_period_end).replace("Z", "+00:00"))
+            if ends_at.tzinfo is None:
+                ends_at = ends_at.replace(tzinfo=timezone.utc)
+        except Exception:
+            return False
+        should_end = bool(sub.get("cancel_at_period_end")) or status in ("canceled", "incomplete_expired", "unpaid")
+        return should_end and ends_at <= datetime.now(timezone.utc)
+
+    def expire_overdue_subscriptions(self, user_id: Optional[int] = None) -> int:
+        conn = self.connect()
+        rows = []
+        if user_id is None:
+            rows = conn.execute("SELECT * FROM user_subscriptions WHERE plan IN ('pro','analyst')").fetchall() or []
+        else:
+            rows = conn.execute("SELECT * FROM user_subscriptions WHERE user_id = ? AND plan IN ('pro','analyst')", (int(user_id),)).fetchall() or []
+        overdue_ids: list[int] = []
+        for row in rows:
+            item = dict(row)
+            if self._is_subscription_overdue(item):
+                overdue_ids.append(int(item.get("user_id")))
+        if not overdue_ids:
+            return 0
+        now = _utc_now_iso()
+        with self._lock:
+            for uid in overdue_ids:
+                conn.execute(
+                    """
+                    UPDATE user_subscriptions
+                    SET plan = 'free',
+                        status = 'expired',
+                        billing_interval = 'monthly',
+                        stripe_subscription_id = NULL,
+                        cancel_at_period_end = FALSE,
+                        updated_at = ?
+                    WHERE user_id = ?
+                    """,
+                    (now, int(uid)),
+                )
+            conn.commit()
+        return len(overdue_ids)
 
     def create_share_promo_attempt(self, user_id: int, cluster_id: int, platform: str, share_token: str, article_url: str, share_url: str) -> dict[str, Any]:
         conn = self.connect()
@@ -977,7 +992,7 @@ class Database:
         conn = self.connect()
         now = _utc_now_iso()
         with self._lock:
-            existing = self._fetchone("SELECT * FROM user_subscriptions WHERE user_id = ?", (int(user_id),))
+            existing = self.get_user_subscription(user_id)
             if existing:
                 conn.execute(
                     """

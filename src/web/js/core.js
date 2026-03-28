@@ -683,7 +683,15 @@ async function copyShareLink(url){
     if (typeof toast === 'function') toast('Link copied');
     return true;
   }catch(e){
-    try { window.prompt('Copy link:', url); } catch {}
+    try {
+      if (typeof window.openCopyModal === 'function') {
+        window.openCopyModal(url, {
+          title: 'Copy link',
+          meta: 'Share',
+          hint: 'Copy this link manually if needed.'
+        });
+      }
+    } catch {}
     return false;
   }
 }

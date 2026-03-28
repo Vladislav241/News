@@ -9,16 +9,17 @@
 
 (function(){
   const files = [
-    '/static/js/core.js?v=2026-02-24',
+    '/static/js/notify.js?v=2026-03-28-dialog-refresh',
+    '/static/js/core.js?v=2026-03-28-dialog-refresh',
     '/static/js/state.js?v=2026-02-24',
     '/static/js/mode.js?v=2026-02-24',
     '/static/js/tracking.js?v=2026-02-24',
     '/static/js/auth.js?v=2026-02-24',
-    '/static/js/pricing.js?v=2026-02-24',
+    '/static/js/pricing.js?v=2026-03-28-dialog-refresh',
     '/static/js/carousel.js?v=2026-02-24',
     '/static/js/feed.js?v=2026-03-14-reco-open-fix',
     '/static/js/dropdowns.js?v=2026-02-24',
-    '/static/js/bootstrap.js?v=2026-02-24'
+    '/static/js/bootstrap.js?v=2026-03-28-dialog-refresh'
   ];
 
   function load(i){
