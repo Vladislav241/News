@@ -252,5 +252,16 @@
     "get_pro": "Pro holen",
     "configure": "Konfigurieren",
     "delete_widget": "Widget löschen"
+  },
+  "billing": {
+    "expired_modal": {
+      "eyebrow": "Abo beendet",
+      "title": "Dein {plan}-Abo ist abgelaufen",
+      "text": "Dein Premium-Zugang ist beendet. Verlängere dein Abo, um weiterhin vollen Zugriff auf Premium-Funktionen und Tracking-Tools zu behalten.",
+      "meta": "Dein Tarif ist nicht mehr aktiv.",
+      "meta_date": "Beendet am {date}.",
+      "cta": "Preise ansehen",
+      "dismiss": "Später"
+    }
   }
 }

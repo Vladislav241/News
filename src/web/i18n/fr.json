@@ -252,5 +252,16 @@
     "get_pro": "Obtenir Pro",
     "configure": "Configurer",
     "delete_widget": "Supprimer le widget"
+  },
+  "billing": {
+    "expired_modal": {
+      "eyebrow": "Abonnement terminé",
+      "title": "Votre abonnement {plan} a pris fin",
+      "text": "Votre accès premium a pris fin. Renouvelez votre abonnement pour conserver l’accès complet aux fonctionnalités premium et aux outils de suivi.",
+      "meta": "Votre offre n’est plus active.",
+      "meta_date": "Terminé le {date}.",
+      "cta": "Voir les tarifs",
+      "dismiss": "Plus tard"
+    }
   }
 }

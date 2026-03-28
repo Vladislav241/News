@@ -380,6 +380,12 @@ async def _startup_autorefresh() -> None:
     global _auto_task, _fulltext_task, _notify_task
     try:
         db.ensure_schema()
+        try:
+            changed = db.expire_overdue_subscriptions()
+            if changed:
+                log.info("expired overdue subscriptions on startup: %s", changed)
+        except Exception:
+            log.exception("failed to expire overdue subscriptions on startup")
     except Exception:
         log.exception("ensure_schema failed on startup")
 

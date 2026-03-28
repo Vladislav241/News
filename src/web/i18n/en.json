@@ -259,5 +259,16 @@
     "get_pro": "Get Pro",
     "configure": "Configure",
     "delete_widget": "Delete widget"
+  },
+  "billing": {
+    "expired_modal": {
+      "eyebrow": "Subscription ended",
+      "title": "Your {plan} subscription has ended",
+      "text": "Your premium access has ended. Renew your plan to keep full access to premium features and tracking tools.",
+      "meta": "Your plan is no longer active.",
+      "meta_date": "Ended on {date}.",
+      "cta": "View pricing",
+      "dismiss": "Maybe later"
+    }
   }
 }

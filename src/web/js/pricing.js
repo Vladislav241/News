@@ -789,7 +789,7 @@ function _fmtPeriodEnd(iso){
   try{
     const d = new Date(String(iso));
     if(Number.isNaN(d.getTime())) return '';
-    return d.toLocaleDateString('en-US', { year:'numeric', month:'short', day:'2-digit' });
+    return d.toLocaleDateString(undefined, { year:'numeric', month:'short', day:'2-digit' });
   }catch{
     return '';
   }
@@ -800,6 +800,87 @@ function _planLabel(plan){
   if(p === 'pro') return pt('pricing.plan_pro','Pro');
   if(p === 'analyst') return pt('pricing.plan_analyst','Analyst');
   return pt('pricing.plan_free','Free');
+}
+
+function _subscriptionExpiredModalStorageKey(){
+  try{
+    const uid = authState?.user?.id || 'guest';
+    const stamp = String(billingState?.ended_at || '').trim() || 'none';
+    return `checkne_sub_expired_seen_v1:${uid}:${stamp}`;
+  }catch{
+    return 'checkne_sub_expired_seen_v1:fallback';
+  }
+}
+
+function _ensureSubscriptionExpiredModal(){
+  let root = document.getElementById('subscriptionExpiredBackdrop');
+  if(root) return root;
+  root = document.createElement('div');
+  root.id = 'subscriptionExpiredBackdrop';
+  root.className = 'subscriptionExpiredBackdrop';
+  root.setAttribute('aria-hidden', 'true');
+  root.innerHTML = `
+    <div class="subscriptionExpiredModal" role="dialog" aria-modal="true" aria-labelledby="subscriptionExpiredTitle">
+      <button class="subscriptionExpiredClose" type="button" aria-label="Close">×</button>
+      <div class="subscriptionExpiredEyebrow"></div>
+      <h3 id="subscriptionExpiredTitle" class="subscriptionExpiredTitle"></h3>
+      <p class="subscriptionExpiredText"></p>
+      <div class="subscriptionExpiredMeta"></div>
+      <div class="subscriptionExpiredActions">
+        <button class="subscriptionExpiredBtn primary" type="button" data-action="pricing"></button>
+        <button class="subscriptionExpiredBtn ghost" type="button" data-action="dismiss"></button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(root);
+  const close = ()=>{
+    root.classList.remove('isOpen');
+    root.setAttribute('aria-hidden','true');
+    document.body.classList.remove('subscriptionExpiredOpen');
+    try{ localStorage.setItem(_subscriptionExpiredModalStorageKey(), '1'); }catch{}
+  };
+  root.addEventListener('click', (e)=>{ if(e.target === root) close(); });
+  const closeBtn = root.querySelector('.subscriptionExpiredClose');
+  if(closeBtn) closeBtn.addEventListener('click', close);
+  const dismissBtn = root.querySelector('[data-action="dismiss"]');
+  if(dismissBtn) dismissBtn.addEventListener('click', close);
+  const pricingBtn = root.querySelector('[data-action="pricing"]');
+  if(pricingBtn) pricingBtn.addEventListener('click', ()=>{
+    close();
+    try { if (typeof window.__navigate === 'function') window.__navigate('/pricing'); else location.href = '/pricing'; } catch(_) {}
+  });
+  return root;
+}
+
+function maybeShowSubscriptionExpiredModal(){
+  try{
+    if(!authState?.authenticated) return;
+    if(String(billingState?.status || '').toLowerCase() !== 'expired') return;
+    if(!billingState?.recently_expired) return;
+    const seenKey = _subscriptionExpiredModalStorageKey();
+    if(localStorage.getItem(seenKey) === '1') return;
+    const root = _ensureSubscriptionExpiredModal();
+    const previousPlan = String(billingState?.previous_plan || 'pro').toLowerCase();
+    const planLabel = _planLabel(previousPlan);
+    const ended = _fmtPeriodEnd(billingState?.ended_at);
+    const eyebrow = root.querySelector('.subscriptionExpiredEyebrow');
+    const title = root.querySelector('.subscriptionExpiredTitle');
+    const text = root.querySelector('.subscriptionExpiredText');
+    const meta = root.querySelector('.subscriptionExpiredMeta');
+    const pricingBtn = root.querySelector('[data-action="pricing"]');
+    const dismissBtn = root.querySelector('[data-action="dismiss"]');
+    if(eyebrow) eyebrow.textContent = pt('billing.expired_modal.eyebrow', 'Subscription ended');
+    if(title) title.textContent = pt('billing.expired_modal.title', 'Your {plan} subscription has ended').replace('{plan}', planLabel);
+    if(text) text.textContent = pt('billing.expired_modal.text', 'Your premium access has ended. Renew your plan to keep full access to premium features and tracking tools.');
+    if(meta) meta.textContent = ended
+      ? pt('billing.expired_modal.meta_date', 'Ended on {date}.').replace('{date}', ended)
+      : pt('billing.expired_modal.meta', 'Your plan is no longer active.');
+    if(pricingBtn) pricingBtn.textContent = pt('billing.expired_modal.cta', 'View pricing');
+    if(dismissBtn) dismissBtn.textContent = pt('billing.expired_modal.dismiss', 'Maybe later');
+    root.classList.add('isOpen');
+    root.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('subscriptionExpiredOpen');
+  }catch{}
 }
 
 function updateProfileUI(){
@@ -831,6 +912,7 @@ function updateProfileUI(){
   const status = String(billingState?.status || 'active');
   const cancelAt = !!billingState?.cancel_at_period_end;
   const end = _fmtPeriodEnd(billingState?.current_period_end);
+  const endedAt = _fmtPeriodEnd(billingState?.ended_at);
 
   if(planPill) planPill.textContent = _planLabel(plan);
   if(statusPill) statusPill.textContent = pt(`profile.status_${String(status || 'active').toLowerCase()}`, (status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Active'));
@@ -853,6 +935,13 @@ function updateProfileUI(){
   }
 
   if(plan === 'free'){
+    if(String(status).toLowerCase() === 'expired'){
+      if(renewText) renewText.textContent = endedAt
+        ? pt('billing.expired_modal.meta_date','Ended on {date}.').replace('{date}', endedAt)
+        : pt('billing.expired_modal.meta','Your plan is no longer active.');
+      maybeShowSubscriptionExpiredModal();
+      return;
+    }
     if(renewText) renewText.textContent = pt('profile.free_upgrade_anytime','You are on Free. Upgrade anytime to unlock premium features.');
     return;
   }

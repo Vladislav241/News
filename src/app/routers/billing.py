@@ -57,12 +57,31 @@ def billing_me(user=Depends(require_user)):
             "current_period_end": None,
             "cancel_at_period_end": False,
         }
+    ended_at = sub.get("ended_at")
+    ended_dt = None
+    if ended_at:
+        try:
+            ended_dt = datetime.fromisoformat(str(ended_at).replace("Z", "+00:00"))
+            if ended_dt.tzinfo is None:
+                ended_dt = ended_dt.replace(tzinfo=timezone.utc)
+            else:
+                ended_dt = ended_dt.astimezone(timezone.utc)
+        except Exception:
+            ended_dt = None
+    recently_expired = bool(
+        (sub.get("status") == "expired")
+        and ended_dt
+        and (datetime.now(timezone.utc) - ended_dt).total_seconds() <= 60 * 60 * 24 * 21
+    )
     return {
         "plan": sub["plan"],
         "status": sub["status"],
         "interval": sub["billing_interval"],
         "current_period_end": sub["current_period_end"],
         "cancel_at_period_end": bool(sub.get("cancel_at_period_end")),
+        "previous_plan": sub.get("previous_plan"),
+        "ended_at": ended_at,
+        "recently_expired": recently_expired,
     }
 
 

@@ -397,6 +397,9 @@ async function refreshBillingState() {
       interval: j?.interval || 'monthly',
       current_period_end: j?.current_period_end || null,
       cancel_at_period_end: !!j?.cancel_at_period_end,
+      previous_plan: j?.previous_plan || null,
+      ended_at: j?.ended_at || null,
+      recently_expired: !!j?.recently_expired,
     };
   } catch {
     billingState = { plan: 'free', status: 'active', interval: 'monthly' };
