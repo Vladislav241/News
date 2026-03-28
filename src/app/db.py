@@ -13,21 +13,6 @@ from psycopg2 import IntegrityError
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
-
-def _parse_iso_utc(value: Any) -> Optional[datetime]:
-    raw = str(value or "").strip()
-    if not raw:
-        return None
-    try:
-        raw = raw.replace("Z", "+00:00")
-        dt = datetime.fromisoformat(raw)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(timezone.utc)
-    except Exception:
-        return None
-
-
 CORE_INTERESTS = ("business", "technology", "politics", "science", "sports", "health")
 
 def _normalize_interest_selection(interests: list[str] | None) -> list[str]:
@@ -315,6 +300,19 @@ def _utc_now_iso() -> str:
 def _utc_days_ago_iso(days: int) -> str:
     dt = datetime.now(timezone.utc) - timedelta(days=days)
     return dt.replace(microsecond=0).isoformat()
+
+
+def _parse_iso_utc(value: Any) -> Optional[datetime]:
+    raw = str(value or '').strip()
+    if not raw:
+        return None
+    try:
+        dt = datetime.fromisoformat(raw.replace('Z', '+00:00'))
+    except Exception:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 class Database:
@@ -726,25 +724,13 @@ class Database:
                 """
             )
 
-            # Lightweight migration for older installs: add subscription lifecycle columns if missing.
+            # Lightweight migration for older installs: add cancel_at_period_end if missing.
             try:
                 conn.execute(
                     "ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS cancel_at_period_end BOOLEAN NOT NULL DEFAULT FALSE"
                 )
             except Exception:
                 # Column likely already exists.
-                pass
-            try:
-                conn.execute(
-                    "ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS previous_plan TEXT"
-                )
-            except Exception:
-                pass
-            try:
-                conn.execute(
-                    "ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS ended_at TEXT"
-                )
-            except Exception:
                 pass
 
             # Lightweight migration for older installs: add ui_json to user_preferences if missing.
@@ -819,72 +805,44 @@ class Database:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_media_bias_cache_expires ON media_bias_cache(expires_at);")
         conn.commit()
 
-    def expire_overdue_subscriptions(self, user_id: Optional[int] = None) -> int:
-        conn = self.connect()
-        now_dt = datetime.now(timezone.utc)
-        now_iso = now_dt.replace(microsecond=0).isoformat()
+    def _normalize_subscription_row(self, row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+        if not row:
+            return None
 
-        where = [
-            "COALESCE(plan, 'free') IN ('pro', 'analyst')",
-        ]
-        params: list[Any] = []
-        if user_id is not None:
-            where.append("user_id = ?")
-            params.append(int(user_id))
+        out = dict(row)
+        plan = str(out.get("plan") or "free").strip().lower()
+        status = str(out.get("status") or "active").strip().lower()
+        cancel_at_period_end = bool(out.get("cancel_at_period_end"))
+        current_period_end = _parse_iso_utc(out.get("current_period_end"))
+        now = datetime.now(timezone.utc)
 
-        rows = conn.execute(
-            f"SELECT user_id, plan, status, current_period_end, cancel_at_period_end FROM user_subscriptions WHERE {' AND '.join(where)}" ,
-            tuple(params),
-        ).fetchall()
-
-        expired_rows: list[dict[str, Any]] = []
         terminal_statuses = {"canceled", "cancelled", "incomplete_expired", "unpaid"}
-        for row in rows or []:
-            rowd = dict(row)
-            end_dt = _parse_iso_utc(rowd.get("current_period_end"))
-            status = str(rowd.get("status") or "").strip().lower()
-            cancel_at_period_end = bool(rowd.get("cancel_at_period_end"))
-            should_expire = False
-            if cancel_at_period_end and end_dt and end_dt <= now_dt:
-                should_expire = True
-            elif status in terminal_statuses and (end_dt is None or end_dt <= now_dt):
-                should_expire = True
-            if should_expire:
-                expired_rows.append(rowd)
 
-        if not expired_rows:
-            return 0
+        should_expire = False
+        if plan in ("pro", "analyst"):
+            if status in terminal_statuses:
+                should_expire = True
+            elif cancel_at_period_end and current_period_end and current_period_end <= now:
+                should_expire = True
 
-        changed = 0
-        with self._lock:
-            for row in expired_rows:
-                end_iso = row.get("current_period_end") or now_iso
-                conn.execute(
-                    """
-                    UPDATE user_subscriptions
-                    SET previous_plan = COALESCE(NULLIF(previous_plan, ''), plan),
-                        plan = 'free',
-                        status = 'expired',
-                        stripe_subscription_id = NULL,
-                        current_period_end = NULL,
-                        cancel_at_period_end = FALSE,
-                        ended_at = COALESCE(ended_at, ?),
-                        updated_at = ?
-                    WHERE user_id = ?
-                    """,
-                    (end_iso, now_iso, int(row["user_id"])),
-                )
-                changed += 1
-            conn.commit()
-        return changed
+        if should_expire:
+            out["plan"] = "free"
+            out["status"] = "active"
+            out["billing_interval"] = "monthly"
+            out["cancel_at_period_end"] = False
+            out["current_period_end"] = None
+            out["stripe_subscription_id"] = None
+            return out
+
+        return out
 
     def get_user_subscription(self, user_id: int) -> Optional[dict[str, Any]]:
-        self.expire_overdue_subscriptions(user_id)
         conn = self.connect()
         row = conn.execute(
             "SELECT * FROM user_subscriptions WHERE user_id = ?",
             (int(user_id),),
         ).fetchone()
+        row = self._normalize_subscription_row(dict(row) if row else None)
 
         # Active promotional rewards (e.g. share campaign) should behave like a real Pro plan
         # across all feature gates, but must not override a paid Pro/Analyst subscription.
@@ -1019,7 +977,7 @@ class Database:
         conn = self.connect()
         now = _utc_now_iso()
         with self._lock:
-            existing = self.get_user_subscription(user_id)
+            existing = self._fetchone("SELECT * FROM user_subscriptions WHERE user_id = ?", (int(user_id),))
             if existing:
                 conn.execute(
                     """
@@ -1029,8 +987,6 @@ class Database:
                         stripe_subscription_id = COALESCE(?, stripe_subscription_id),
                         current_period_end = COALESCE(?, current_period_end),
                         cancel_at_period_end = ?,
-                        previous_plan = CASE WHEN ? IN ('pro', 'analyst') THEN NULL ELSE previous_plan END,
-                        ended_at = CASE WHEN ? IN ('pro', 'analyst') THEN NULL ELSE ended_at END,
                         updated_at = ?
                     WHERE user_id = ?
                     """,
@@ -1050,8 +1006,8 @@ class Database:
                 conn.execute(
                     """
                     INSERT INTO user_subscriptions
-                    (user_id, plan, status, billing_interval, stripe_customer_id, stripe_subscription_id, current_period_end, cancel_at_period_end, previous_plan, ended_at, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
+                    (user_id, plan, status, billing_interval, stripe_customer_id, stripe_subscription_id, current_period_end, cancel_at_period_end, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         int(user_id),
