@@ -15,7 +15,7 @@
     '/static/js/mode.js?v=2026-02-24',
     '/static/js/tracking.js?v=2026-02-24',
     '/static/js/auth.js?v=2026-02-24',
-    '/static/js/pricing.js?v=2026-03-28-dialog-refresh',
+    '/static/js/pricing.js?v=2026-04-03-pricing-height-fix',
     '/static/js/carousel.js?v=2026-02-24',
     '/static/js/feed.js?v=2026-03-14-reco-open-fix',
     '/static/js/dropdowns.js?v=2026-02-24',

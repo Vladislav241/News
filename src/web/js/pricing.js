@@ -602,6 +602,7 @@ setTimeout(()=>{
         if(saveEl) saveEl.style.display = 'none';
       }
     });
+    schedulePricingCardHeights();
   }
 
   function syncSelectionUI(){
@@ -695,12 +696,139 @@ if (mainBtn) {
   });
 }
 
+  bindPricingSupportModal();
+  bindPricingMobileCarousel();
+  schedulePricingCardHeights();
 
   // Default state
   syncIntervalUI();
   syncSelectionUI();
 }
 
+
+
+let pricingCardHeightsRaf = 0;
+function schedulePricingCardHeights(){
+  if (pricingCardHeightsRaf) cancelAnimationFrame(pricingCardHeightsRaf);
+  pricingCardHeightsRaf = requestAnimationFrame(() => {
+    pricingCardHeightsRaf = 0;
+    syncPricingCardHeights();
+  });
+}
+
+function syncPricingCardHeights(){
+  const cards = Array.from(document.querySelectorAll('.pricingGrid .planCard'));
+  if (!cards.length) return;
+
+  const heads = cards.map(card => card.querySelector('.planHead')).filter(Boolean);
+  const bodies = cards.map(card => card.querySelector('.planBody')).filter(Boolean);
+
+  cards.forEach(card => { card.style.minHeight = ''; card.style.height = ''; });
+  heads.forEach(head => head.style.minHeight = '');
+  bodies.forEach(body => body.style.minHeight = '');
+
+  let maxHead = 0;
+  let maxBody = 0;
+  cards.forEach(card => {
+    const head = card.querySelector('.planHead');
+    const body = card.querySelector('.planBody');
+    if (head) maxHead = Math.max(maxHead, Math.ceil(head.getBoundingClientRect().height));
+    if (body) maxBody = Math.max(maxBody, Math.ceil(body.getBoundingClientRect().height));
+  });
+
+  if (!maxHead || !maxBody) return;
+
+  heads.forEach(head => { head.style.minHeight = `${maxHead}px`; });
+  bodies.forEach(body => { body.style.minHeight = `${maxBody}px`; });
+  cards.forEach(card => { card.style.minHeight = `${maxHead + maxBody}px`; });
+}
+
+window.addEventListener('resize', schedulePricingCardHeights, { passive: true });
+
+function bindPricingSupportModal(){
+  const trigger = document.getElementById('planSupportDevelopmentBtn');
+  const modal = document.getElementById('pricingSupportModal');
+  const closeBtn = document.getElementById('pricingSupportClose');
+  if (!trigger || !modal || modal.dataset.bound === '1') return;
+  modal.dataset.bound = '1';
+
+  const open = () => {
+    modal.classList.add('isOpen');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('pricingSupportModalOpen');
+  };
+  const close = () => {
+    modal.classList.remove('isOpen');
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('pricingSupportModalOpen');
+  };
+
+  trigger.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    open();
+  });
+  trigger.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter' || ev.key === ' ') {
+      ev.preventDefault();
+      ev.stopPropagation();
+      open();
+    }
+  });
+
+  closeBtn?.addEventListener('click', close);
+  modal.addEventListener('click', (ev) => {
+    if (ev.target === modal || ev.target.hasAttribute('data-support-close')) close();
+  });
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && modal.classList.contains('isOpen')) close();
+  });
+}
+
+function bindPricingMobileCarousel(){
+  const grid = document.querySelector('.pricingGrid');
+  const dots = Array.from(document.querySelectorAll('[data-pricing-dot]'));
+  if (!grid || !dots.length || grid.dataset.mobileCarouselBound === '1') return;
+  grid.dataset.mobileCarouselBound = '1';
+
+  const cards = Array.from(grid.querySelectorAll('.planCard'));
+  if (!cards.length) return;
+
+  let ticking = false;
+  const updateActive = () => {
+    ticking = false;
+    const center = grid.scrollLeft + (grid.clientWidth / 2);
+    let bestIndex = 0;
+    let bestDist = Number.POSITIVE_INFINITY;
+    cards.forEach((card, index) => {
+      const cardCenter = card.offsetLeft + (card.offsetWidth / 2);
+      const dist = Math.abs(cardCenter - center);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestIndex = index;
+      }
+    });
+    dots.forEach((dot, index) => dot.classList.toggle('isActive', index === bestIndex));
+  };
+
+  const scheduleUpdate = () => {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(updateActive);
+  };
+
+  grid.addEventListener('scroll', scheduleUpdate, { passive: true });
+  window.addEventListener('resize', () => { scheduleUpdate(); schedulePricingCardHeights(); }, { passive: true });
+  dots.forEach((dot, index) => {
+    dot.addEventListener('click', () => {
+      const card = cards[index];
+      if (!card) return;
+      grid.scrollTo({ left: card.offsetLeft - Math.max(0, (grid.clientWidth - card.offsetWidth) / 2), behavior: 'smooth' });
+    });
+  });
+
+  setTimeout(() => { updateActive(); schedulePricingCardHeights(); }, 0);
+}
 
 function setBillingInterval(interval) {
   billingInterval = interval;

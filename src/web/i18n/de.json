@@ -121,7 +121,21 @@
     "monthly": "Monatlich",
     "yearly": "Jährlich",
     "save_20": "20% sparen",
-    "most_popular": "Am beliebtesten"
+    "most_popular": "Am beliebtesten",
+    "support_development": "Entwicklung unterstützen",
+    "support_modal": {
+      "title": "Mehr als ein Plan – werde Teil des Produkts",
+      "item_1_title": "Erhalte als Erste:r Zugang zu neuen Funktionen",
+      "item_1_body": "Bekomme frühen Zugriff auf kommende Tools und Verbesserungen, bevor sie für alle Nutzer freigeschaltet werden.",
+      "item_2_title": "Erhalte priorisierte Updates und Leistungsverbesserungen",
+      "item_2_body": "Profitiere schneller von Updates, Optimierungen und Verbesserungen, sobald sie ausgerollt werden.",
+      "item_3_title": "Gestalte die Zukunft der Plattform mit",
+      "item_3_body": "Deine Nutzung und dein Feedback beeinflussen direkt, was wir als Nächstes entwickeln.",
+      "item_4_title": "Schalte die fortschrittlichsten Analyse-Tools frei",
+      "item_4_body": "Nutze das vollständige Paket leistungsstarker Analysefunktionen ohne Einschränkungen.",
+      "item_5_title": "Unterstütze die laufende Weiterentwicklung",
+      "item_5_body": "Hilf uns, die Plattform kontinuierlich zu verbessern, zu skalieren und bessere Funktionen bereitzustellen."
+    }
   },
   "auth": {
     "title": "Konto erstellen, um fortzufahren",

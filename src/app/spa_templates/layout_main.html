@@ -361,12 +361,12 @@
       </div>
 
       <div class="planCard popular" data-plan="pro" role="listitem" tabindex="0">
-        <div class="planBadge">Most popular</div>
+        <div class="planBadge" data-i18n="pricing.most_popular">Most popular</div>
         <div class="planHead">
           <div class="planName">Pro</div>
-          <div class="planPrice planPriceBig" data-price-monthly="$4.99" data-price-yearly="$49.99">
+          <div class="planPrice planPriceBig" data-price-monthly="$9.99" data-price-yearly="$99.99">
             <span class="priceWas"></span>
-            <span class="priceNow">$4.99</span>
+            <span class="priceNow">$9.99</span>
             <span class="priceSave"></span>
           </div>
         </div>
@@ -386,11 +386,12 @@
       <div class="planCard" data-plan="analyst" role="listitem" tabindex="0">
         <div class="planHead">
           <div class="planName">Analyst</div>
-          <div class="planPrice planPriceBig" data-price-monthly="$15.99" data-price-yearly="$159.99">
+          <div class="planPrice planPriceBig" data-price-monthly="$24.99" data-price-yearly="$249.99">
             <span class="priceWas"></span>
-            <span class="priceNow">$15.99</span>
+            <span class="priceNow">$24.99</span>
             <span class="priceSave"></span>
           </div>
+          <button type="button" class="planSupportBtn" id="planSupportDevelopmentBtn" data-i18n="pricing.support_development">Support development</button>
         </div>
         <div class="planBody">
           <ul>
@@ -405,6 +406,12 @@
           </ul>
         </div>
       </div>
+    </div>
+
+    <div class="pricingMobileDots" id="pricingMobileDots" aria-hidden="true">
+      <button type="button" class="pricingMobileDot isActive" data-pricing-dot="0" aria-label="Free plan"></button>
+      <button type="button" class="pricingMobileDot" data-pricing-dot="1" aria-label="Pro plan"></button>
+      <button type="button" class="pricingMobileDot" data-pricing-dot="2" aria-label="Analyst plan"></button>
     </div>
 
     <div class="pricingCtaRow">
@@ -523,6 +530,61 @@
     </div>
   </section>
   
+
+  <div class="pricingSupportModal" id="pricingSupportModal" aria-hidden="true">
+    <div class="pricingSupportModal__backdrop" data-support-close></div>
+    <div class="pricingSupportModal__dialog" role="dialog" aria-modal="true" aria-labelledby="pricingSupportTitle">
+      <button type="button" class="pricingSupportModal__close" id="pricingSupportClose" aria-label="Close">
+        <span aria-hidden="true">×</span>
+      </button>
+      <div class="pricingSupportModal__hero">
+        <h3 id="pricingSupportTitle" data-i18n="pricing.support_modal.title">More than a plan - be part of the product</h3>
+      </div>
+      <div class="pricingSupportModal__body">
+        <div class="pricingSupportModal__item">
+          <div class="pricingSupportModal__bullet">•</div>
+          <div class="pricingSupportModal__copy">
+            <h4 data-i18n="pricing.support_modal.item1_title">Be among the first to access new features</h4>
+            <p data-i18n="pricing.support_modal.item1_body">Get early access to upcoming tools and improvements before they are released to all users.</p>
+          </div>
+        </div>
+        <div class="pricingSupportModal__item">
+          <div class="pricingSupportModal__bullet">•</div>
+          <div class="pricingSupportModal__copy">
+            <h4 data-i18n="pricing.support_modal.item2_title">Get priority updates and performance improvements</h4>
+            <p data-i18n="pricing.support_modal.item2_body">Receive faster updates, optimizations, and enhancements as they roll out.</p>
+          </div>
+        </div>
+        <div class="pricingSupportModal__item">
+          <div class="pricingSupportModal__bullet">•</div>
+          <div class="pricingSupportModal__copy">
+            <h4 data-i18n="pricing.support_modal.item3_title">Shape the future of the platform</h4>
+            <p data-i18n="pricing.support_modal.item3_body">Your usage and feedback directly influence what we build next.</p>
+          </div>
+        </div>
+        <div class="pricingSupportModal__item">
+          <div class="pricingSupportModal__bullet">•</div>
+          <div class="pricingSupportModal__copy">
+            <h4 data-i18n="pricing.support_modal.item4_title">Unlock the most advanced analytics tools</h4>
+            <p data-i18n="pricing.support_modal.item4_body">Access the full suite of powerful analytics without limitations.</p>
+          </div>
+        </div>
+        <div class="pricingSupportModal__item">
+          <div class="pricingSupportModal__bullet">•</div>
+          <div class="pricingSupportModal__copy">
+            <h4 data-i18n="pricing.support_modal.item5_title">Support ongoing development</h4>
+            <p data-i18n="pricing.support_modal.item5_body">Help us continuously improve, scale, and deliver better features.</p>
+          </div>
+        </div>
+      </div>
+      <div class="pricingSupportModal__brand" aria-hidden="true">
+        <img src="/static/icons/Logo.svg" alt="">
+        <span>CHECKNE.</span>
+      </div>
+    </div>
+  </div>
+
+
   <!-- Info / Legal / Support pages (SPA, header stays visible) -->
   <section id="infoSection" class="infoSection" aria-label="Information pages">
     <div class="infoShell">

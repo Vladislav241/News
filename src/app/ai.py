@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import time
+import hashlib
 from typing import Any, Optional, Tuple
 
 from .db import db

@@ -121,7 +121,21 @@
     "monthly": "Mensuel",
     "yearly": "Annuel",
     "save_20": "Économisez 20%",
-    "most_popular": "Le plus populaire"
+    "most_popular": "Le plus populaire",
+    "support_development": "Soutenir le développement",
+    "support_modal": {
+      "title": "Plus qu’un abonnement – faites partie du produit",
+      "item_1_title": "Soyez parmi les premiers à accéder aux nouvelles fonctionnalités",
+      "item_1_body": "Bénéficiez d’un accès anticipé aux nouveaux outils et améliorations avant leur sortie pour tous les utilisateurs.",
+      "item_2_title": "Recevez des mises à jour prioritaires et des améliorations de performance",
+      "item_2_body": "Profitez plus rapidement des mises à jour, optimisations et améliorations dès leur déploiement.",
+      "item_3_title": "Façonnez l’avenir de la plateforme",
+      "item_3_body": "Votre utilisation et vos retours influencent directement ce que nous développons ensuite.",
+      "item_4_title": "Débloquez les outils d’analyse les plus avancés",
+      "item_4_body": "Accédez à toute la suite d’outils analytiques puissants, sans limitations.",
+      "item_5_title": "Soutenez le développement continu",
+      "item_5_body": "Aidez-nous à améliorer, faire évoluer et enrichir la plateforme en continu."
+    }
   },
   "auth": {
     "title": "Créez un compte pour continuer",

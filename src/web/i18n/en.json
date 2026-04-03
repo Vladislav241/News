@@ -128,7 +128,21 @@
     "monthly": "Monthly",
     "yearly": "Yearly",
     "save_20": "Save 20%",
-    "most_popular": "Most popular"
+    "most_popular": "Most popular",
+    "support_development": "Support development",
+    "support_modal": {
+      "title": "More than a plan - be part of the product",
+      "item_1_title": "Be among the first to access new features",
+      "item_1_body": "Get early access to upcoming tools and improvements before they are released to all users.",
+      "item_2_title": "Get priority updates and performance improvements",
+      "item_2_body": "Receive faster updates, optimizations, and enhancements as they roll out.",
+      "item_3_title": "Shape the future of the platform",
+      "item_3_body": "Your usage and feedback directly influence what we build next.",
+      "item_4_title": "Unlock the most advanced analytics tools",
+      "item_4_body": "Access the full suite of powerful analytics without limitations.",
+      "item_5_title": "Support ongoing development",
+      "item_5_body": "Help us continuously improve, scale, and deliver better features."
+    }
   },
   "auth": {
     "title": "Create an account to continue",
