@@ -165,6 +165,8 @@ def _queue_missing_summaries(rows: list[dict[str, Any]], background_tasks: Backg
     for row in rows:
         if len(picked) >= max_jobs:
             break
+        if bool(row.get("guest_locked")):
+            continue
         if not _should_queue_summary_backfill(row):
             continue
         try:
@@ -2260,7 +2262,6 @@ async def news_by_ids(
 
     id_list = list(dict.fromkeys(id_list))[:200]
     rows = db.get_clusters_by_ids(id_list)
-    _queue_missing_summaries(rows, background_tasks, max_jobs=6)
     items = [_decorate_cluster_row(r, include_sources=True) for r in rows]
 
     # Apply paywall for guests using the same source of truth as /api/news.
@@ -2277,6 +2278,7 @@ async def news_by_ids(
 
     pos = {cid: i for i, cid in enumerate(id_list)}
     items.sort(key=lambda x: pos.get(int(x["cluster_id"]), 10**9))
+    _queue_missing_summaries(items, background_tasks, max_jobs=4)
 
     if ui_lang and ui_lang.strip():
         try:

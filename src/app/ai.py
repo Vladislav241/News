@@ -109,6 +109,43 @@ def _parse_json(text: str) -> Optional[dict[str, Any]]:
         return None
 
 
+def _clip_for_prompt(text: str, limit: int) -> str:
+    s = re.sub(r"\s+", " ", str(text or "")).strip()
+    if len(s) <= limit:
+        return s
+    return s[: max(0, limit - 1)].rstrip() + "…"
+
+
+def _summary_cache_ttl_seconds() -> int:
+    raw = (os.getenv("OPENAI_SUMMARY_CACHE_TTL_SECONDS", "") or "").strip()
+    if not raw:
+        raw = (os.getenv("SUMMARY_REGEN_MIN_INTERVAL_SECONDS", "") or "").strip()
+    try:
+        ttl = int(raw or str(7 * 24 * 60 * 60))
+    except Exception:
+        ttl = 7 * 24 * 60 * 60
+    return max(24 * 60 * 60, ttl)
+
+
+def _summary_cache_key(cluster_title: str, sources: list[dict[str, Any]], lang: str, model: str) -> str:
+    parts = [f"lang={_norm_lang(lang)}", f"model={model or ''}", _clip_for_prompt(cluster_title, 220)]
+    seen = set()
+    for s in (sources or [])[:6]:
+        source_name = _clip_for_prompt(s.get("source_name") or "", 80)
+        title = _clip_for_prompt(s.get("title") or "", 180)
+        desc = _clip_for_prompt(s.get("description") or "", 220)
+        published = _clip_for_prompt(s.get("published_at") or "", 40)
+        key = f"{source_name}|{title}|{desc}|{published}"
+        if not key.strip("|") or key in seen:
+            continue
+        seen.add(key)
+        parts.append(key)
+    payload = "\n".join(parts)
+    return hashlib.sha1(payload.encode("utf-8", errors="ignore")).hexdigest()
+
+
+
+
 
 
 def _extract_brief_from_text(text: str) -> str:
@@ -315,34 +352,61 @@ def summarize_cluster(
     lang_n = _norm_lang(lang)
     out_lang = _LANG_LABELS.get(lang_n, "English")
 
-    # Build context (up to 6)
+    cache_key = _summary_cache_key(cluster_title, sources, lang_n, model)
+    try:
+        cached = db.get_llm_pair_cache(cache_key, "cluster_summary")
+    except Exception:
+        cached = None
+    if cached and isinstance(cached.get("payload"), dict):
+        payload = cached.get("payload") or {}
+        summary_json = payload.get("summary_json")
+        brief = str(payload.get("brief") or "").strip() or None
+        status = str(payload.get("status") or "success").strip() or "success"
+        raw_text = payload.get("raw_text")
+        try:
+            db.log_ai_usage(
+                feature="cluster_summary",
+                model=model,
+                status="cache_hit_db",
+                cache_hit=True,
+                meta={"cache_key": cache_key[:12], "lang": lang_n, "sources": len(sources or [])},
+            )
+        except Exception:
+            pass
+        return brief, (str(summary_json) if summary_json else None), status, (str(raw_text) if raw_text else None)
+
+    # Build context (up to 5 unique sources, clipped to reduce prompt tokens)
     items: list[str] = []
     src_names: list[str] = []
     seen = set()
 
     for s in (sources or [])[:6]:
         src = (s.get("source_name") or "unknown").strip() or "unknown"
-        if src.lower() not in seen:
-            seen.add(src.lower())
-            src_names.append(src)
+        src_key = src.lower()
+        if src_key in seen:
+            continue
+        seen.add(src_key)
+        src_names.append(src)
 
-        t = (s.get("title") or "").strip()
-        d = (s.get("description") or "").strip()
-        p = (s.get("published_at") or "").strip()
+        t = _clip_for_prompt(s.get("title") or "", 180)
+        d = _clip_for_prompt(s.get("description") or "", 220)
+        published = _clip_for_prompt(s.get("published_at") or "", 40)
         if not t and not d:
             continue
 
-        line = f"- [{src}]"
-        if p:
-            line += f" ({p})"
+        line = f"- [{_clip_for_prompt(src, 60)}]"
+        if published:
+            line += f" ({published})"
         if t:
             line += f" {t}"
         if d:
             line += f" — {d}"
         items.append(line)
+        if len(items) >= 5:
+            break
 
     context = "\n".join(items) if items else "(no items)"
-    sources_list_str = ", ".join(src_names[:12]) if src_names else "unknown"
+    sources_list_str = ", ".join(src_names[:10]) if src_names else "unknown"
 
     # Prompt in English but instruct to write in the selected language (works reliably)
     prompt = (
@@ -445,7 +509,18 @@ def summarize_cluster(
                 )
             except Exception:
                 pass
-            return brief, json.dumps(sanitized, ensure_ascii=False), status_name, raw1
+            summary_json_text = json.dumps(sanitized, ensure_ascii=False)
+            try:
+                db.set_llm_pair_cache(
+                    cache_key,
+                    "cluster_summary",
+                    model,
+                    {"brief": brief, "summary_json": summary_json_text, "status": status_name, "raw_text": raw1},
+                    ttl_seconds=_summary_cache_ttl_seconds(),
+                )
+            except Exception:
+                pass
+            return brief, summary_json_text, status_name, raw1
 
         logger.warning("AI summary output invalid; storing raw text only")
         try:
@@ -471,7 +546,18 @@ def summarize_cluster(
                 "diffs": [],
                 "uncertainties": [],
             }
-            return fallback_brief, json.dumps(fallback_obj, ensure_ascii=False), "success", raw1
+            fallback_json_text = json.dumps(fallback_obj, ensure_ascii=False)
+            try:
+                db.set_llm_pair_cache(
+                    cache_key,
+                    "cluster_summary",
+                    model,
+                    {"brief": fallback_brief, "summary_json": fallback_json_text, "status": "success", "raw_text": raw1},
+                    ttl_seconds=_summary_cache_ttl_seconds(),
+                )
+            except Exception:
+                pass
+            return fallback_brief, fallback_json_text, "success", raw1
         return None, None, "failed", raw1
 
     except Exception:
