@@ -249,6 +249,52 @@ def _resolve_checkout_price_id(stripe, plan: str, interval: str) -> str:
     )
 
 
+
+
+def _get_or_create_checkout_customer(stripe, user: dict) -> str:
+    user_id = int(user["id"])
+    email = (user.get("email") or "").strip() or None
+    existing = str(user.get("stripe_customer_id") or "").strip()
+
+    if existing:
+        try:
+            cust = stripe.Customer.retrieve(existing)
+            deleted = bool(cust.get("deleted")) if isinstance(cust, dict) else bool(getattr(cust, "deleted", False))
+            if not deleted:
+                return existing
+        except Exception as exc:
+            logger.warning("Stored Stripe customer %s is not usable for user %s; recreating. Error: %s", existing, user_id, exc)
+        try:
+            db.set_user_stripe_customer_id(user_id, "")
+        except Exception:
+            logger.exception("Failed to clear stale Stripe customer id for user %s", user_id)
+
+    metadata = {"user_id": str(user_id)}
+    try:
+        if email:
+            matches = stripe.Customer.list(email=email, limit=10)
+            for cust in (matches.get("data") or []):
+                deleted = bool(cust.get("deleted")) if isinstance(cust, dict) else bool(getattr(cust, "deleted", False))
+                if deleted:
+                    continue
+                cid = _stripe_id(cust)
+                if cid:
+                    db.set_user_stripe_customer_id(user_id, cid)
+                    return cid
+    except Exception as exc:
+        logger.warning("Failed to search Stripe customer by email for user %s: %s", user_id, exc)
+
+    try:
+        cust = stripe.Customer.create(email=email, metadata=metadata)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Failed to create Stripe customer: {exc}")
+
+    customer_id = _stripe_id(cust)
+    if not customer_id:
+        raise HTTPException(status_code=500, detail="Stripe customer creation returned no id")
+    db.set_user_stripe_customer_id(user_id, customer_id)
+    return customer_id
+
 def _plan_interval_from_subscription_object(obj: dict) -> tuple[str, str]:
     plan = "pro"
     interval = "monthly"
@@ -520,14 +566,7 @@ def create_checkout(payload: CheckoutIn, user=Depends(require_user)):
     stripe = _stripe()
     price_id = _resolve_checkout_price_id(stripe, payload.plan, payload.interval)
 
-    stripe_customer_id: Optional[str] = user.get("stripe_customer_id")
-    if not stripe_customer_id:
-        try:
-            cust = stripe.Customer.create(email=user.get("email"), metadata={"user_id": str(user["id"])})
-            stripe_customer_id = cust["id"]
-            db.set_user_stripe_customer_id(int(user["id"]), stripe_customer_id)
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=f"Failed to create Stripe customer: {exc}")
+    stripe_customer_id = _get_or_create_checkout_customer(stripe, user)
 
     base = _public_base_url()
     success_url = f"{base}/?checkout=success&session_id={{CHECKOUT_SESSION_ID}}"
