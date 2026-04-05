@@ -86,6 +86,23 @@ function authModalIsOpen() {
   return !!(back && back.classList.contains('isOpen'));
 }
 
+
+function withAppBusy(task, opts = {}) {
+  const minVisibleMs = Math.max(0, Number(opts.minVisibleMs ?? 480) || 0);
+  const startedAt = Date.now();
+  try { if (typeof window.__setAppBusy === 'function') window.__setAppBusy(true); } catch {}
+
+  const finish = () => {
+    const elapsed = Date.now() - startedAt;
+    const delay = Math.max(0, minVisibleMs - elapsed);
+    try { if (typeof window.__setAppBusy === 'function') window.__setAppBusy(false, { delay }); } catch {}
+  };
+
+  return Promise.resolve()
+    .then(task)
+    .finally(finish);
+}
+
 function authScrollGuard(e) {
   if (!authModalIsOpen()) return;
   const modal = document.querySelector('#authBackdrop .authModalInner');
@@ -462,6 +479,7 @@ function bindAuthModalUI() {
 
       // Try login first. If 401/404-ish -> register.
       try {
+        await withAppBusy(async () => {
         let r = await fetch(`${API_BASE}/api/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -510,6 +528,7 @@ function bindAuthModalUI() {
         }
 
         _showAuthError('authError', err || 'Login failed.');
+        });
       } catch {
         _showAuthError('authError', 'Network error. Try again.');
       }
@@ -614,9 +633,11 @@ async function handleAuthQueryParams() {
   if (login === 'success') {
     url.searchParams.delete('login');
     window.history.replaceState({}, '', url.toString());
-    await refreshAuthState();
-    // After OAuth redirects back, refresh the feed and open any deep-link.
-    await fetchFeed({ reset: true });
-    await maybeOpenDeepLinkedArticle();
+    await withAppBusy(async () => {
+      await refreshAuthState();
+      // After OAuth redirects back, refresh the feed and open any deep-link.
+      await fetchFeed({ reset: true });
+      await maybeOpenDeepLinkedArticle();
+    }, { minVisibleMs: 700 });
   }
 }

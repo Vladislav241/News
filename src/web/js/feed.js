@@ -1638,7 +1638,6 @@ const showTrackingUI = state.mode === 'fav';
     div.dataset.locked = '1';
 
     const detailsEl = div.querySelector('details.newsDetails');
-    const summaryEl = div.querySelector('summary.newsSummary');
 
     const blockOpen = (e) => {
       if (authState?.authenticated) return false;
@@ -1728,6 +1727,19 @@ const showTrackingUI = state.mode === 'fav';
   if (scoreBadge) {
     requestAnimationFrame(() => syncScoreBadgeExpansion());
     window.addEventListener('resize', syncScoreBadgeExpansion, { passive: true });
+  }
+
+  const summaryEl = div.querySelector('summary.newsSummary');
+  const isSummaryActionTarget = (target) => {
+    if (!target || typeof target.closest !== 'function') return false;
+    return !!target.closest('.trackToggle, .shareBtn, .reportBtn');
+  };
+  if (summaryEl) {
+    summaryEl.addEventListener('click', (e) => {
+      if (isSummaryActionTarget(e.target)) {
+        e.preventDefault();
+      }
+    }, { capture: true });
   }
 
   // Share button should not toggle the details accordion.

@@ -301,6 +301,11 @@ function initSmoothDetails(){
   _smoothDetailsInit = true;
 
   document.addEventListener('click', (e) => {
+    const interactive = e.target && e.target.closest
+      ? e.target.closest('.trackToggle, .shareBtn, .reportBtn, .openBtn, button, a, input, textarea, select, label')
+      : null;
+    if (interactive) return;
+
     const sum = e.target && e.target.closest ? e.target.closest('summary.accordionSummary, summary.newsSummary') : null;
     if (!sum) return;
 
@@ -335,6 +340,47 @@ function initSmoothDetails(){
   }, true);
 }
 
+
+function __setGlobalAppBusy(active, opts = {}) {
+  const body = document.body;
+  const html = document.documentElement;
+  if (!body || !html) return;
+
+  const current = Number(body.dataset.appBusyCount || '0') || 0;
+  let next = current + (active ? 1 : -1);
+  if (!Number.isFinite(next) || next < 0) next = 0;
+  body.dataset.appBusyCount = String(next);
+  const token = String((Number(body.dataset.appBusyToken || '0') || 0) + 1);
+  body.dataset.appBusyToken = token;
+
+  if (active) {
+    body.classList.add('app-busy');
+    html.classList.add('app-booting');
+    body.style.overflow = 'hidden';
+    return;
+  }
+
+  if (next > 0) return;
+
+  const release = () => {
+    if ((body.dataset.appBusyToken || '') !== token) return;
+    if ((Number(body.dataset.appBusyCount || '0') || 0) > 0) return;
+    try { body.classList.remove('app-busy'); } catch {}
+    try { html.classList.remove('app-booting'); } catch {}
+    if (!authModalIsOpen || !authModalIsOpen()) {
+      try { body.style.overflow = ''; } catch {}
+    }
+  };
+
+  const delay = Math.max(0, Number(opts.delay || 0) || 0);
+  if (delay > 0) window.setTimeout(release, delay);
+  else release();
+}
+
+window.__setAppBusy = function(active, opts = {}){
+  try { __setGlobalAppBusy(!!active, opts); } catch {}
+};
+
 initSmoothDetails();
 _syncAllDisclosureStates(document);
 try {
@@ -353,7 +399,10 @@ try {
 
 requestAnimationFrame(updateFooterShadeGap);
 initSmoothDetails();
-main();
+window.__setAppBusy(true);
+Promise.resolve(main())
+  .catch((err) => { console.error('main bootstrap failed', err); })
+  .finally(() => { window.__setAppBusy(false, { delay: 120 }); });
 
 
 let _emailAlertsInit = false;

@@ -74,6 +74,17 @@ def _validate_password_strength(password: str) -> None:
 def me(user=Depends(get_current_user_optional)):
     if not user:
         return {"authenticated": False}
+
+    sub = db.get_user_subscription(int(user["id"]))
+    plan = "free"
+    sub_status = "active"
+    if sub:
+        raw_plan = str(sub.get("plan") or "free").strip().lower()
+        raw_status = str(sub.get("status") or "active").strip().lower()
+        if raw_plan in ("pro", "analyst") and raw_status in ("active", "trialing"):
+            plan = raw_plan
+            sub_status = raw_status
+
     return {
         "authenticated": True,
         "user": {
@@ -86,6 +97,8 @@ def me(user=Depends(get_current_user_optional)):
             "provider": user.get("provider") or "local",
             "created_at": user.get("created_at"),
             "last_login": user.get("last_login"),
+            "plan": plan,
+            "subscription_status": sub_status,
         },
     }
 

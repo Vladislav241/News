@@ -815,7 +815,8 @@ class Database:
 
         if row:
             plan = str(row.get("plan") or "free").strip().lower()
-            if plan in ("pro", "analyst"):
+            status = str(row.get("status") or "active").strip().lower()
+            if plan in ("pro", "analyst") and status in ("active", "trialing"):
                 return row
             if reward:
                 out = dict(row)
@@ -825,6 +826,14 @@ class Database:
                 out["current_period_end"] = reward.get("ends_at")
                 out["cancel_at_period_end"] = True
                 out["promo_source"] = reward.get("source") or "share_campaign"
+                return out
+            if plan in ("pro", "analyst") and status not in ("active", "trialing"):
+                out = dict(row)
+                out["previous_plan"] = plan
+                out["plan"] = "free"
+                out["status"] = "expired"
+                out["billing_interval"] = "monthly"
+                out["cancel_at_period_end"] = False
                 return out
             return row
 

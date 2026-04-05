@@ -103,15 +103,13 @@ def _apply_subscription_state(user_id: int, *, customer_id: Optional[str], subsc
     return {"plan": plan, "interval": interval, "status": status, "current_period_end": cpe_iso}
 
 
-class CheckoutIn(BaseModel):
-    plan: Plan
-    interval: Interval = "monthly"
+def _paid_access_active(plan: Optional[str], status: Optional[str]) -> bool:
+    plan_v = str(plan or "free").strip().lower()
+    status_v = str(status or "").strip().lower()
+    return plan_v in ("pro", "analyst") and status_v in ("active", "trialing")
 
 
-@router.get("/api/billing/me")
-def billing_me(user=Depends(require_user)):
-    """Returns the current subscription info for the logged-in user."""
-    sub = db.get_user_subscription(int(user["id"]))
+def _normalize_billing_payload(sub: Optional[dict], *, preserve_recent_cancel: bool = True) -> dict:
     if not sub:
         return {
             "plan": "free",
@@ -119,14 +117,93 @@ def billing_me(user=Depends(require_user)):
             "interval": "monthly",
             "current_period_end": None,
             "cancel_at_period_end": False,
+            "previous_plan": None,
+            "ended_at": None,
+            "recently_expired": False,
         }
+
+    plan = str(sub.get("plan") or "free").strip().lower()
+    status = str(sub.get("status") or "active").strip().lower()
+    interval = str(sub.get("billing_interval") or "monthly").strip().lower()
+    current_period_end = sub.get("current_period_end")
+    cancel_at_period_end = bool(sub.get("cancel_at_period_end"))
+
+    if _paid_access_active(plan, status):
+        return {
+            "plan": plan,
+            "status": status,
+            "interval": interval,
+            "current_period_end": current_period_end,
+            "cancel_at_period_end": cancel_at_period_end,
+            "previous_plan": None,
+            "ended_at": None,
+            "recently_expired": False,
+        }
+
+    previous_plan = plan if plan in ("pro", "analyst") else None
+    ended_at = current_period_end
     return {
-        "plan": sub["plan"],
-        "status": sub["status"],
-        "interval": sub["billing_interval"],
-        "current_period_end": sub["current_period_end"],
-        "cancel_at_period_end": bool(sub.get("cancel_at_period_end")),
+        "plan": "free",
+        "status": "active",
+        "interval": "monthly",
+        "current_period_end": None,
+        "cancel_at_period_end": False,
+        "previous_plan": previous_plan,
+        "ended_at": ended_at,
+        "recently_expired": bool(preserve_recent_cancel and previous_plan),
     }
+
+
+def _sync_user_subscription_from_stripe(user_id: int) -> Optional[dict]:
+    current = db.get_user_subscription(int(user_id))
+    if not current:
+        return None
+
+    stripe_subscription_id = str(current.get("stripe_subscription_id") or "").strip()
+    stripe_customer_id = str(current.get("stripe_customer_id") or "").strip() or None
+    if not stripe_subscription_id:
+        return current
+
+    try:
+        stripe = _stripe()
+        stripe_sub = stripe.Subscription.retrieve(stripe_subscription_id)
+    except Exception:
+        return current
+
+    current_plan = str(current.get("plan") or "").strip().lower()
+    current_interval = str(current.get("billing_interval") or "").strip().lower()
+    updated = _apply_subscription_state(
+        int(user_id),
+        customer_id=stripe_customer_id,
+        subscription_obj=stripe_sub,
+        fallback_plan=(current_plan if current_plan in ("pro", "analyst") else None),
+        fallback_interval=(current_interval if current_interval in ("monthly", "yearly") else None),
+    )
+    return {
+        **current,
+        "plan": updated.get("plan") or current.get("plan"),
+        "status": updated.get("status") or current.get("status"),
+        "billing_interval": updated.get("interval") or current.get("billing_interval"),
+        "current_period_end": updated.get("current_period_end"),
+        "cancel_at_period_end": bool(getattr(stripe_sub, "cancel_at_period_end", False)),
+    }
+
+
+class CheckoutIn(BaseModel):
+    plan: Plan
+    interval: Interval = "monthly"
+
+
+@router.get("/api/billing/me")
+def billing_me(user=Depends(require_user)):
+    """Returns the effective subscription info for the logged-in user.
+
+    In production the Stripe webhook should keep local state fresh, but this endpoint
+    also performs a defensive sync so the UI reflects cancellations immediately even
+    if a webhook has not arrived yet.
+    """
+    sub = _sync_user_subscription_from_stripe(int(user["id"]))
+    return _normalize_billing_payload(sub)
 
 
 @router.post("/api/billing/cancel")
