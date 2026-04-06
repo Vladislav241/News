@@ -655,43 +655,11 @@ body.onboardingLock{
     gap:12px;
   }
 
-  .onboardingSlide[data-slide-index="2"] .onboardingVisual{
-    min-height:118px;
-    padding:2px 0 0;
-  }
-
-  .onboardingSlide[data-slide-index="2"] .onboardingVisualRing{
-    width:min(48vw, 164px);
-  }
-
-  .onboardingSlide[data-slide-index="2"] .onboardingVisualPlate{
-    width:min(31vw, 108px);
-  }
-
-  .onboardingSlide[data-slide-index="2"] .onboardingIconWrap{
-    width:60px;
-    height:60px;
-    border-radius:18px;
-  }
-
-  .onboardingSlide[data-slide-index="2"] .onboardingIconWrap svg{
-    width:28px;
-    height:28px;
-  }
-
-  .onboardingSlide[data-slide-index="2"] .onboardingTitle{
-    font-size:clamp(24px, 7.8vw, 34px);
-  }
-
-  .onboardingSlide[data-slide-index="2"] .onboardingText{
-    margin-top:10px;
-  }
-
   .onboardingSlide[data-slide-index="2"] .onboardingTopicChip{
-    min-height:54px;
-    padding:12px 16px;
-    border-radius:20px;
-    font-size:14px;
+    min-height:58px;
+    padding:14px 18px;
+    border-radius:22px;
+    font-size:15px;
   }
 }
 

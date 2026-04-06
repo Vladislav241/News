@@ -1524,7 +1524,11 @@ const showTrackingUI = state.mode === 'fav';
 
   // Share button (Feed + Tracking).
   const shareHtml = `<button class="shareBtn" type="button" title="Share" aria-label="Share">
-    <img class="shareIcon" src="/static/icons/Share.svg" alt="Share" />
+    <svg class="shareIcon shareIconSvg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M14 3h6a1 1 0 0 1 1 1v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+      <path d="M10 14 20 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+      <path d="M20 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+    </svg>
   </button>`;
 
   // Report button (opens report modal -> sends to Discord webhook).

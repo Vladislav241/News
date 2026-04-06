@@ -359,13 +359,26 @@
   }
 
 
-  function restoreActiveCardScroll(previousScrollTop){
-    const top = Number(previousScrollTop || 0);
+  function getActiveScrollState(){
+    if (!root) return { viewportTop: 0, cardTop: 0 };
+    const viewport = root.querySelector('.onboardingViewport');
+    const activeCard = root.querySelector('.onboardingSlide.isActive .onboardingCard');
+    return {
+      viewportTop: viewport instanceof HTMLElement ? viewport.scrollTop : 0,
+      cardTop: activeCard instanceof HTMLElement ? activeCard.scrollTop : 0,
+    };
+  }
+
+  function restoreActiveCardScroll(previousScroll){
+    const scrollState = (previousScroll && typeof previousScroll === 'object') ? previousScroll : { cardTop: Number(previousScroll || 0), viewportTop: 0 };
+    const viewportTop = Number(scrollState.viewportTop || 0);
+    const cardTop = Number(scrollState.cardTop || 0);
     if (!root) return;
     requestAnimationFrame(() => {
+      const viewport = root.querySelector('.onboardingViewport');
       const activeCard = root.querySelector('.onboardingSlide.isActive .onboardingCard');
-      if (!(activeCard instanceof HTMLElement)) return;
-      activeCard.scrollTop = Math.max(0, top);
+      if (viewport instanceof HTMLElement) viewport.scrollTop = Math.max(0, viewportTop);
+      if (activeCard instanceof HTMLElement) activeCard.scrollTop = Math.max(0, cardTop);
     });
   }
 
@@ -632,6 +645,18 @@
     }
   }
 
+
+  function handleRootPress(event){
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const interactive = target.closest('.onboardingChip, .onboardingTopicChip, .onboardingDot');
+    if (!(interactive instanceof HTMLElement)) return;
+    try { interactive.blur(); } catch {}
+    if (typeof interactive.focus === 'function') {
+      try { interactive.focus({ preventScroll: true }); } catch {}
+    }
+  }
+
   function handleRootClick(event){
     const target = event.target;
     if (!(target instanceof Element)) return;
@@ -643,8 +668,7 @@
     }
     const region = target.closest('[data-region]');
     if (region) {
-      const activeCard = root.querySelector('.onboardingSlide.isActive .onboardingCard');
-      const previousScrollTop = activeCard instanceof HTMLElement ? activeCard.scrollTop : 0;
+      const previousScrollTop = getActiveScrollState();
       selectedCountry = String(region.getAttribute('data-region') || 'world').toLowerCase();
       render();
       restoreActiveCardScroll(previousScrollTop);
@@ -652,8 +676,7 @@
     }
     const interest = target.closest('[data-interest]');
     if (interest) {
-      const activeCard = root.querySelector('.onboardingSlide.isActive .onboardingCard');
-      const previousScrollTop = activeCard instanceof HTMLElement ? activeCard.scrollTop : 0;
+      const previousScrollTop = getActiveScrollState();
       const value = String(interest.getAttribute('data-interest') || '').toLowerCase();
       if (!value) return;
       const set = new Set(selectedInterests);
@@ -692,6 +715,8 @@ function updateCardScroll() {
   function bindRoot(){
     if (!root) return;
     root.addEventListener('click', handleRootClick);
+    root.addEventListener('mousedown', handleRootPress, true);
+    root.addEventListener('touchstart', handleRootPress, { passive: true, capture: true });
     const skip = root.querySelector('.onboardingSkipBtn');
     if (skip) skip.addEventListener('click', () => { markSeen(); close(); });
 
