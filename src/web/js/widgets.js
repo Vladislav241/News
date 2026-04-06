@@ -108,7 +108,7 @@
     // plan: free | pro | analyst
     // checkout: if true, pricing page will immediately start checkout.
     if (!(typeof authState !== 'undefined' && authState && authState.authenticated)) {
-      try { if (typeof window.toast === 'function') window.toast('Please sign in first to continue.', 'info'); } catch {}
+      try { if (typeof window.toast === 'function') window.toast(wt('ui.sign_in_first_continue', 'Please sign in first to continue.'), 'info'); } catch {}
       try { if (typeof window.openAuthModal === 'function') window.openAuthModal('login'); } catch {}
       return false;
     }
@@ -1987,7 +1987,7 @@ document.addEventListener('checkne:currentStoryChanged', () => {
       card.appendChild(body);
       inner.appendChild(card);
 
-      try { def.render(body, w.settings, w); } catch { body.textContent = "Could not render."; }
+      try { def.render(body, w.settings, w); } catch { body.textContent = wt('ui.could_not_render', 'Could not render.'); }
     });
 
     // Show "Add widget" only if:
@@ -3513,7 +3513,7 @@ const filterRow = root.querySelector('[data-rh-filters]');
         <div class="proRowMain">
           <div class="proRowTitle">Missing major outlets</div>
           <div class="proRowWhy">${escapeHtml(majorTxt)}</div>
-          <div class="muted" style="font-size:12px; margin-top:6px;">Expected list is based on the topic (e.g., politics, economy). Tweak threshold in settings.</div>
+          <div class="muted" style="font-size:12px; margin-top:6px;">${escapeHtml(wt('widgets.silence.expected_list_hint', 'Expected list is based on the topic (e.g., politics, economy). Tweak threshold in settings.'))}</div>
         </div>
         <div class="proRowBadgeSm" title="Count">${escapeHtml(String(missingMajor.length))}</div>
       </div>
@@ -3647,24 +3647,24 @@ const filterRow = root.querySelector('[data-rh-filters]');
 
   container.innerHTML = `
     <div class="muted" style="font-size:13px; line-height:1.35;">
-      Choose a <b>base</b> currency and then pick the currencies you want to display.
+      ${escapeHtml(wt('widgets.settings.fx_intro', 'Choose a base currency and then pick the currencies you want to display.')).replace('base', '<b>base</b>')}
     </div>
 
     <div class="widgetFormRow" style="margin-top:14px;">
-      <label>Base</label>
+      <label>${escapeHtml(wt('widgets.settings.base', 'Base'))}</label>
       <select name="base" data-ms-base>
         ${FIAT_CODES.map(c => `<option value="${c}" ${c===base?"selected":""}>${c}</option>`).join("")}
       </select>
     </div>
 
     <div class="widgetFormRow">
-      <label>Symbols</label>
+      <label>${escapeHtml(wt('widgets.settings.symbols', 'Symbols'))}</label>
       <div class="msRoot" data-ms-root="fxSymbols"></div>
       <input type="hidden" name="symbols" value="${escapeAttr(selectedSymbols.join(","))}" />
     </div>
 
     <div class="muted" style="font-size:12px; margin-top:10px;">
-      Tip: You can search and click to add/remove. Max 8.
+      ${escapeHtml(wt('widgets.settings.tip_max8', 'Tip: You can search and click to add/remove. Max 8.'))}
     </div>
   `;
 
@@ -3673,7 +3673,7 @@ const filterRow = root.querySelector('[data-rh-filters]');
 
   if (ms && hidden){
     createMultiSelect(ms, {
-      placeholder: "Search currencies…",
+      placeholder: wt('widgets.settings.search_currencies', 'Search currencies…'),
       options: FIAT_CODES.filter(c => c !== base).map(c => ({ value: c, label: c })),
       selected: selectedSymbols.filter(c => c !== base),
       max: 8,
@@ -3689,7 +3689,7 @@ const filterRow = root.querySelector('[data-rh-filters]');
         const filtered = current.filter(c => c !== nextBase).slice(0, 8);
         hidden.value = filtered.join(",");
         createMultiSelect(ms, {
-          placeholder: "Search currencies…",
+          placeholder: wt('widgets.settings.search_currencies', 'Search currencies…'),
           options: FIAT_CODES.filter(c => c !== nextBase).map(c => ({ value: c, label: c })),
           selected: filtered,
           max: 8,
@@ -3706,17 +3706,17 @@ const filterRow = root.querySelector('[data-rh-filters]');
 
     container.innerHTML = `
       <div class="muted" style="font-size:13px; line-height:1.35;">
-        Choose which <b>cities</b> you want to display.
+        ${escapeHtml(wt('widgets.settings.cities_intro', 'Choose which cities you want to display.')).replace('cities', '<b>cities</b>')}
       </div>
 
       <div class="widgetFormRow" style="margin-top:14px;">
-        <label>Cities</label>
+        <label>${escapeHtml(wt('widgets.settings.cities', 'Cities'))}</label>
         <div class="msRoot" data-ms-root="clockCities"></div>
         <input type="hidden" name="cities" value="${escapeAttr(selectedCities.join(','))}" />
       </div>
 
       <div class="muted" style="font-size:12px; margin-top:10px;">
-        Tip: You can search and click to add/remove. Max 8.
+        ${escapeHtml(wt('widgets.settings.tip_max8', 'Tip: You can search and click to add/remove. Max 8.'))}
       </div>
     `;
 
@@ -3725,7 +3725,7 @@ const filterRow = root.querySelector('[data-rh-filters]');
 
     if (ms && hidden){
       createMultiSelect(ms, {
-        placeholder: "Search cities…",
+        placeholder: wt('widgets.settings.search_cities', 'Search cities…'),
         options: CLOCK_CITIES.map(c => ({ value: c.tz, label: c.label })),
         selected: selectedCities,
         max: 8,
@@ -3742,24 +3742,24 @@ const filterRow = root.querySelector('[data-rh-filters]');
 
   container.innerHTML = `
     <div class="muted" style="font-size:13px; line-height:1.35;">
-      Pick the <b>display currency</b> and the coins you want to track.
+      ${escapeHtml(wt('widgets.settings.crypto_intro', 'Pick the display currency and the coins you want to track.')).replace('display currency', '<b>display currency</b>')}
     </div>
 
     <div class="widgetFormRow" style="margin-top:14px;">
-      <label>Currency</label>
+      <label>${escapeHtml(wt('widgets.settings.currency', 'Currency'))}</label>
       <select name="vs">
         ${FIAT_CODES.map(c => `<option value="${c.toLowerCase()}" ${c.toLowerCase()===vs?"selected":""}>${c}</option>`).join("")}
       </select>
     </div>
 
     <div class="widgetFormRow">
-      <label>Coins</label>
+      <label>${escapeHtml(wt('widgets.settings.coins', 'Coins'))}</label>
       <div class="msRoot" data-ms-root="cryptoCoins"></div>
       <input type="hidden" name="coins" value="${escapeAttr(selectedCoins.join(","))}" />
     </div>
 
     <div class="muted" style="font-size:12px; margin-top:10px;">
-      Tip: Search + click to add. You can also paste an id (CoinGecko) and press Enter.
+      ${escapeHtml(wt('widgets.settings.tip_coins', 'Tip: Search + click to add. You can also paste an id (CoinGecko) and press Enter.'))}
     </div>
   `;
 
@@ -3768,7 +3768,7 @@ const filterRow = root.querySelector('[data-rh-filters]');
 
   if (ms && hidden){
     createMultiSelect(ms, {
-      placeholder: "Search coins… (BTC, ETH, SOL, …)",
+      placeholder: wt('widgets.settings.search_coins', 'Search coins… (BTC, ETH, SOL, …)'),
       options: COIN_PRESETS,
       selected: selectedCoins,
       max: 6,
@@ -3783,7 +3783,7 @@ const filterRow = root.querySelector('[data-rh-filters]');
     const v = clampInt(settings && settings.limit ? settings.limit : 4, 1, 6);
     container.innerHTML = `
       <div class="widgetFormRow">
-        <label>Items</label>
+        <label>${escapeHtml(wt('widgets.settings.items', 'Items'))}</label>
         <select name="limit">
           ${[1,2,3,4,5,6].map(n => `<option value="${n}" ${n===v?"selected":""}>${n}</option>`).join("")}
         </select>

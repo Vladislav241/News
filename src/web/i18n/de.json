@@ -135,6 +135,61 @@
       "item_4_body": "Nutze das vollständige Paket leistungsstarker Analysefunktionen ohne Einschränkungen.",
       "item_5_title": "Unterstütze die laufende Weiterentwicklung",
       "item_5_body": "Hilf uns, die Plattform kontinuierlich zu verbessern, zu skalieren und bessere Funktionen bereitzustellen."
+    },
+    "plan_free": "Kostenlos",
+    "plan_pro": "Pro",
+    "plan_analyst": "Analyst",
+    "get_free": "Kostenlos starten",
+    "upgrade_to_pro": "Auf Pro upgraden",
+    "upgrade_to_analyst": "Auf Analyst upgraden",
+    "switch_to_free": "Zu Kostenlos wechseln",
+    "current_plan": "Aktueller Plan",
+    "trusted_by": "Vertraut von Journalist:innen, Analyst:innen und Forschenden.",
+    "unlimited": "Unbegrenzt",
+    "save_n": "{n}% sparen",
+    "already_have_plan": "Du hast diesen Plan bereits.",
+    "free_plan_enabled": "Kostenloser Plan aktiviert (keine Zahlung).",
+    "cards": {
+      "free": {
+        "news_feed_capacity": "News-Feed-Kapazität <b>120 News</b>",
+        "track_up_to": "Bis zu <b>3 Events</b> verfolgen",
+        "view_current_trust_score": "Aktuellen Vertrauenswert ansehen"
+      },
+      "pro": {
+        "news_feed_capacity": "News-Feed-Kapazität <b>300 News</b>",
+        "track_up_to": "Bis zu <b>30 Events</b> verfolgen"
+      },
+      "analyst": {
+        "news_feed_capacity": "News-Feed-Kapazität <b>400 News</b>",
+        "unlimited_event_tracking": "<b>Unbegrenztes</b> Event-Tracking",
+        "all_advanced_widgets": "Alle erweiterten Widgets"
+      },
+      "shared": {
+        "realtime_updates": "Vertrauenswert in Echtzeit aktualisiert",
+        "access_all_sources": "Zugriff auf alle Nachrichtenquellen",
+        "advanced_widgets_6": "Zugriff auf <b>6</b> erweiterte Analyse-Widgets",
+        "trust_score_graph": "Vertrauenswert-Graph",
+        "email_alerts": "E-Mail-Benachrichtigungen"
+      }
+    },
+    "compare": {
+      "plan": "Plan",
+      "tracked_events": "Verfolgte Events",
+      "news_feed_capacity": "News-Feed-Kapazität",
+      "trust_score_graph": "Vertrauenswert-Graph",
+      "advanced_widgets": "Erweiterte Widgets",
+      "email_alerts": "E-Mail-Benachrichtigungen"
+    },
+    "aria": {
+      "free_plan": "Kostenloser Plan",
+      "pro_plan": "Pro-Plan",
+      "analyst_plan": "Analyst-Plan",
+      "plan_comparison_mobile": "Mobiler Planvergleich",
+      "select_plan": "Plan auswählen",
+      "free_plan_features": "Funktionen des kostenlosen Plans",
+      "pro_plan_features": "Funktionen des Pro-Plans",
+      "analyst_plan_features": "Funktionen des Analyst-Plans",
+      "plan_comparison": "Planvergleich"
     }
   },
   "auth": {

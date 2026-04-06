@@ -594,7 +594,7 @@ setTimeout(()=>{
           wasEl.style.display = 'inline';
         }
         if(saveEl){
-          saveEl.textContent = pct > 0 ? `Save ${pct}%` : '';
+          saveEl.textContent = pct > 0 ? pt('pricing.save_n','Save {n}%').replace('{n}', String(pct)) : '';
           saveEl.style.display = pct > 0 ? 'inline' : 'none';
         }
       }else{
@@ -624,7 +624,7 @@ setTimeout(()=>{
       const isCurrentSelected = hasActivePaid && selectedPlan === currentPlan && billingInterval === currentInterval;
 
       if (isCurrentSelected) {
-        mainBtn.textContent = 'Current plan';
+        mainBtn.textContent = pt('pricing.current_plan','Current plan');
         mainBtn.disabled = true;
       } else {
         mainBtn.disabled = false;
@@ -680,7 +680,7 @@ if (mainBtn) {
       selectedPlan === currentPlan &&
       billingInterval === currentInterval
     ) {
-      toast("✅ You already have this plan.");
+      toast(pt('pricing.already_have_plan','You already have this plan.'));
       return;
     }
 
@@ -688,7 +688,7 @@ if (mainBtn) {
 
     // дальше твоя логика
     if (selectedPlan === 'free') {
-      toast("Free plan enabled (no payment).");
+      toast(pt('pricing.free_plan_enabled','Free plan enabled (no payment).'));
       return;
     }
 

@@ -4481,3 +4481,12 @@ async function runVisualSearch(file){
   }
 
 }
+
+// FIX: widget scroll lock
+
+function __openWidgetFix() {
+  document.body.classList.add('widget-open');
+}
+function __closeWidgetFix() {
+  document.body.classList.remove('widget-open');
+}

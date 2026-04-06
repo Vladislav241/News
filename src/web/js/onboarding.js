@@ -309,7 +309,7 @@
     const common = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
     if (kind === 'logo') return `<svg ${common}><path d="M12 3.2c3.8 0 6.8 3.1 6.8 6.9 0 5.8-5.3 10.7-6.8 10.7S5.2 15.9 5.2 10.1c0-3.8 3-6.9 6.8-6.9Z"/><path d="M14.9 5.7c.2 1.8-.3 3.2-1.4 4.2-1.1 1-2.6 1.5-4.4 1.4.2-1.8.9-3.2 2.1-4.2 1.2-1 2.4-1.5 3.7-1.4Z"/></svg>`;
     if (kind === 'region') return `<svg ${common}><path d="M3.5 12a8.5 8.5 0 1 0 17 0a8.5 8.5 0 1 0-17 0"/><path d="M12 3.5c2.5 2.3 4 5.2 4 8.5s-1.5 6.2-4 8.5c-2.5-2.3-4-5.2-4-8.5s1.5-6.2 4-8.5Z"/><path d="M4.2 9h15.6"/><path d="M4.2 15h15.6"/></svg>`;
-    if (kind === 'topics') return `<svg ${common}><rect x="4" y="5" width="7" height="6" rx="2"/><rect x="13" y="5" width="7" height="6" rx="2"/><rect x="4" y="13" width="7" height="6" rx="2"/><rect x="13" y="13" width="7" height="6" rx="2"/></svg>`;
+    if (kind === 'topics') return `<svg class="isTopics" ${common}><rect x="4" y="5" width="7" height="6" rx="2"/><rect x="13" y="5" width="7" height="6" rx="2"/><rect x="4" y="13" width="7" height="6" rx="2"/><rect x="13" y="13" width="7" height="6" rx="2"/></svg>`;
     if (kind === 'visual') return `<svg ${common}><rect x="3.5" y="5" width="17" height="14" rx="3"/><path d="M8 10.5h.01"/><path d="m6.5 16 3.4-3.4a1.4 1.4 0 0 1 2 0l1.3 1.3"/><path d="m13.4 13.8 1-1a1.4 1.4 0 0 1 2 0l2.1 2.2"/></svg>`;
     return `<svg ${common}><path d="M12 4.5v15"/><path d="M4.5 12h15"/><circle cx="12" cy="12" r="8.5"/></svg>`;
   }
@@ -356,6 +356,17 @@
     return root;
 
     
+  }
+
+
+  function restoreActiveCardScroll(previousScrollTop){
+    const top = Number(previousScrollTop || 0);
+    if (!root) return;
+    requestAnimationFrame(() => {
+      const activeCard = root.querySelector('.onboardingSlide.isActive .onboardingCard');
+      if (!(activeCard instanceof HTMLElement)) return;
+      activeCard.scrollTop = Math.max(0, top);
+    });
   }
 
   function render(){
@@ -632,13 +643,17 @@
     }
     const region = target.closest('[data-region]');
     if (region) {
+      const activeCard = root.querySelector('.onboardingSlide.isActive .onboardingCard');
+      const previousScrollTop = activeCard instanceof HTMLElement ? activeCard.scrollTop : 0;
       selectedCountry = String(region.getAttribute('data-region') || 'world').toLowerCase();
       render();
-      goTo(currentIndex);
+      restoreActiveCardScroll(previousScrollTop);
       return;
     }
     const interest = target.closest('[data-interest]');
     if (interest) {
+      const activeCard = root.querySelector('.onboardingSlide.isActive .onboardingCard');
+      const previousScrollTop = activeCard instanceof HTMLElement ? activeCard.scrollTop : 0;
       const value = String(interest.getAttribute('data-interest') || '').toLowerCase();
       if (!value) return;
       const set = new Set(selectedInterests);
@@ -653,7 +668,7 @@
         selectedInterests = normalizeInterestList([...set]);
       }
       render();
-      goTo(currentIndex);
+      restoreActiveCardScroll(previousScrollTop);
       return;
     }
     const action = target.closest('[data-role]');

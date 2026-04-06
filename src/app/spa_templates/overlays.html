@@ -43,7 +43,7 @@
 
         <button id="shareCopyBtn" class="shareAction ghost" type="button">
           <img src="/static/icons/copy.png" alt="Copy" />
-          <span>Copy link</span>
+          <span data-i18n="share.copy_link">Copy link</span>
         </button>
       </div>
 
@@ -59,27 +59,27 @@
   <div class="reportModal" role="dialog" aria-modal="true" aria-labelledby="reportTitle">
     <div class="reportHeader">
       <div class="reportHeaderLeft">
-        <div id="reportTitle" class="reportTitle">Report this news</div>
-        <div class="reportSub">Cluster ID: <span id="reportClusterId"></span></div>
+        <div id="reportTitle" class="reportTitle" data-i18n="report.title">Report this news</div>
+        <div class="reportSub"><span data-i18n="report.cluster_id">Cluster ID</span>: <span id="reportClusterId"></span></div>
       </div>
-      <button class="reportClose" type="button" data-report-close="1" aria-label="Close">✕</button>
+      <button class="reportClose" type="button" data-report-close="1" aria-label="Close" data-i18n-aria="ui.close">✕</button>
     </div>
 
     <div class="reportBody">
       <div class="reportField">
-        <div class="reportLabel">Reason</div>
-        <select id="reportReason" class="reportSelect" aria-label="Reason"></select>
+        <div class="reportLabel" data-i18n="report.reason">Reason</div>
+        <select id="reportReason" class="reportSelect" aria-label="Reason" data-i18n-aria="report.reason"></select>
       </div>
 
       <div class="reportField">
-        <div class="reportLabel">Details</div>
-        <textarea id="reportMessage" class="reportTextarea" placeholder="Optional: explain what’s wrong…"></textarea>
+        <div class="reportLabel" data-i18n="report.details">Details</div>
+        <textarea id="reportMessage" class="reportTextarea" placeholder="Optional: explain what’s wrong…" data-i18n-placeholder="report.details_placeholder"></textarea>
       </div>
     </div>
 
     <div class="reportFooter">
-      <button class="reportBtnGhost" type="button" data-report-close="1">Cancel</button>
-      <button id="reportSendBtn" class="reportBtnPrimary" type="button">Send report</button>
+      <button class="reportBtnGhost" type="button" data-report-close="1" data-i18n="ui.cancel">Cancel</button>
+      <button id="reportSendBtn" class="reportBtnPrimary" type="button" data-i18n="report.send">Send report</button>
     </div>
   </div>
 </div>
@@ -102,10 +102,10 @@
 <div id="cookie-banner" style="display:none;">
   <div class="cookie-banner__inner">
     <div class="cookie-banner__text">
-      We use essential cookies to make CHECK news work (sign-in, security, preferences).
-      <a href="/privacy" class="cookie-banner__link">Learn more</a>
+      <span data-i18n="cookie.text">We use essential cookies to make CHECK news work (sign-in, security, preferences).</span>
+      <a href="/privacy" class="cookie-banner__link" data-i18n="cookie.learn_more">Learn more</a>
     </div>
-    <button id="cookie-accept" class="cookie-banner__btn">OK</button>
+    <button id="cookie-accept" class="cookie-banner__btn" data-i18n="cookie.ok">OK</button>
   </div>
 </div>
 
@@ -122,30 +122,30 @@
           </svg>
         </div>
         <div class="ckModal__copy">
-          <div id="upgradeModalEyebrow" class="ckModal__eyebrow">Tracking limit reached</div>
-          <div id="upgradeModalTitle" class="ckModal__title">Upgrade</div>
-          <div id="upgradeModalDesc" class="ckModal__desc">To track more stories, upgrade your plan.</div>
+          <div id="upgradeModalEyebrow" class="ckModal__eyebrow" data-i18n="upgrade.limit_reached">Tracking limit reached</div>
+          <div id="upgradeModalTitle" class="ckModal__title" data-i18n="upgrade.title">Upgrade</div>
+          <div id="upgradeModalDesc" class="ckModal__desc" data-i18n="upgrade.desc">To track more stories, upgrade your plan.</div>
         </div>
       </div>
 
       <div class="ckModal__grid">
         <div class="ckMetric">
-          <div class="ckMetric__k">Your plan</div>
+          <div class="ckMetric__k" data-i18n="upgrade.your_plan">Your plan</div>
           <div class="ckMetric__v"><span id="upgradeModalPlanPill" class="ckPill">Free</span></div>
         </div>
         <div class="ckMetric">
-          <div class="ckMetric__k">Tracking limit</div>
+          <div class="ckMetric__k" data-i18n="upgrade.tracking_limit">Tracking limit</div>
           <div class="ckMetric__v" id="upgradeModalLimit">—</div>
         </div>
         <div class="ckMetric">
-          <div class="ckMetric__k">Recommended</div>
+          <div class="ckMetric__k" data-i18n="upgrade.recommended">Recommended</div>
           <div class="ckMetric__v"><span id="upgradeModalRecoPill" class="ckPill ckPill--brand">Pro</span></div>
         </div>
       </div>
 
       <div class="ckModal__actions">
-        <button id="upgradeModalCta" class="btn ckBtnBrand" type="button">See plans</button>
-        <button id="upgradeModalCancel" class="btn" type="button" data-ck-close="1">Not now</button>
+        <button id="upgradeModalCta" class="btn ckBtnBrand" type="button" data-i18n="upgrade.see_plans">See plans</button>
+        <button id="upgradeModalCancel" class="btn" type="button" data-ck-close="1" data-i18n="upgrade.not_now">Not now</button>
       </div>
     </div>
   </div>
@@ -163,7 +163,7 @@
         <button type="button" class="eventMapCloseBtn" data-event-map-close="1" title="Close" data-i18n-title="ui.close">✕</button>
       </div>
     </div>
-    <div id="eventMapMeta">0 mapped stories · 0 locations</div>
+    <div id="eventMapMeta" data-i18n="map.meta_empty">0 mapped stories · 0 locations</div>
     <div id="eventMapCanvas"></div>
   </div>
 </div>

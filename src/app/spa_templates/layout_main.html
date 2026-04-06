@@ -342,7 +342,7 @@
     <div class="pricingGrid" role="list">
       <div class="planCard" data-plan="free" role="listitem" tabindex="0">
         <div class="planHead">
-          <div class="planName">Free</div>
+          <div class="planName" data-i18n="pricing.plan_free">Free</div>
           <div class="planPrice planPriceBig" data-price-monthly="$0.00" data-price-yearly="$0.00">
             <span class="priceWas"></span>
             <span class="priceNow">$0.00</span>
@@ -351,11 +351,11 @@
         </div>
         <div class="planBody">
           <ul>
-            <li>News feed capacity <b>120 news</b></li>
-            <li>Track up to <b>3 events</b></li>
-            <li>View current trust score</li>
-            <li>Real-time trust score updates</li>
-            <li>Access to all news sources</li>
+            <li data-i18n-html="pricing.cards.free.news_feed_capacity">News feed capacity <b>120 news</b></li>
+            <li data-i18n-html="pricing.cards.free.track_up_to">Track up to <b>3 events</b></li>
+            <li data-i18n="pricing.cards.free.view_current_trust_score">View current trust score</li>
+            <li data-i18n="pricing.cards.shared.realtime_updates">Real-time trust score updates</li>
+            <li data-i18n="pricing.cards.shared.access_all_sources">Access to all news sources</li>
           </ul>
         </div>
       </div>
@@ -363,7 +363,7 @@
       <div class="planCard popular" data-plan="pro" role="listitem" tabindex="0">
         <div class="planBadge" data-i18n="pricing.most_popular">Most popular</div>
         <div class="planHead">
-          <div class="planName">Pro</div>
+          <div class="planName" data-i18n="pricing.plan_pro">Pro</div>
           <div class="planPrice planPriceBig" data-price-monthly="$9.99" data-price-yearly="$99.99">
             <span class="priceWas"></span>
             <span class="priceNow">$9.99</span>
@@ -372,20 +372,20 @@
         </div>
         <div class="planBody">
           <ul>
-            <li>News feed capacity <b>300 news</b></li>
-            <li>Track up to <b>30 events</b></li>
-            <li>Access to <b>6</b> advanced analytics widgets</li>
-            <li>Trust score graph</li>
-            <li>Email alerts</li>
-            <li>Real-time trust score updates</li>
-            <li>Access to all news sources</li>
+            <li data-i18n-html="pricing.cards.pro.news_feed_capacity">News feed capacity <b>300 news</b></li>
+            <li data-i18n-html="pricing.cards.pro.track_up_to">Track up to <b>30 events</b></li>
+            <li data-i18n-html="pricing.cards.shared.advanced_widgets_6">Access to <b>6</b> advanced analytics widgets</li>
+            <li data-i18n="pricing.cards.shared.trust_score_graph">Trust score graph</li>
+            <li data-i18n="pricing.cards.shared.email_alerts">Email alerts</li>
+            <li data-i18n="pricing.cards.shared.realtime_updates">Real-time trust score updates</li>
+            <li data-i18n="pricing.cards.shared.access_all_sources">Access to all news sources</li>
           </ul>
         </div>
       </div>
 
       <div class="planCard" data-plan="analyst" role="listitem" tabindex="0">
         <div class="planHead">
-          <div class="planName">Analyst</div>
+          <div class="planName" data-i18n="pricing.plan_analyst">Analyst</div>
           <div class="planPrice planPriceBig" data-price-monthly="$24.99" data-price-yearly="$249.99">
             <span class="priceWas"></span>
             <span class="priceNow">$24.99</span>
@@ -395,23 +395,23 @@
         </div>
         <div class="planBody">
           <ul>
-            <li>News feed capacity <b>400 news</b></li>
-            <li><b>Unlimited</b> event tracking</li>
-            <li>Access to <b>6</b> advanced analytics widgets</li>
-            <li>Trust score graph</li>
-            <li>All advanced widgets</li>
-            <li>Email alerts</li>
-            <li>Real-time trust score updates</li>
-            <li>Access to all news sources</li>
+            <li data-i18n-html="pricing.cards.analyst.news_feed_capacity">News feed capacity <b>400 news</b></li>
+            <li data-i18n-html="pricing.cards.analyst.unlimited_event_tracking"><b>Unlimited</b> event tracking</li>
+            <li data-i18n-html="pricing.cards.shared.advanced_widgets_6">Access to <b>6</b> advanced analytics widgets</li>
+            <li data-i18n="pricing.cards.shared.trust_score_graph">Trust score graph</li>
+            <li data-i18n="pricing.cards.analyst.all_advanced_widgets">All advanced widgets</li>
+            <li data-i18n="pricing.cards.shared.email_alerts">Email alerts</li>
+            <li data-i18n="pricing.cards.shared.realtime_updates">Real-time trust score updates</li>
+            <li data-i18n="pricing.cards.shared.access_all_sources">Access to all news sources</li>
           </ul>
         </div>
       </div>
     </div>
 
     <div class="pricingMobileDots" id="pricingMobileDots" aria-hidden="true">
-      <button type="button" class="pricingMobileDot isActive" data-pricing-dot="0" aria-label="Free plan"></button>
-      <button type="button" class="pricingMobileDot" data-pricing-dot="1" aria-label="Pro plan"></button>
-      <button type="button" class="pricingMobileDot" data-pricing-dot="2" aria-label="Analyst plan"></button>
+      <button type="button" class="pricingMobileDot isActive" data-pricing-dot="0" aria-label="Free plan" data-i18n-aria="pricing.aria.free_plan"></button>
+      <button type="button" class="pricingMobileDot" data-pricing-dot="1" aria-label="Pro plan" data-i18n-aria="pricing.aria.pro_plan"></button>
+      <button type="button" class="pricingMobileDot" data-pricing-dot="2" aria-label="Analyst plan" data-i18n-aria="pricing.aria.analyst_plan"></button>
     </div>
 
     <div class="pricingCtaRow">
@@ -423,103 +423,103 @@
     <div class="pricingCompareWrap">
 
       <!-- Mobile: show ONE plan at a time (no JS) -->
-      <div class="pricingCompareMobile" aria-label="Plan comparison mobile">
+      <div class="pricingCompareMobile" aria-label="Plan comparison mobile" data-i18n-aria="pricing.aria.plan_comparison_mobile">
         <input class="planSel" type="radio" name="planSel" id="planSelFree" checked>
         <input class="planSel" type="radio" name="planSel" id="planSelPro">
         <input class="planSel" type="radio" name="planSel" id="planSelAnalyst">
 
-        <div class="planSwitch" role="tablist" aria-label="Select plan">
-          <label for="planSelFree" role="tab" aria-controls="planFree">Free</label>
-          <label for="planSelPro" role="tab" aria-controls="planPro">Pro</label>
-          <label for="planSelAnalyst" role="tab" aria-controls="planAnalyst">Analyst</label>
+        <div class="planSwitch" role="tablist" aria-label="Select plan" data-i18n-aria="pricing.aria.select_plan">
+          <label for="planSelFree" role="tab" aria-controls="planFree" data-i18n="pricing.plan_free">Free</label>
+          <label for="planSelPro" role="tab" aria-controls="planPro" data-i18n="pricing.plan_pro">Pro</label>
+          <label for="planSelAnalyst" role="tab" aria-controls="planAnalyst" data-i18n="pricing.plan_analyst">Analyst</label>
         </div>
 
         <div class="onePlan onePlanFree" id="planFree">
-          <table class="pricingOne" aria-label="Free plan features">
+          <table class="pricingOne" aria-label="Free plan features" data-i18n-aria="pricing.aria.free_plan_features">
             <tbody>
-              <tr><th>Plan</th><td>Free</td></tr>
-              <tr><th>Tracked events</th><td>3</td></tr>
-              <tr><th>News feed capacity</th><td>120</td></tr>
-              <tr><th>Trust score graph</th><td>×</td></tr>
-              <tr><th>Advanced widgets</th><td>×</td></tr>
-              <tr><th>Email alerts</th><td>×</td></tr>
-              <tr><th>Trust score graph</th><td>×</td></tr>
+              <tr><th data-i18n="pricing.compare.plan">Plan</th><td data-i18n="pricing.plan_free">Free</td></tr>
+              <tr><th data-i18n="pricing.compare.tracked_events">Tracked events</th><td>3</td></tr>
+              <tr><th data-i18n="pricing.compare.news_feed_capacity">News feed capacity</th><td>120</td></tr>
+              <tr><th data-i18n="pricing.compare.trust_score_graph">Trust score graph</th><td>×</td></tr>
+              <tr><th data-i18n="pricing.compare.advanced_widgets">Advanced widgets</th><td>×</td></tr>
+              <tr><th data-i18n="pricing.compare.email_alerts">Email alerts</th><td>×</td></tr>
+              <tr><th data-i18n="pricing.compare.trust_score_graph">Trust score graph</th><td>×</td></tr>
             </tbody>
           </table>
         </div>
 
         <div class="onePlan onePlanPro" id="planPro">
-          <table class="pricingOne" aria-label="Pro plan features">
+          <table class="pricingOne" aria-label="Pro plan features" data-i18n-aria="pricing.aria.pro_plan_features">
             <tbody>
-              <tr><th>Plan</th><td>Pro</td></tr>
-              <tr><th>Tracked events</th><td>20</td></tr>
-              <tr><th>News feed capacity</th><td>300</td></tr>
-              <tr><th>Trust score graph</th><td>✓</td></tr>
-              <tr><th>Advanced widgets</th><td>6</td></tr>
-              <tr><th>Email alerts</th><td>✓</td></tr>
-              <tr><th>Trust score graph</th><td>✓</td></tr>
+              <tr><th data-i18n="pricing.compare.plan">Plan</th><td data-i18n="pricing.plan_pro">Pro</td></tr>
+              <tr><th data-i18n="pricing.compare.tracked_events">Tracked events</th><td>20</td></tr>
+              <tr><th data-i18n="pricing.compare.news_feed_capacity">News feed capacity</th><td>300</td></tr>
+              <tr><th data-i18n="pricing.compare.trust_score_graph">Trust score graph</th><td>✓</td></tr>
+              <tr><th data-i18n="pricing.compare.advanced_widgets">Advanced widgets</th><td>6</td></tr>
+              <tr><th data-i18n="pricing.compare.email_alerts">Email alerts</th><td>✓</td></tr>
+              <tr><th data-i18n="pricing.compare.trust_score_graph">Trust score graph</th><td>✓</td></tr>
             </tbody>
           </table>
         </div>
 
         <div class="onePlan onePlanAnalyst" id="planAnalyst">
-          <table class="pricingOne" aria-label="Analyst plan features">
+          <table class="pricingOne" aria-label="Analyst plan features" data-i18n-aria="pricing.aria.analyst_plan_features">
             <tbody>
-              <tr><th>Plan</th><td>Analyst</td></tr>
-              <tr><th>Tracked events</th><td>Unlimited</td></tr>
-              <tr><th>News feed capacity</th><td>400</td></tr>
-              <tr><th>Trust score graph</th><td>✓</td></tr>
-              <tr><th>Advanced widgets</th><td>6</td></tr>
-              <tr><th>Email alerts</th><td>✓</td></tr>
-              <tr><th>Trust score graph</th><td>✓</td></tr>
+              <tr><th data-i18n="pricing.compare.plan">Plan</th><td data-i18n="pricing.plan_analyst">Analyst</td></tr>
+              <tr><th data-i18n="pricing.compare.tracked_events">Tracked events</th><td data-i18n="pricing.unlimited">Unlimited</td></tr>
+              <tr><th data-i18n="pricing.compare.news_feed_capacity">News feed capacity</th><td>400</td></tr>
+              <tr><th data-i18n="pricing.compare.trust_score_graph">Trust score graph</th><td>✓</td></tr>
+              <tr><th data-i18n="pricing.compare.advanced_widgets">Advanced widgets</th><td>6</td></tr>
+              <tr><th data-i18n="pricing.compare.email_alerts">Email alerts</th><td>✓</td></tr>
+              <tr><th data-i18n="pricing.compare.trust_score_graph">Trust score graph</th><td>✓</td></tr>
             </tbody>
           </table>
         </div>
       </div>
 
       <div class="pricingCompareDesktop">
-        <table class="pricingTable" aria-label="Plan comparison">
+        <table class="pricingTable" aria-label="Plan comparison" data-i18n-aria="pricing.aria.plan_comparison">
           <thead>
             <tr>
-              <th>Plan</th>
-              <th>Free</th>
-              <th>Pro</th>
-              <th>Analyst</th>
+              <th data-i18n="pricing.compare.plan">Plan</th>
+              <th data-i18n="pricing.plan_free">Free</th>
+              <th data-i18n="pricing.plan_pro">Pro</th>
+              <th data-i18n="pricing.plan_analyst">Analyst</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td>Tracked events</td>
+              <td data-i18n="pricing.compare.tracked_events">Tracked events</td>
               <td>3</td>
               <td>20</td>
-              <td>Unlimited</td>
+              <td data-i18n="pricing.unlimited">Unlimited</td>
             </tr>
             <tr>
-              <td>News feed capacity</td>
+              <td data-i18n="pricing.compare.news_feed_capacity">News feed capacity</td>
               <td>120</td>
               <td>300</td>
               <td>400</td>
             </tr>
             <tr>
-              <td>Trust score graph</td>
+              <td data-i18n="pricing.compare.trust_score_graph">Trust score graph</td>
               <td><span class="pricingMark">×</span></td>
               <td><span class="pricingMark">✓</span></td>
               <td><span class="pricingMark">✓</span></td>
             </tr>
             <tr>
-              <td>Advanced widgets</td>
+              <td data-i18n="pricing.compare.advanced_widgets">Advanced widgets</td>
               <td><span class="pricingMark">×</span></td>
               <td>6</td>
               <td>6</td>
             </tr>
             <tr>
-              <td>Email alerts</td>
+              <td data-i18n="pricing.compare.email_alerts">Email alerts</td>
               <td><span class="pricingMark">×</span></td>
               <td><span class="pricingMark">✓</span></td>
               <td><span class="pricingMark">✓</span></td>
             </tr>
             <tr>
-              <td>Trust score graph</td>
+              <td data-i18n="pricing.compare.trust_score_graph">Trust score graph</td>
               <td><span class="pricingMark">×</span></td>
               <td><span class="pricingMark">✓</span></td>
               <td><span class="pricingMark">✓</span></td>
@@ -534,7 +534,7 @@
   <div class="pricingSupportModal" id="pricingSupportModal" aria-hidden="true">
     <div class="pricingSupportModal__backdrop" data-support-close></div>
     <div class="pricingSupportModal__dialog" role="dialog" aria-modal="true" aria-labelledby="pricingSupportTitle">
-      <button type="button" class="pricingSupportModal__close" id="pricingSupportClose" aria-label="Close">
+      <button type="button" class="pricingSupportModal__close" id="pricingSupportClose" aria-label="Close" data-i18n-aria="ui.close">
         <span aria-hidden="true">×</span>
       </button>
       <div class="pricingSupportModal__hero">
@@ -544,36 +544,36 @@
         <div class="pricingSupportModal__item">
           <div class="pricingSupportModal__bullet">•</div>
           <div class="pricingSupportModal__copy">
-            <h4 data-i18n="pricing.support_modal.item1_title">Be among the first to access new features</h4>
-            <p data-i18n="pricing.support_modal.item1_body">Get early access to upcoming tools and improvements before they are released to all users.</p>
+            <h4 data-i18n="pricing.support_modal.item_1_title">Be among the first to access new features</h4>
+            <p data-i18n="pricing.support_modal.item_1_body">Get early access to upcoming tools and improvements before they are released to all users.</p>
           </div>
         </div>
         <div class="pricingSupportModal__item">
           <div class="pricingSupportModal__bullet">•</div>
           <div class="pricingSupportModal__copy">
-            <h4 data-i18n="pricing.support_modal.item2_title">Get priority updates and performance improvements</h4>
-            <p data-i18n="pricing.support_modal.item2_body">Receive faster updates, optimizations, and enhancements as they roll out.</p>
+            <h4 data-i18n="pricing.support_modal.item_2_title">Get priority updates and performance improvements</h4>
+            <p data-i18n="pricing.support_modal.item_2_body">Receive faster updates, optimizations, and enhancements as they roll out.</p>
           </div>
         </div>
         <div class="pricingSupportModal__item">
           <div class="pricingSupportModal__bullet">•</div>
           <div class="pricingSupportModal__copy">
-            <h4 data-i18n="pricing.support_modal.item3_title">Shape the future of the platform</h4>
-            <p data-i18n="pricing.support_modal.item3_body">Your usage and feedback directly influence what we build next.</p>
+            <h4 data-i18n="pricing.support_modal.item_3_title">Shape the future of the platform</h4>
+            <p data-i18n="pricing.support_modal.item_3_body">Your usage and feedback directly influence what we build next.</p>
           </div>
         </div>
         <div class="pricingSupportModal__item">
           <div class="pricingSupportModal__bullet">•</div>
           <div class="pricingSupportModal__copy">
-            <h4 data-i18n="pricing.support_modal.item4_title">Unlock the most advanced analytics tools</h4>
-            <p data-i18n="pricing.support_modal.item4_body">Access the full suite of powerful analytics without limitations.</p>
+            <h4 data-i18n="pricing.support_modal.item_4_title">Unlock the most advanced analytics tools</h4>
+            <p data-i18n="pricing.support_modal.item_4_body">Access the full suite of powerful analytics without limitations.</p>
           </div>
         </div>
         <div class="pricingSupportModal__item">
           <div class="pricingSupportModal__bullet">•</div>
           <div class="pricingSupportModal__copy">
-            <h4 data-i18n="pricing.support_modal.item5_title">Support ongoing development</h4>
-            <p data-i18n="pricing.support_modal.item5_body">Help us continuously improve, scale, and deliver better features.</p>
+            <h4 data-i18n="pricing.support_modal.item_5_title">Support ongoing development</h4>
+            <p data-i18n="pricing.support_modal.item_5_body">Help us continuously improve, scale, and deliver better features.</p>
           </div>
         </div>
       </div>
@@ -693,7 +693,7 @@
             <img class="footerLogoImg" src="/static/icons/Logo.svg" alt="Logo" />
             <div class="footerBrandText"><div class="top">CHECKNE.</div></div>
           </div>
-          <button id="authClose" class="authClose" type="button" aria-label="Close" data-i18n-aria="ui.close">✕</button>
+          <button id="authClose" class="authClose" type="button" aria-label="Close" data-i18n-aria="ui.close" data-i18n-aria="ui.close">✕</button>
         </div>
 
         <!-- Step 1: choose method -->

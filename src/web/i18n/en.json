@@ -142,6 +142,61 @@
       "item_4_body": "Access the full suite of powerful analytics without limitations.",
       "item_5_title": "Support ongoing development",
       "item_5_body": "Help us continuously improve, scale, and deliver better features."
+    },
+    "plan_free": "Free",
+    "plan_pro": "Pro",
+    "plan_analyst": "Analyst",
+    "get_free": "Get Free",
+    "upgrade_to_pro": "Upgrade to Pro",
+    "upgrade_to_analyst": "Upgrade to Analyst",
+    "switch_to_free": "Switch to Free",
+    "current_plan": "Current plan",
+    "trusted_by": "Trusted by journalists, analysts and researchers.",
+    "unlimited": "Unlimited",
+    "save_n": "Save {n}%",
+    "already_have_plan": "You already have this plan.",
+    "free_plan_enabled": "Free plan enabled (no payment).",
+    "cards": {
+      "free": {
+        "news_feed_capacity": "News feed capacity <b>120 news</b>",
+        "track_up_to": "Track up to <b>3 events</b>",
+        "view_current_trust_score": "View current trust score"
+      },
+      "pro": {
+        "news_feed_capacity": "News feed capacity <b>300 news</b>",
+        "track_up_to": "Track up to <b>30 events</b>"
+      },
+      "analyst": {
+        "news_feed_capacity": "News feed capacity <b>400 news</b>",
+        "unlimited_event_tracking": "<b>Unlimited</b> event tracking",
+        "all_advanced_widgets": "All advanced widgets"
+      },
+      "shared": {
+        "realtime_updates": "Real-time trust score updates",
+        "access_all_sources": "Access to all news sources",
+        "advanced_widgets_6": "Access to <b>6</b> advanced analytics widgets",
+        "trust_score_graph": "Trust score graph",
+        "email_alerts": "Email alerts"
+      }
+    },
+    "compare": {
+      "plan": "Plan",
+      "tracked_events": "Tracked events",
+      "news_feed_capacity": "News feed capacity",
+      "trust_score_graph": "Trust score graph",
+      "advanced_widgets": "Advanced widgets",
+      "email_alerts": "Email alerts"
+    },
+    "aria": {
+      "free_plan": "Free plan",
+      "pro_plan": "Pro plan",
+      "analyst_plan": "Analyst plan",
+      "plan_comparison_mobile": "Plan comparison mobile",
+      "select_plan": "Select plan",
+      "free_plan_features": "Free plan features",
+      "pro_plan_features": "Pro plan features",
+      "analyst_plan_features": "Analyst plan features",
+      "plan_comparison": "Plan comparison"
     }
   },
   "auth": {

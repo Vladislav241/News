@@ -135,6 +135,61 @@
       "item_4_body": "Accédez à toute la suite d’outils analytiques puissants, sans limitations.",
       "item_5_title": "Soutenez le développement continu",
       "item_5_body": "Aidez-nous à améliorer, faire évoluer et enrichir la plateforme en continu."
+    },
+    "plan_free": "Gratuit",
+    "plan_pro": "Pro",
+    "plan_analyst": "Analyst",
+    "get_free": "Obtenir Gratuit",
+    "upgrade_to_pro": "Passer à Pro",
+    "upgrade_to_analyst": "Passer à Analyst",
+    "switch_to_free": "Passer à Gratuit",
+    "current_plan": "Abonnement actuel",
+    "trusted_by": "Adopté par des journalistes, analystes et chercheurs.",
+    "unlimited": "Illimité",
+    "save_n": "Économisez {n}%",
+    "already_have_plan": "Vous avez déjà cet abonnement.",
+    "free_plan_enabled": "Abonnement gratuit activé (aucun paiement).",
+    "cards": {
+      "free": {
+        "news_feed_capacity": "Capacité du fil d’actualité <b>120 actualités</b>",
+        "track_up_to": "Suivez jusqu’à <b>3 événements</b>",
+        "view_current_trust_score": "Voir le score de confiance actuel"
+      },
+      "pro": {
+        "news_feed_capacity": "Capacité du fil d’actualité <b>300 actualités</b>",
+        "track_up_to": "Suivez jusqu’à <b>30 événements</b>"
+      },
+      "analyst": {
+        "news_feed_capacity": "Capacité du fil d’actualité <b>400 actualités</b>",
+        "unlimited_event_tracking": "Suivi d’événements <b>illimité</b>",
+        "all_advanced_widgets": "Tous les widgets avancés"
+      },
+      "shared": {
+        "realtime_updates": "Mises à jour du score de confiance en temps réel",
+        "access_all_sources": "Accès à toutes les sources d’actualité",
+        "advanced_widgets_6": "Accès à <b>6</b> widgets d’analyse avancée",
+        "trust_score_graph": "Graphique du score de confiance",
+        "email_alerts": "Alertes e-mail"
+      }
+    },
+    "compare": {
+      "plan": "Abonnement",
+      "tracked_events": "Événements suivis",
+      "news_feed_capacity": "Capacité du fil d’actualité",
+      "trust_score_graph": "Graphique du score de confiance",
+      "advanced_widgets": "Widgets avancés",
+      "email_alerts": "Alertes e-mail"
+    },
+    "aria": {
+      "free_plan": "Abonnement gratuit",
+      "pro_plan": "Abonnement Pro",
+      "analyst_plan": "Abonnement Analyst",
+      "plan_comparison_mobile": "Comparaison mobile des abonnements",
+      "select_plan": "Sélectionner un abonnement",
+      "free_plan_features": "Fonctionnalités du forfait gratuit",
+      "pro_plan_features": "Fonctionnalités du forfait Pro",
+      "analyst_plan_features": "Fonctionnalités du forfait Analyst",
+      "plan_comparison": "Comparaison des abonnements"
     }
   },
   "auth": {

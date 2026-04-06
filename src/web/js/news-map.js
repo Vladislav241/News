@@ -134,7 +134,17 @@
     container.addEventListener('touchend', handler, { passive: false });
   }
   function clearMap(){ if (state.layer) { try { state.layer.clearLayers(); } catch(_) {} } }
-  function updateCount(items, groups){ const el = document.getElementById('eventMapMeta'); if (!el) return; el.textContent = `${items.length} mapped stories · ${groups.length} locations`; }
+  function mt(key, fallback){
+    try { if (typeof window.t === 'function') return window.t(key, fallback); } catch {}
+    return fallback;
+  }
+  function updateCount(items, groups){
+    const el = document.getElementById('eventMapMeta');
+    if (!el) return;
+    const storiesLabel = mt('map.mapped_stories', 'mapped stories');
+    const locationsLabel = mt('map.locations', 'locations');
+    el.textContent = `${items.length} ${storiesLabel} · ${groups.length} ${locationsLabel}`;
+  }
   function renderFullMap(){
     if (!state.map || !ensureLeaflet()) return;
     const items = buildDataset(state.activeWindow);
@@ -238,7 +248,7 @@
     if (!host || state.miniMaps.has(host)) return;
     const loc = normalizeLocation(item);
     if (!loc || !ensureLeaflet() || getScore(item) <= 70) {
-      host.textContent = 'No mapped location yet.';
+      host.textContent = mt('map.no_location', 'No mapped location yet.');
       return;
     }
     const map = L.map(host, {
@@ -256,12 +266,37 @@
     const single = { loc, items: [item] };
     const icon = L.divIcon({ html: markerHtml(single, { compact: true }), className: 'eventMapMarkerWrap', iconSize: [44, 44], iconAnchor: [22, 22] });
     const marker = L.marker([loc.lat, loc.lng], { icon }).addTo(map);
-    marker.on('click', () => {
+    const openStoryMap = (ev) => {
+      try {
+        if (ev && typeof ev.preventDefault === 'function') ev.preventDefault();
+        if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
+      } catch {}
       const cid = Number(item?.cluster_id ?? item?.event_id ?? 0);
       if (cid) openModal(cid);
+    };
+    marker.on('click', openStoryMap);
+    marker.on('touchstart', openStoryMap);
+    marker.on('touchend', openStoryMap);
+    map.on('click', (ev) => {
+      if (!isCoarsePointer()) return;
+      try {
+        const target = ev?.originalEvent?.target;
+        if (target && target.closest && target.closest('.eventMapMarker, .eventMapMarkerWrap')) {
+          openStoryMap(ev.originalEvent);
+        }
+      } catch {}
     });
     map.setView([loc.lat, loc.lng], loc.kind === 'city' ? 6 : 4);
     host.style.cursor = 'grab';
+    host.addEventListener('click', (e) => {
+      if (!isCoarsePointer()) return;
+      if (e.target && e.target.closest && e.target.closest('.leaflet-control-zoom')) return;
+      openStoryMap(e);
+    }, { passive: false });
+    host.addEventListener('touchend', (e) => {
+      if (e.target && e.target.closest && e.target.closest('.leaflet-control-zoom')) return;
+      openStoryMap(e);
+    }, { passive: false });
     host.addEventListener('dblclick', () => {
       const cid = Number(item?.cluster_id ?? item?.event_id ?? 0);
       if (cid) openModal(cid);
