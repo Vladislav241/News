@@ -2060,11 +2060,15 @@ class Database:
     def create_user_local(self, email: str, hashed_password: str) -> int:
         now = _utc_now_iso()
         cur = self._exec(
-            "INSERT INTO users(email, hashed_password, email_verified, provider, created_at) VALUES(?, ?, 1, 'local', ?) RETURNING id",
+            "INSERT INTO users(email, hashed_password, email_verified, provider, created_at) VALUES(?, ?, 0, 'local', ?) RETURNING id",
             ((email or "").strip().lower(), hashed_password, now),
         )
         row = cur.fetchone()
         return int(row["id"]) if row else 0
+
+
+    def delete_user(self, user_id: int) -> None:
+        self._exec("DELETE FROM users WHERE id=?", (int(user_id),))
 
     def upsert_oauth_user(self, provider: str, provider_id: str, email: str, full_name: str | None = None, picture_url: str | None = None) -> int:
         provider = (provider or "").strip().lower()

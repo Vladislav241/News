@@ -9,7 +9,7 @@ from typing import Any, Optional
 from urllib.parse import quote
 
 from .db import db
-from .emailer import send_email
+from .emailer import send_tracking_email
 from .unsubscribe_tokens import create_unsubscribe_token
 
 log = logging.getLogger("news.notify")
@@ -403,7 +403,7 @@ async def _notify_once() -> None:
             new_score=new_score,
             outlets=outlets,
         )
-        ok = send_email(
+        ok = send_tracking_email(
             to_email=email,
             subject=subject,
             html=html,

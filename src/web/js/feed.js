@@ -1576,7 +1576,7 @@ const showTrackingUI = state.mode === 'fav';
                     <span class="scoreBadgeScale">${escapeHtml(scoreMeta.scaleLabel)}</span>
                   </span>
                 </div>
-                ${trendMeta.dir !== 'flat' ? `<div class="scoreTrend ${trendMeta.dir}">${escapeHtml(trendMeta.text)}</div>` : ''}
+                ${(!showTrackingUI && trendMeta.dir !== 'flat') ? `<div class="scoreTrend ${trendMeta.dir}">${escapeHtml(trendMeta.text)}</div>` : ''}
                 ${deltaHtml}
                 ${iconHtml}
                 ${shareHtml}
@@ -1950,7 +1950,7 @@ function updateCardElement(el, item, ctx, seen) {
 
   const trendMeta = getStoryTrendMeta(item);
   let trendEl = el.querySelector('.scoreTrend');
-  if (trendMeta.dir === 'flat') {
+  if (state.mode === 'fav' || trendMeta.dir === 'flat') {
     if (trendEl) trendEl.remove();
   } else {
     if (!trendEl) {

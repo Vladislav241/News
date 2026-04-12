@@ -338,7 +338,7 @@ function renderTags() {
   // Render static interests
   [...new Set(DEFAULT_INTERESTS)].forEach((tag) => {
     const el = document.createElement("div");
-    el.className = "tag" + (state.interests.includes(tag) ? " on" : "");
+    el.className = "tag interestPrimary" + (state.interests.includes(tag) ? " on" : "");
     el.textContent = t(`interests.${tag}`, tag);
 
     el.onclick = async () => {
@@ -365,6 +365,11 @@ function renderTags() {
 
     tagsEl.appendChild(el);
   });
+
+  const breakEl = document.createElement("div");
+  breakEl.className = "tagsBreak";
+  breakEl.setAttribute("aria-hidden", "true");
+  tagsEl.appendChild(breakEl);
 
   // Render trending after static interests (async)
   loadTrendingInterests({ force: false });

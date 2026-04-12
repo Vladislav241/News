@@ -315,6 +315,13 @@
   }
   function wireButtons(){
     document.addEventListener('click', (e) => {
+      const headerMapBtn = e.target.closest('#btnOpenMap');
+      if (headerMapBtn){
+        e.preventDefault();
+        e.stopPropagation();
+        openModal(null);
+        return;
+      }
       const btn = e.target.closest('[data-open-full-map]');
       if (btn){
         const cid = Number(btn.getAttribute('data-open-full-map') || 0);
@@ -342,4 +349,5 @@
     if (document.getElementById('eventMapModal')?.classList.contains('isOpen')) renderFullMap();
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+  window.checkneOpenEventMap = () => openModal(null);
 })();

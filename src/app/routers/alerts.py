@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ..db import db
 from ..auth.deps import get_current_user_optional
-from ..emailer import send_email
+from ..emailer import send_tracking_email
 
 
 router = APIRouter(prefix="/api")
@@ -38,8 +38,8 @@ def send_test_email(user=Depends(get_current_user_optional)):
     if not to_email:
         raise HTTPException(status_code=400, detail="No email on user")
 
-    ok = send_email(
-        to_email,
+    ok = send_tracking_email(
+        to_email=to_email,
         subject="CHECKNE. — test email",
         html="<p>If you received this, email delivery is working ✅</p>",
         text="If you received this, email delivery is working.",

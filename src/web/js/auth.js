@@ -513,13 +513,30 @@ function bindAuthModalUI() {
             body: JSON.stringify({ email, password }),
           });
           if (r.ok) {
-            closeAuthModal();
-            try {
-              if (typeof window.checkneMaybeStartOnboarding === 'function') {
-                window.checkneMaybeStartOnboarding({ force: true, allowGuest: true, reason: 'register' });
-              }
-            } catch {}
-            _showAuthError('authError', 'Account created. Check your email to verify before using Tracking/saving.');
+            setAuthStep('email');
+            const emailInput = document.getElementById('authEmail');
+            if (emailInput) emailInput.value = email;
+            _showAuthError(
+              'authError',
+              'Account created. We sent a verification email to your inbox.<br><br>Please confirm it before logging in.<br><br><a href="#" id="authResendVerify" class="authLink">Resend verification email</a>',
+              true,
+            );
+            const a = document.getElementById('authResendVerify');
+            if (a) {
+              a.onclick = async (e) => {
+                e.preventDefault();
+                try {
+                  await fetch(`${API_BASE}/api/auth/verify/resend`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email }),
+                  });
+                  _showAuthError('authError', 'Verification email sent again. Check inbox and spam.');
+                } catch {
+                  _showAuthError('authError', 'Failed to resend verification email. Try again later.');
+                }
+              };
+            }
             return;
           }
           const err2 = await safeReadError(r);

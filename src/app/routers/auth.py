@@ -16,7 +16,7 @@ from ..auth.security import (
     token_hash,
     session_cookie_params,
 )
-from ..auth.email_service import public_base_url, send_email
+from ..auth.email_service import public_base_url, send_email, build_verify_email, build_reset_email
 from ..auth.rate_limit import rate_limit
 from ..auth.deps import get_current_user_optional
 from ..auth.oauth_google import new_state, new_code_verifier, build_auth_url, exchange_code, fetch_userinfo
@@ -118,11 +118,17 @@ def register(payload: RegisterIn, request: Request):
     db.create_auth_token(user_id=user_id, token_type="verify", token_hash=token_hash(raw), expires_minutes=VERIFY_MINUTES)
 
     link = f"{public_base_url()}/?verify={raw}"
-    send_email(
-        to_email=email,
-        subject="Verify your email",
-        text=f"Welcome to CHECKNE.\n\nVerify your email by opening this link:\n{link}\n\nIf you didn't sign up, ignore this email.",
-    )
+    text_body, html_body = build_verify_email(link)
+    try:
+        send_email(
+            to_email=email,
+            subject="Verify your email",
+            text=text_body,
+            html_body=html_body,
+        )
+    except Exception:
+        db.delete_user(user_id)
+        raise HTTPException(status_code=503, detail="Could not send verification email")
 
     return {"status": "ok", "message": "Verification email sent"}
 
@@ -165,10 +171,12 @@ def resend_verify(payload: ResendVerifyIn, request: Request):
     db.create_auth_token(user_id=int(user["id"]), token_type="verify", token_hash=token_hash(raw), expires_minutes=VERIFY_MINUTES)
 
     link = f"{public_base_url()}/?verify={raw}"
+    text_body, html_body = build_verify_email(link)
     send_email(
         to_email=email,
         subject="Verify your email",
-        text=f"Verify your email by opening this link:\n{link}\n\nIf you didn't sign up, ignore this email.",
+        text=text_body,
+        html_body=html_body,
     )
     return {"status": "ok", "message": "Verification email sent"}
 
@@ -186,6 +194,9 @@ def login(payload: LoginIn, request: Request, response: Response):
 
     if not verify_password(payload.password, user.get("hashed_password") or ""):
         raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    if not bool(int(user.get("email_verified") or 0)):
+        raise HTTPException(status_code=403, detail="Email not verified. Please confirm your email before logging in.")
 
     db.update_user_last_login(int(user["id"]))
 
@@ -224,10 +235,12 @@ def forgot(payload: ForgotIn, request: Request):
     db.create_auth_token(user_id=int(user["id"]), token_type="reset", token_hash=token_hash(raw), expires_minutes=RESET_MINUTES)
 
     link = f"{public_base_url()}/?reset={raw}"
+    text_body, html_body = build_reset_email(link)
     send_email(
         to_email=email,
         subject="Reset your password",
-        text=f"Reset your password by opening this link:\n{link}\n\nIf you didn't request this, ignore this email.",
+        text=text_body,
+        html_body=html_body,
     )
     return {"status": "ok", "message": "If that email exists, we sent a reset link"}
 

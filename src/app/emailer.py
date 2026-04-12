@@ -35,16 +35,14 @@ def _get_from_email(fallback: str = "no-reply@example.com") -> str:
     )
 
 
-def _provider() -> str:
+def _provider(provider: Optional[str] = None) -> str:
     """Decide which email provider to use.
 
-    If EMAIL_PROVIDER is set, it wins.
-    Otherwise:
-      - use resend if RESEND_API_KEY exists
-      - else smtp if SMTP_HOST exists
-      - else none
+    Explicit provider wins. Otherwise EMAIL_PROVIDER is used. When neither is
+    set, Resend is preferred for notification-style mail and SMTP is used as a
+    fallback when Resend is unavailable.
     """
-    p = (os.getenv("EMAIL_PROVIDER") or "").strip().lower()
+    p = (provider or os.getenv("EMAIL_PROVIDER") or "").strip().lower()
     if p:
         return p
     if (os.getenv("RESEND_API_KEY") or "").strip():
@@ -60,14 +58,15 @@ def send_email(
     subject: str,
     html: str,
     text: Optional[str] = None,
+    provider: Optional[str] = None,
 ) -> bool:
-    """Send transactional email."""
+    """Send email using the selected provider."""
 
     to_email = (to_email or "").strip()
     if not to_email:
         return False
 
-    provider = _provider()
+    provider = _provider(provider)
 
     # 1) Resend
     if provider in ("resend", "resend.com"):
@@ -138,3 +137,31 @@ def send_email(
 
     log.warning("Email not sent: no provider configured (set EMAIL_PROVIDER + creds)")
     return False
+
+
+
+def send_tracking_email(
+    *,
+    to_email: str,
+    subject: str,
+    html: str,
+    text: Optional[str] = None,
+) -> bool:
+    """Send tracking/notification email. Prefer Resend, fall back to SMTP."""
+    preferred = "resend" if (os.getenv("RESEND_API_KEY") or "").strip() else "smtp"
+    ok = send_email(
+        to_email=to_email,
+        subject=subject,
+        html=html,
+        text=text,
+        provider=preferred,
+    )
+    if ok or preferred == "smtp":
+        return ok
+    return send_email(
+        to_email=to_email,
+        subject=subject,
+        html=html,
+        text=text,
+        provider="smtp",
+    )
