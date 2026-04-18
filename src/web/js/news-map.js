@@ -7,6 +7,12 @@
   function hoursForWindow(win){ return win === '7d' ? 168 : (win === '24h' ? 24 : 72); }
   function getItemTs(item){ return parseDate(item?.latest_published_at) || parseDate(item?.updated_at) || parseDate(item?.created_at) || 0; }
   function getFeedItems(){ return Array.isArray(window.__checkneFeedItems) ? window.__checkneFeedItems : []; }
+  function getClusterId(item){ return Number(item?.cluster_id ?? item?.event_id ?? 0) || 0; }
+  function findItemByClusterId(clusterId){
+    const cid = Number(clusterId || 0);
+    if (!cid) return null;
+    return getFeedItems().find((it) => getClusterId(it) === cid) || null;
+  }
   function isCoarsePointer(){
     try {
       return !!(window.matchMedia && (
@@ -147,7 +153,14 @@
   }
   function renderFullMap(){
     if (!state.map || !ensureLeaflet()) return;
-    const items = buildDataset(state.activeWindow);
+    let items = buildDataset(state.activeWindow);
+    const currentItem = findItemByClusterId(state.currentClusterId);
+    if (currentItem && normalizeLocation(currentItem) && getScore(currentItem) > 70) {
+      const currentId = getClusterId(currentItem);
+      if (!items.some((it) => getClusterId(it) === currentId)) {
+        items = [currentItem, ...items];
+      }
+    }
     const groups = groupItems(items);
     updateCount(items, groups);
     clearMap();
