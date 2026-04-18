@@ -50,7 +50,7 @@ def _email_logo_url() -> str:
     NOTE: Many email clients (esp. Gmail) block `data:` images and may not
     reliably render SVG. A PNG served from your app is the most compatible.
     """
-    return f"{_base_url()}/static/icons/PrevEmail.png"
+    return f"{_base_url()}/static/icons/LogoEmail.png"
 
 
 
