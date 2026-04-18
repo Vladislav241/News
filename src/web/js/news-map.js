@@ -23,6 +23,10 @@
       return false;
     }
   }
+  function closestFromTarget(target, selector){
+    const node = target && target.nodeType === 3 ? target.parentElement : target;
+    return node && typeof node.closest === 'function' ? node.closest(selector) : null;
+  }
   function normalizeLocation(item){
     const loc = item?.map_location;
     if (!loc || typeof loc !== 'object') return null;
@@ -130,7 +134,7 @@
     if (!container || container.__eventMapWired) return;
     container.__eventMapWired = true;
     const handler = (e) => {
-      const storyBtn = e.target && e.target.closest ? e.target.closest('.eventMapStoryLink') : null;
+      const storyBtn = closestFromTarget(e.target, '.eventMapStoryLink');
       if (!storyBtn) return;
       e.preventDefault();
       e.stopPropagation();
@@ -212,19 +216,26 @@
     const modal = document.getElementById('eventMapModal');
     if (!modal) return;
     bindStoryLinkDelegation(modal);
-    modal.addEventListener('click', (e) => {
-      const close = e.target.closest('[data-event-map-close="1"]');
+    const handleModalPress = (e) => {
+      const close = closestFromTarget(e.target, '[data-event-map-close="1"]');
       if (close) {
+        e.preventDefault();
+        e.stopPropagation();
         closeModal();
         return;
       }
-      const winBtn = e.target.closest('[data-map-window]');
+      const winBtn = closestFromTarget(e.target, '[data-map-window]');
       if (winBtn){
+        e.preventDefault();
+        e.stopPropagation();
         state.activeWindow = String(winBtn.getAttribute('data-map-window') || '3d');
         modal.querySelectorAll('[data-map-window]').forEach((btn) => btn.classList.toggle('isOn', btn === winBtn));
         renderFullMap();
       }
-    });
+    };
+    modal.addEventListener('click', handleModalPress);
+    modal.addEventListener('touchend', handleModalPress, { passive: false });
+    modal.addEventListener('pointerup', handleModalPress);
   }
   function addMobileMiniMapTapTarget(host, item){
     if (!host || host.__eventMapTapReady || !isCoarsePointer()) return;
@@ -253,7 +264,7 @@
     host.addEventListener('pointerup', (e) => {
       if (e.pointerType === 'mouse') return;
       if (moved) return;
-      if (e.target && e.target.closest && e.target.closest('.leaflet-control-zoom')) return;
+      if (closestFromTarget(e.target, '.leaflet-control-zoom')) return;
       openModal(cid);
     });
   }
@@ -272,7 +283,7 @@
       doubleClickZoom: false,
       boxZoom: false,
       keyboard: false,
-      tap: true,
+      tap: false,
       touchZoom: true,
     });
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(map);
@@ -303,13 +314,18 @@
     host.style.cursor = 'grab';
     host.addEventListener('click', (e) => {
       if (!isCoarsePointer()) return;
-      if (e.target && e.target.closest && e.target.closest('.leaflet-control-zoom')) return;
+      if (closestFromTarget(e.target, '.leaflet-control-zoom')) return;
       openStoryMap(e);
-    }, { passive: false });
+    }, { passive: false, capture: true });
+    host.addEventListener('touchstart', (e) => {
+      if (!isCoarsePointer()) return;
+      if (closestFromTarget(e.target, '.leaflet-control-zoom')) return;
+      openStoryMap(e);
+    }, { passive: false, capture: true });
     host.addEventListener('touchend', (e) => {
-      if (e.target && e.target.closest && e.target.closest('.leaflet-control-zoom')) return;
+      if (closestFromTarget(e.target, '.leaflet-control-zoom')) return;
       openStoryMap(e);
-    }, { passive: false });
+    }, { passive: false, capture: true });
     host.addEventListener('dblclick', () => {
       const cid = Number(item?.cluster_id ?? item?.event_id ?? 0);
       if (cid) openModal(cid);
@@ -328,28 +344,44 @@
   }
   function wireButtons(){
     document.addEventListener('click', (e) => {
-      const headerMapBtn = e.target.closest('#btnOpenMap');
+      const headerMapBtn = closestFromTarget(e.target, '#btnOpenMap');
       if (headerMapBtn){
         e.preventDefault();
         e.stopPropagation();
         openModal(null);
         return;
       }
-      const btn = e.target.closest('[data-open-full-map]');
+      const btn = closestFromTarget(e.target, '[data-open-full-map]');
       if (btn){
         const cid = Number(btn.getAttribute('data-open-full-map') || 0);
         openModal(cid);
         return;
       }
-      const storyBtn = e.target.closest('.eventMapStoryLink');
+      const storyBtn = closestFromTarget(e.target, '.eventMapStoryLink');
       if (storyBtn){
         e.preventDefault();
         e.stopPropagation();
         void fillSearchWithStory(storyBtn.getAttribute('data-story-title') || storyBtn.textContent || '');
       }
     });
+    document.addEventListener('touchstart', (e) => {
+      const headerMapBtn = closestFromTarget(e.target, '#btnOpenMap');
+      if (headerMapBtn){
+        e.preventDefault();
+        e.stopPropagation();
+        openModal(null);
+        return;
+      }
+      const btn = closestFromTarget(e.target, '[data-open-full-map]');
+      if (btn){
+        e.preventDefault();
+        e.stopPropagation();
+        const cid = Number(btn.getAttribute('data-open-full-map') || 0);
+        openModal(cid);
+      }
+    }, { passive: false });
     document.addEventListener('touchend', (e) => {
-      const storyBtn = e.target && e.target.closest ? e.target.closest('.eventMapStoryLink') : null;
+      const storyBtn = closestFromTarget(e.target, '.eventMapStoryLink');
       if (!storyBtn) return;
       e.preventDefault();
       e.stopPropagation();
