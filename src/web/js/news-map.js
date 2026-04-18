@@ -23,10 +23,6 @@
       return false;
     }
   }
-  function closestFromTarget(target, selector){
-    const node = target && target.nodeType === 3 ? target.parentElement : target;
-    return node && typeof node.closest === 'function' ? node.closest(selector) : null;
-  }
   function normalizeLocation(item){
     const loc = item?.map_location;
     if (!loc || typeof loc !== 'object') return null;
@@ -130,11 +126,62 @@
       try { searchEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); } catch {}
     }, 40);
   }
+  function bindTapLike(target, handler, options = {}){
+    if (!target || typeof handler !== 'function') return;
+    const ignoreSelector = String(options.ignoreSelector || '');
+    const state = { x: 0, y: 0, moved: false, touchHandled: false };
+
+    const shouldIgnore = (eventTarget) => {
+      if (!ignoreSelector || !eventTarget || !eventTarget.closest) return false;
+      try { return !!eventTarget.closest(ignoreSelector); } catch { return false; }
+    };
+
+    const run = (e) => {
+      const eventTarget = e && e.target ? e.target : null;
+      if (shouldIgnore(eventTarget)) return;
+      try { if (e && typeof e.preventDefault === 'function') e.preventDefault(); } catch {}
+      try { if (e && typeof e.stopPropagation === 'function') e.stopPropagation(); } catch {}
+      handler(e);
+    };
+
+    target.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse') return;
+      state.x = Number(e.clientX || 0);
+      state.y = Number(e.clientY || 0);
+      state.moved = false;
+    }, { passive: true });
+
+    target.addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'mouse') return;
+      const dx = Math.abs(Number(e.clientX || 0) - state.x);
+      const dy = Math.abs(Number(e.clientY || 0) - state.y);
+      if (dx > 10 || dy > 10) state.moved = true;
+    }, { passive: true });
+
+    target.addEventListener('pointerup', (e) => {
+      if (e.pointerType === 'mouse') return;
+      if (state.moved) return;
+      run(e);
+    }, { passive: false });
+
+    target.addEventListener('touchend', (e) => {
+      if (state.moved) return;
+      state.touchHandled = true;
+      run(e);
+      setTimeout(() => { state.touchHandled = false; }, 360);
+    }, { passive: false });
+
+    target.addEventListener('click', (e) => {
+      if (state.touchHandled) return;
+      run(e);
+    }, { passive: false });
+  }
+
   function bindStoryLinkDelegation(container){
     if (!container || container.__eventMapWired) return;
     container.__eventMapWired = true;
     const handler = (e) => {
-      const storyBtn = closestFromTarget(e.target, '.eventMapStoryLink');
+      const storyBtn = e.target && e.target.closest ? e.target.closest('.eventMapStoryLink') : null;
       if (!storyBtn) return;
       e.preventDefault();
       e.stopPropagation();
@@ -173,10 +220,18 @@
     for (const group of groups){
       const html = markerHtml(group);
       const icon = L.divIcon({ html, className: 'eventMapMarkerWrap', iconSize: [64, 64], iconAnchor: [32, 32], popupAnchor: [0, -24] });
-      const marker = L.marker([group.loc.lat, group.loc.lng], { icon });
+      const marker = L.marker([group.loc.lat, group.loc.lng], { icon, keyboard: false, riseOnHover: true });
       marker.bindPopup(popupHtml(group), { maxWidth: 340, className: 'eventMapLeafletPopup' });
       marker.on('popupopen', (ev) => {
         try { bindStoryLinkDelegation(ev.popup && ev.popup.getElement ? ev.popup.getElement() : null); } catch {}
+      });
+      marker.on('add', () => {
+        const el = typeof marker.getElement === 'function' ? marker.getElement() : null;
+        if (!el || el.__eventMapTapBound) return;
+        el.__eventMapTapBound = true;
+        bindTapLike(el, () => {
+          try { marker.openPopup(); } catch {}
+        }, { ignoreSelector: '.leaflet-popup, .leaflet-control-zoom, .leaflet-control-zoom a' });
       });
       state.layer.addLayer(marker);
       bounds.push([group.loc.lat, group.loc.lng]);
@@ -216,26 +271,32 @@
     const modal = document.getElementById('eventMapModal');
     if (!modal) return;
     bindStoryLinkDelegation(modal);
-    const handleModalPress = (e) => {
-      const close = closestFromTarget(e.target, '[data-event-map-close="1"]');
+    modal.addEventListener('click', (e) => {
+      const close = e.target.closest('[data-event-map-close="1"]');
       if (close) {
-        e.preventDefault();
-        e.stopPropagation();
         closeModal();
         return;
       }
-      const winBtn = closestFromTarget(e.target, '[data-map-window]');
+      const winBtn = e.target.closest('[data-map-window]');
       if (winBtn){
-        e.preventDefault();
-        e.stopPropagation();
         state.activeWindow = String(winBtn.getAttribute('data-map-window') || '3d');
         modal.querySelectorAll('[data-map-window]').forEach((btn) => btn.classList.toggle('isOn', btn === winBtn));
         renderFullMap();
       }
-    };
-    modal.addEventListener('click', handleModalPress);
-    modal.addEventListener('touchend', handleModalPress, { passive: false });
-    modal.addEventListener('pointerup', handleModalPress);
+    });
+    modal.querySelectorAll('[data-map-window], [data-event-map-close="1"]').forEach((btn) => {
+      if (btn.__eventMapTapBound) return;
+      btn.__eventMapTapBound = true;
+      bindTapLike(btn, () => {
+        if (btn.matches('[data-event-map-close="1"]')) {
+          closeModal();
+          return;
+        }
+        state.activeWindow = String(btn.getAttribute('data-map-window') || '3d');
+        modal.querySelectorAll('[data-map-window]').forEach((node) => node.classList.toggle('isOn', node === btn));
+        renderFullMap();
+      });
+    });
   }
   function addMobileMiniMapTapTarget(host, item){
     if (!host || host.__eventMapTapReady || !isCoarsePointer()) return;
@@ -264,7 +325,7 @@
     host.addEventListener('pointerup', (e) => {
       if (e.pointerType === 'mouse') return;
       if (moved) return;
-      if (closestFromTarget(e.target, '.leaflet-control-zoom')) return;
+      if (e.target && e.target.closest && e.target.closest('.leaflet-control-zoom')) return;
       openModal(cid);
     });
   }
@@ -289,7 +350,7 @@
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(map);
     const single = { loc, items: [item] };
     const icon = L.divIcon({ html: markerHtml(single, { compact: true }), className: 'eventMapMarkerWrap', iconSize: [44, 44], iconAnchor: [22, 22] });
-    const marker = L.marker([loc.lat, loc.lng], { icon }).addTo(map);
+    const marker = L.marker([loc.lat, loc.lng], { icon, keyboard: false, riseOnHover: true }).addTo(map);
     const openStoryMap = (ev) => {
       try {
         if (ev && typeof ev.preventDefault === 'function') ev.preventDefault();
@@ -301,6 +362,12 @@
     marker.on('click', openStoryMap);
     marker.on('touchstart', openStoryMap);
     marker.on('touchend', openStoryMap);
+    marker.on('add', () => {
+      const el = typeof marker.getElement === 'function' ? marker.getElement() : null;
+      if (!el || el.__eventMapTapBound) return;
+      el.__eventMapTapBound = true;
+      bindTapLike(el, openStoryMap, { ignoreSelector: '.leaflet-control-zoom, .leaflet-control-zoom a' });
+    });
     map.on('click', (ev) => {
       if (!isCoarsePointer()) return;
       try {
@@ -314,18 +381,13 @@
     host.style.cursor = 'grab';
     host.addEventListener('click', (e) => {
       if (!isCoarsePointer()) return;
-      if (closestFromTarget(e.target, '.leaflet-control-zoom')) return;
+      if (e.target && e.target.closest && e.target.closest('.leaflet-control-zoom')) return;
       openStoryMap(e);
-    }, { passive: false, capture: true });
-    host.addEventListener('touchstart', (e) => {
-      if (!isCoarsePointer()) return;
-      if (closestFromTarget(e.target, '.leaflet-control-zoom')) return;
-      openStoryMap(e);
-    }, { passive: false, capture: true });
+    }, { passive: false });
     host.addEventListener('touchend', (e) => {
-      if (closestFromTarget(e.target, '.leaflet-control-zoom')) return;
+      if (e.target && e.target.closest && e.target.closest('.leaflet-control-zoom')) return;
       openStoryMap(e);
-    }, { passive: false, capture: true });
+    }, { passive: false });
     host.addEventListener('dblclick', () => {
       const cid = Number(item?.cluster_id ?? item?.event_id ?? 0);
       if (cid) openModal(cid);
@@ -344,44 +406,28 @@
   }
   function wireButtons(){
     document.addEventListener('click', (e) => {
-      const headerMapBtn = closestFromTarget(e.target, '#btnOpenMap');
+      const headerMapBtn = e.target.closest('#btnOpenMap');
       if (headerMapBtn){
         e.preventDefault();
         e.stopPropagation();
         openModal(null);
         return;
       }
-      const btn = closestFromTarget(e.target, '[data-open-full-map]');
+      const btn = e.target.closest('[data-open-full-map]');
       if (btn){
         const cid = Number(btn.getAttribute('data-open-full-map') || 0);
         openModal(cid);
         return;
       }
-      const storyBtn = closestFromTarget(e.target, '.eventMapStoryLink');
+      const storyBtn = e.target.closest('.eventMapStoryLink');
       if (storyBtn){
         e.preventDefault();
         e.stopPropagation();
         void fillSearchWithStory(storyBtn.getAttribute('data-story-title') || storyBtn.textContent || '');
       }
     });
-    document.addEventListener('touchstart', (e) => {
-      const headerMapBtn = closestFromTarget(e.target, '#btnOpenMap');
-      if (headerMapBtn){
-        e.preventDefault();
-        e.stopPropagation();
-        openModal(null);
-        return;
-      }
-      const btn = closestFromTarget(e.target, '[data-open-full-map]');
-      if (btn){
-        e.preventDefault();
-        e.stopPropagation();
-        const cid = Number(btn.getAttribute('data-open-full-map') || 0);
-        openModal(cid);
-      }
-    }, { passive: false });
     document.addEventListener('touchend', (e) => {
-      const storyBtn = closestFromTarget(e.target, '.eventMapStoryLink');
+      const storyBtn = e.target && e.target.closest ? e.target.closest('.eventMapStoryLink') : null;
       if (!storyBtn) return;
       e.preventDefault();
       e.stopPropagation();
