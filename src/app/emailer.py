@@ -18,21 +18,29 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return v in ("1", "true", "yes", "on")
 
 
-def _get_from_email(fallback: str = "no-reply@example.com") -> str:
+def _get_from_email(fallback: str = "no-reply@example.com", provider: Optional[str] = None) -> str:
     """Resolve the From header.
 
-    Backwards/forwards compatible with multiple env var names.
-    Preferred:
-      - EMAIL_FROM  (project-wide)
-      - FROM_EMAIL  (legacy)
-      - SMTP_FROM   (smtp-specific)
+    For Resend, prefer RESEND_FROM first so tracking mail can use a verified
+    Resend sender without depending on legacy SMTP vars.
+
+    General priority:
+      - Resend: RESEND_FROM -> EMAIL_FROM -> FROM_EMAIL -> SMTP_FROM
+      - SMTP:   EMAIL_FROM -> FROM_EMAIL -> SMTP_FROM
     """
-    return (
-        (os.getenv("EMAIL_FROM") or "").strip()
-        or (os.getenv("FROM_EMAIL") or "").strip()
-        or (os.getenv("SMTP_FROM") or "").strip()
-        or fallback
-    )
+    provider = (provider or "").strip().lower()
+    candidates = []
+    if provider in ("resend", "resend.com"):
+        candidates.append((os.getenv("RESEND_FROM") or "").strip())
+    candidates.extend([
+        (os.getenv("EMAIL_FROM") or "").strip(),
+        (os.getenv("FROM_EMAIL") or "").strip(),
+        (os.getenv("SMTP_FROM") or "").strip(),
+    ])
+    for value in candidates:
+        if value:
+            return value
+    return fallback
 
 
 def _provider(provider: Optional[str] = None) -> str:
@@ -75,7 +83,7 @@ def send_email(
             log.warning("Resend selected but RESEND_API_KEY is not set")
             return False
 
-        from_email = _get_from_email("CHECK news <no-reply@checkne.com>")
+        from_email = _get_from_email("CHECK news <no-reply@checkne.com>", provider="resend")
         try:
             r = requests.post(
                 "https://api.resend.com/emails",
@@ -111,7 +119,7 @@ def send_email(
         # STARTTLS toggle (prefer SMTP_STARTTLS; also accept SMTP_TLS for convenience)
         use_tls = _env_bool("SMTP_STARTTLS", _env_bool("SMTP_TLS", True))
 
-        from_email = _get_from_email(smtp_user or "no-reply@example.com")
+        from_email = _get_from_email(smtp_user or "no-reply@example.com", provider="smtp")
 
         msg = EmailMessage()
         msg["From"] = from_email
