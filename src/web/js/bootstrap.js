@@ -408,6 +408,28 @@ Promise.resolve(main())
 let _emailAlertsInit = false;
 let _emailAlertsLast = null;
 
+const TRACKING_WIDGETS_PREF_KEY = 'checkne_tracking_widgets_visible_v1';
+
+function trackingWidgetsVisible(){
+  try { return localStorage.getItem(TRACKING_WIDGETS_PREF_KEY) === '1'; } catch { return false; }
+}
+
+function setTrackingWidgetsVisible(enabled){
+  const on = !!enabled;
+  try { localStorage.setItem(TRACKING_WIDGETS_PREF_KEY, on ? '1' : '0'); } catch {}
+  try {
+    if (typeof window.__setWidgetsEnabled === 'function') {
+      const shouldShow = (typeof state !== 'undefined' && state && state.mode === 'feed') || ((typeof state !== 'undefined' && state && state.mode === 'fav') && on);
+      window.__setWidgetsEnabled(!!shouldShow);
+    }
+  } catch {}
+  try { if (typeof window.__checkneRefreshSidebarFollow === 'function') window.__checkneRefreshSidebarFollow(); } catch {}
+}
+
+window.__trackingWidgetsVisible = trackingWidgetsVisible;
+window.__setTrackingWidgetsVisible = setTrackingWidgetsVisible;
+
+
 // Consent modal for enabling email notifications
 let _emailConsentModal = null;
 
@@ -523,17 +545,24 @@ function showEmailConsentModal(){
 async function updateEmailAlertsUI(){
   const wrap = qs('trackingSettings');
   const toggle = qs('emailAlertsToggle');
+  const widgetsToggle = qs('trackingWidgetsToggle');
   if (!wrap || !toggle) return;
 
   const inTracking = (state.mode === 'fav');
   const loggedIn = !!(authState && authState.user && authState.user.email);
 
   wrap.style.display = (inTracking && loggedIn) ? 'flex' : 'none';
+  if (widgetsToggle) widgetsToggle.checked = trackingWidgetsVisible();
   if (!(inTracking && loggedIn)) return;
 
   // init listener once
   if (!_emailAlertsInit){
     _emailAlertsInit = true;
+    if (widgetsToggle){
+      widgetsToggle.addEventListener('change', () => {
+        setTrackingWidgetsVisible(!!widgetsToggle.checked);
+      });
+    }
     toggle.addEventListener('change', async () => {
       const enabled = !!toggle.checked;
 

@@ -72,10 +72,11 @@ async function switchMode(targetMode){
     // 2) меняем режим
     state.mode = targetMode;
 
-    // Widgets: hide on Tracking (fav) to avoid layout clutter.
+    // Widgets: show in Feed by default, and in Tracking only when the user enabled it.
     try{
       if (typeof window.__setWidgetsEnabled === 'function'){
-        window.__setWidgetsEnabled(targetMode === 'feed');
+        const trackingWidgetsOn = (typeof window.__trackingWidgetsVisible === 'function') ? !!window.__trackingWidgetsVisible() : false;
+        window.__setWidgetsEnabled(targetMode === 'feed' || (targetMode === 'fav' && trackingWidgetsOn));
       }
     }catch{}
 

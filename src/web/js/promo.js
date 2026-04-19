@@ -88,7 +88,8 @@
       .sharePromoText{min-width:0;flex:1 1 auto}.sharePromoText strong{display:block;font-size:15px;line-height:1.25}.sharePromoText span{display:block;margin-top:4px;font-size:12px;color:rgba(0,0,0,.65);line-height:1.35}
       .sharePromoActions{display:flex;align-items:center;gap:8px;flex:0 0 auto}.sharePromoBtn,.sharePromoGhost,.sharePromoClose{border:0;border-radius:12px;cursor:pointer;font:inherit}
       .sharePromoBtn{background:#111;color:#fff;padding:10px 14px;font-weight:700}.sharePromoGhost{background:rgba(0,0,0,.05);padding:10px 12px;color:#111}.sharePromoClose{width:34px;height:34px;background:transparent;color:rgba(0,0,0,.55);font-size:20px}
-      .sharePromoInline{margin:16px auto 0;max-width:760px;border:1px solid rgba(0,0,0,.12);background:linear-gradient(180deg,#fff,rgba(247,247,247,.98));border-radius:22px;padding:18px 20px;display:none}
+      .sharePromoInline{margin:0 auto 18px;max-width:1080px;border:1px solid rgba(0,0,0,.12);background:linear-gradient(180deg,rgba(255,255,255,.98),rgba(247,247,247,.98));border-radius:24px;padding:18px 20px;display:none;box-shadow:0 18px 36px rgba(0,0,0,.06)}
+      .sharePromoInline--sticky{position:sticky;top:46px;z-index:12}
       .sharePromoInline.isVisible{display:block}.sharePromoInlineHead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}.sharePromoInlineTitle{font-size:18px;font-weight:700}.sharePromoInlineSub{color:rgba(0,0,0,.68);font-size:14px;line-height:1.5}
       .sharePromoInline .sharePromoBtn{padding:11px 16px}.sharePromoInline .sharePromoGhost{padding:11px 14px}
       .sharePromoModalBack{position:fixed;inset:0;background:rgba(10,12,16,.42);display:none;align-items:center;justify-content:center;z-index:120;padding:16px}.sharePromoModalBack.isOpen{display:flex}
@@ -99,7 +100,7 @@
       .sharePromoBottom{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.sharePromoHint{font-size:12px;color:rgba(0,0,0,.55)}
       .sharePromoVerify{margin-top:16px;padding-top:16px;border-top:1px solid rgba(0,0,0,.08);display:none}.sharePromoVerify.isVisible{display:block}.sharePromoVerify h4{margin:0 0 8px;font-size:18px}.sharePromoVerify p{margin:0 0 12px;color:rgba(0,0,0,.64);font-size:14px;line-height:1.45}.sharePromoInputRow{display:flex;gap:10px;flex-wrap:wrap}.sharePromoInput{flex:1 1 360px;height:48px;border:1px solid rgba(0,0,0,.14);border-radius:14px;padding:0 14px;font:inherit}.sharePromoMsg{margin-top:10px;font-size:13px;color:rgba(0,0,0,.68)}
       .sharePromoShareHint{margin-top:14px;padding:12px 14px;border-radius:16px;background:rgba(0,0,0,.035);border:1px solid rgba(0,0,0,.08);display:none}.sharePromoShareHint.isVisible{display:block}.sharePromoShareHint strong{display:block;font-size:13px}.sharePromoShareHint span{display:block;margin-top:4px;font-size:12px;color:rgba(0,0,0,.64)}
-      @media (max-width: 760px){.sharePromoBanner{top:12px;width:min(560px,calc(100vw - 20px))}.sharePromoCard{padding:14px;align-items:flex-start}.sharePromoActions{flex-wrap:wrap;justify-content:flex-end}.sharePromoGrid{grid-template-columns:1fr}.sharePromoTop h3{font-size:24px}.sharePromoModal{padding:20px 18px 18px}}
+      @media (max-width: 760px){.sharePromoBanner{top:12px;width:min(560px,calc(100vw - 20px))}.sharePromoCard{padding:14px;align-items:flex-start}.sharePromoActions{flex-wrap:wrap;justify-content:flex-end}.sharePromoGrid{grid-template-columns:1fr}.sharePromoTop h3{font-size:24px}.sharePromoModal{padding:20px 18px 18px}.sharePromoInline--sticky{top:46px}}
       @media (max-width: 640px){.sharePromoBanner{top:10px;width:calc(100vw - 16px)}.sharePromoCard{display:grid;grid-template-columns:56px minmax(0,1fr);gap:12px;padding:16px;border-radius:22px}.sharePromoAccent{width:56px;height:56px;border-radius:18px;font-size:24px;grid-row:1 / span 2}.sharePromoText{align-self:center}.sharePromoText strong{font-size:28px;line-height:1.04;letter-spacing:-.03em}.sharePromoText span{margin-top:8px;font-size:15px;line-height:1.4}.sharePromoActions{grid-column:1 / -1;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 44px;gap:10px;align-items:stretch}.sharePromoBtn,.sharePromoGhost{width:100%;min-height:48px;padding:0 14px;display:flex;align-items:center;justify-content:center;font-size:15px;text-align:center}.sharePromoClose{width:44px;height:44px;justify-self:end;border-radius:14px;background:rgba(0,0,0,.05)}.sharePromoModalBack{padding:12px}.sharePromoModal{max-height:min(88vh,900px);overflow:auto;border-radius:24px;padding:18px 16px 16px}.sharePromoTop{align-items:flex-start}.sharePromoTop h3{font-size:21px;line-height:1.08;padding-right:8px}.sharePromoTop p{font-size:14px;line-height:1.45}.sharePromoModalClose{width:42px;height:42px;flex:0 0 auto}.sharePromoGrid{gap:10px;margin:16px 0}.sharePromoStep{padding:12px 13px}.sharePromoBottom{align-items:stretch}.sharePromoBottom > div:last-child{width:100%}.sharePromoBottom > div:last-child .sharePromoBtn{width:100%;min-height:48px;display:flex;align-items:center;justify-content:center}.sharePromoInputRow{flex-direction:column}.sharePromoInput{flex:1 1 auto;width:100%;height:50px}.sharePromoInputRow .sharePromoBtn{width:100%;min-height:50px;display:flex;align-items:center;justify-content:center}}
       @media (max-width: 420px){.sharePromoCard{grid-template-columns:48px minmax(0,1fr);padding:14px}.sharePromoAccent{width:48px;height:48px;border-radius:15px;font-size:20px}.sharePromoText strong{font-size:24px}.sharePromoText span{font-size:14px}.sharePromoActions{grid-template-columns:1fr;gap:8px}.sharePromoClose{width:100%;height:42px;border-radius:12px}.sharePromoTop h3{font-size:19px}.sharePromoHint{font-size:11px;line-height:1.45}}
     `;
@@ -127,13 +128,15 @@
       wrap.querySelector('.sharePromoClose').onclick = ()=>{ setDismissed(); updateBannerVisibility(); };
     }
     if (!qs('sharePromoPricing')) {
-      const hero = document.querySelector('#pricingSection .pricingHero');
-      if (hero) {
-        const box = el('div', 'sharePromoInline');
+      const pricingSection = document.getElementById('pricingSection');
+      const billingToggle = pricingSection ? pricingSection.querySelector('.billingToggle') : null;
+      if (pricingSection) {
+        const box = el('div', 'sharePromoInline sharePromoInline--sticky');
         box.id = 'sharePromoPricing';
         box.innerHTML = `
           <div class="sharePromoInlineHead"><div><div class="sharePromoInlineTitle"></div><div class="sharePromoInlineSub"></div></div><button class="sharePromoBtn" type="button">How it works</button></div>`;
-        hero.appendChild(box);
+        if (billingToggle) pricingSection.insertBefore(box, billingToggle);
+        else pricingSection.prepend(box);
         box.querySelector('.sharePromoBtn').onclick = ()=> openPromoModal();
       }
     }

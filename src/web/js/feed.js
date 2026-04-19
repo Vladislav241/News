@@ -4469,6 +4469,27 @@ async function runVisualSearch(file){
       e.preventDefault();
       e.stopPropagation();
 
+      const currentPath = (() => {
+        try {
+          let p = String(window.location?.pathname || '/');
+          p = p.split('?')[0].split('#')[0];
+          if (p.length > 1) p = p.replace(/\/+$/, '');
+          return p || '/';
+        } catch { return '/'; }
+      })();
+
+      // When we are already inside Tracking, do not re-route the page again.
+      // Just refresh the tab and re-apply the widgets visibility preference.
+      if (currentPath === '/tracking' && state.mode === 'fav') {
+        try {
+          const trackingWidgetsOn = (typeof window.__trackingWidgetsVisible === 'function') ? !!window.__trackingWidgetsVisible() : false;
+          if (typeof window.__setWidgetsEnabled === 'function') window.__setWidgetsEnabled(trackingWidgetsOn);
+        } catch {}
+        try{ applyTabs(); }catch{}
+        try{ if (typeof fetchFavorites === 'function') fetchFavorites(); }catch{}
+        return;
+      }
+
       // Always route to /tracking so it works from ANY page (pricing/profile/info).
       try{
         if (typeof window.__navigate === 'function') { window.__navigate('/tracking'); return; }

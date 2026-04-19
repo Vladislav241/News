@@ -264,14 +264,26 @@
     <div id="trackingHint" class="muted" style="margin-top:10px; display:none;" data-i18n="ui.tip_drag_remove">Tip: drag a card onto the 🗑️ to remove it from Tracking.</div>
 
     <div id="trackingSettings" class="trackingSettings" style="display:none;">
-      <div class="trackingSettingsLeft">
-        <div class="trackingSettingsTitle" data-i18n="ui.email_notifications">Email notifications</div>
-        <div class="trackingSettingsSub" data-i18n="ui.email_notifications_sub">Send me an email when any tracked event changes</div>
+      <div class="trackingSettingsItem trackingSettingsItem--primary">
+        <div class="trackingSettingsLeft">
+          <div class="trackingSettingsTitle" data-i18n="ui.email_notifications">Email notifications</div>
+          <div class="trackingSettingsSub" data-i18n="ui.email_notifications_sub">Send me an email when any tracked event changes</div>
+        </div>
+        <label class="switch">
+          <input id="emailAlertsToggle" type="checkbox" />
+          <span class="slider"></span>
+        </label>
       </div>
-      <label class="switch">
-        <input id="emailAlertsToggle" type="checkbox" />
-        <span class="slider"></span>
-      </label>
+      <div class="trackingSettingsItem">
+        <div class="trackingSettingsLeft">
+          <div class="trackingSettingsTitle">Keep widgets visible</div>
+          <div class="trackingSettingsSub">Show the left and right analytics widgets while you are in Tracking.</div>
+        </div>
+        <label class="switch">
+          <input id="trackingWidgetsToggle" type="checkbox" />
+          <span class="slider"></span>
+        </label>
+      </div>
     </div>
 
     

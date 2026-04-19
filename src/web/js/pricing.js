@@ -384,7 +384,9 @@ function setMainFeed(){
     // Widgets: only show on the main feed page (Tracking tab is handled in mode.js).
     try{
       if (typeof window.__setWidgetsEnabled === 'function'){
-        window.__setWidgetsEnabled(page === 'feed' && (typeof state !== 'undefined' ? state.mode === 'feed' : true));
+        const isFeedMode = (typeof state !== 'undefined' ? state.mode === 'feed' : true);
+        const trackingWidgetsOn = (typeof window.__trackingWidgetsVisible === 'function') ? !!window.__trackingWidgetsVisible() : false;
+        window.__setWidgetsEnabled(page === 'feed' && (isFeedMode || trackingWidgetsOn));
       }
     }catch{}
 
@@ -475,7 +477,15 @@ function routeFromLocation(){
   }
   if (path === '/tracking'){
     setPage('feed');
-    switchMode('fav');
+    if (typeof state !== 'undefined' && state.mode === 'fav'){
+      try {
+        const trackingWidgetsOn = (typeof window.__trackingWidgetsVisible === 'function') ? !!window.__trackingWidgetsVisible() : false;
+        if (typeof window.__setWidgetsEnabled === 'function') window.__setWidgetsEnabled(trackingWidgetsOn);
+      } catch {}
+      try { if (typeof fetchFavorites === 'function') fetchFavorites(); } catch {}
+    } else {
+      switchMode('fav');
+    }
     return;
   }
   if (path === '/contact') return setPage('info:contact');
