@@ -255,6 +255,12 @@ def proxy_image(
             if len(chunks) > _MAX_BYTES:
                 _remember_failure(url, w, "Image too large")
                 raise HTTPException(status_code=413, detail="Image too large")
+    except requests.exceptions.RequestException:
+        _remember_failure(url, w, "Image unavailable")
+        return _placeholder_svg("Image unavailable")
+    except Exception:
+        _remember_failure(url, w, "Image unavailable")
+        return _placeholder_svg("Image unavailable")
     finally:
         try:
             r.close()
