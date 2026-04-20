@@ -2415,10 +2415,10 @@ class Database:
                 SELECT
                     c.*,
                     (
-                        SELECT MAX(COALESCE(a_recent.published_at, a_recent.inserted_at))
-                        FROM cluster_articles ca_recent
-                        JOIN articles a_recent ON a_recent.id = ca_recent.article_id
-                        WHERE ca_recent.cluster_id = c.id
+                        SELECT MAX(COALESCE(a2.published_at, a2.inserted_at))
+                        FROM cluster_articles ca2
+                        JOIN articles a2 ON a2.id = ca2.article_id
+                        WHERE ca2.cluster_id = c.id
                     ) as latest_published_at,
                     s.credibility_score,
                     s.score_details_json,
@@ -2432,7 +2432,14 @@ class Database:
                 LEFT JOIN article_scores s ON s.cluster_id=c.id
                 LEFT JOIN article_summaries sm ON sm.cluster_id=c.id
                 WHERE {" AND ".join(where)}
-                ORDER BY COALESCE(latest_published_at, c.updated_at) DESC, c.updated_at DESC, c.id DESC
+                ORDER BY COALESCE((
+                        SELECT MAX(COALESCE(a3.published_at, a3.inserted_at))
+                        FROM cluster_articles ca3
+                        JOIN articles a3 ON a3.id = ca3.article_id
+                        WHERE ca3.cluster_id = c.id
+                    ), c.updated_at) DESC,
+                    c.updated_at DESC,
+                    c.id DESC
                 LIMIT ?
             """
             params.append(max(1, min(400, int(row_limit))))
