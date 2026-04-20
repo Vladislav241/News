@@ -2414,6 +2414,12 @@ class Database:
             sql = f"""
                 SELECT
                     c.*,
+                    (
+                        SELECT MAX(COALESCE(a_recent.published_at, a_recent.inserted_at))
+                        FROM cluster_articles ca_recent
+                        JOIN articles a_recent ON a_recent.id = ca_recent.article_id
+                        WHERE ca_recent.cluster_id = c.id
+                    ) as latest_published_at,
                     s.credibility_score,
                     s.score_details_json,
                     s.computed_at as score_computed_at,
@@ -2426,7 +2432,7 @@ class Database:
                 LEFT JOIN article_scores s ON s.cluster_id=c.id
                 LEFT JOIN article_summaries sm ON sm.cluster_id=c.id
                 WHERE {" AND ".join(where)}
-                ORDER BY c.updated_at DESC, c.id DESC
+                ORDER BY COALESCE(latest_published_at, c.updated_at) DESC, c.updated_at DESC, c.id DESC
                 LIMIT ?
             """
             params.append(max(1, min(400, int(row_limit))))

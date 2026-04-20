@@ -846,7 +846,7 @@ def _decorate_cluster_row(c: dict[str, Any], include_sources: bool = True) -> di
         primary_source = (brief.get("primary_source") or None)
         event_image = (brief.get("image_url") or None)
 
-    latest_pub = db.get_cluster_latest_published_at(cid)
+    latest_pub = c.get("latest_published_at") or db.get_cluster_latest_published_at(cid)
 
     details = None
     if c.get("score_details_json"):
