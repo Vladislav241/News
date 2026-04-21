@@ -375,26 +375,44 @@ async def _fulltext_loop() -> None:
 
 async def _auto_refresh_loop() -> None:
     await asyncio.sleep(2.0)
-    first = True
+    next_run_at: float | None = None
     while True:
         try:
             enabled = _env_bool("AUTO_REFRESH", True)
             interval = _get_refresh_interval_seconds()
             if background_tasks_disabled() or not enabled or interval <= 0:
+                next_run_at = None
                 await asyncio.sleep(5.0)
                 continue
 
-            if not first:
-                await asyncio.sleep(float(interval))
-            first = False
+            now = time.monotonic()
+            if next_run_at is None:
+                next_run_at = now
+            elif now < next_run_at:
+                await asyncio.sleep(next_run_at - now)
 
+            scheduled_at = next_run_at
+            started_at = time.monotonic()
             async with _ingest_lock:
                 db.ensure_schema()
                 await asyncio.to_thread(run_ingest_cycle)
+            finished_at = time.monotonic()
+
+            # Keep a fixed cadence relative to the scheduled tick, not relative to
+            # the moment the previous cycle finished. This prevents a 10-minute
+            # refresh interval from silently turning into 25-40 minutes when one
+            # ingest run happens to be slow.
+            next_run_at = max((scheduled_at or finished_at) + float(interval), finished_at)
+            log.info(
+                "auto refresh cycle finished duration_s=%.2f next_in_s=%.2f",
+                finished_at - started_at,
+                max(0.0, next_run_at - finished_at),
+            )
         except asyncio.CancelledError:
             break
         except Exception:
             log.exception("auto refresh failed")
+            next_run_at = time.monotonic() + 10.0
             await asyncio.sleep(10.0)
 
 

@@ -1786,9 +1786,72 @@ def _select_feeds_for_cycle(feeds: list[dict[str, str]], max_feeds: int, rotatio
     return selected[:max_feeds]
 
 
-def _scoped_cluster_key(country: str, base_key: str) -> str:
-    scope = (country or "world").strip().lower() or "world"
-    return f"{scope}|{base_key}"
+def _compute_effective_max_feeds(total_feeds: int, configured_limit: int) -> int:
+    configured = max(10, int(configured_limit or 0))
+    total = max(0, int(total_feeds or 0))
+
+    # With a few hundred configured feeds, a hard cap of 60 leaves too much time
+    # between checks for many sources and the feed can look stale for long stretches.
+    # Scale up conservatively, but keep the ceiling bounded so production stays safe.
+    if total >= 350:
+        return min(120, max(configured, 100))
+    if total >= 250:
+        return min(100, max(configured, 80))
+    if total >= 180:
+        return min(80, max(configured, 70))
+    return min(70, configured)
+
+
+def _fetch_feeds_concurrently(feeds: list[dict[str, str]], per_feed: int = 80) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if not feeds:
+        return [], []
+
+    try:
+        max_workers = int(os.getenv("INGEST_FETCH_MAX_WORKERS", "12") or 12)
+    except Exception:
+        max_workers = 12
+    max_workers = max(4, min(24, max_workers, len(feeds)))
+
+    ordered_articles: list[list[dict[str, Any]] | None] = [None] * len(feeds)
+    ordered_meta: list[dict[str, Any] | None] = [None] * len(feeds)
+
+    def _job(idx: int, feed: dict[str, str]) -> tuple[int, list[dict[str, Any]], dict[str, Any]]:
+        entries, meta = _fetch_rss_feed(feed, per_feed=per_feed)
+        meta.update({"country": feed["country"], "language": feed["language"], "topic": feed["topic"]})
+        for a in entries:
+            a["country"] = feed["country"]
+            a["language"] = feed["language"]
+            a["topic"] = feed["topic"]
+        return idx, entries, meta
+
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        futures = [ex.submit(_job, idx, feed) for idx, feed in enumerate(feeds)]
+        for fut in as_completed(futures):
+            try:
+                idx, entries, meta = fut.result()
+            except Exception:
+                logger.exception("parallel RSS fetch job failed")
+                continue
+            ordered_articles[idx] = entries
+            ordered_meta[idx] = meta
+
+    all_articles: list[dict[str, Any]] = []
+    feeds_meta: list[dict[str, Any]] = []
+    for idx in range(len(feeds)):
+        entries = ordered_articles[idx] or []
+        meta = ordered_meta[idx] or {
+            "url": feeds[idx].get("url"),
+            "name": feeds[idx].get("name"),
+            "entries": 0,
+            "error": "fetch_failed",
+            "country": feeds[idx].get("country"),
+            "language": feeds[idx].get("language"),
+            "topic": feeds[idx].get("topic"),
+        }
+        feeds_meta.append(meta)
+        all_articles.extend(entries)
+
+    return all_articles, feeds_meta
 
 
 # =========================================================
@@ -1820,23 +1883,14 @@ def run_ingest_cycle() -> dict[str, Any]:
         feeds = _iter_all_feeds(sources_cfg)
 
         stats["feeds_total"] = len(feeds)
-        max_feeds = max(10, int(cfg.max_external_requests_per_cycle))
+        max_feeds = _compute_effective_max_feeds(len(feeds), int(cfg.max_external_requests_per_cycle or 0))
         feeds = _select_feeds_for_cycle(feeds, max_feeds, rotation_seed=run_id)
         stats["feeds_used"] = len(feeds)
 
-        all_articles: list[dict[str, Any]] = []
-
-        for f in feeds:
-            entries, meta = _fetch_rss_feed(f, per_feed=80)
-            meta.update({"country": f["country"], "language": f["language"], "topic": f["topic"]})
-            stats["feeds_meta"].append(meta)
-
-            for a in entries:
-                a["country"] = f["country"]
-                a["language"] = f["language"]
-                a["topic"] = f["topic"]
-            all_articles.extend(entries)
-
+        fetch_started_at = time.monotonic()
+        all_articles, feeds_meta = _fetch_feeds_concurrently(feeds, per_feed=80)
+        stats["feeds_meta"].extend(feeds_meta)
+        stats["fetch_duration_seconds"] = round(time.monotonic() - fetch_started_at, 2)
         stats["articles_seen"] = len(all_articles)
 
         inserted_article_ids: list[int] = []
@@ -2110,7 +2164,7 @@ def run_ingest_cycle() -> dict[str, Any]:
 
         # Prefetch Video Report for top clusters (warms DB cache; reduces YouTube calls on user open)
         try:
-            max_prefetch = int(os.getenv("YT_PREFETCH_TOP_N", "6"))
+            max_prefetch = int(os.getenv("YT_PREFETCH_TOP_N", "0"))
         except Exception:
             max_prefetch = 6
 
@@ -2138,6 +2192,15 @@ def run_ingest_cycle() -> dict[str, Any]:
         stats["ai_usage_24h"] = db.get_recent_ai_usage_summary(hours=24)
         stats["finished_at"] = _utc_now_iso()
         db.finish_ingest_run(run_id, "success", stats)
+        logger.info(
+            "ingest cycle finished feeds_used=%s articles_seen=%s inserted=%s clusters_touched=%s fetch_s=%s errors=%s",
+            stats.get("feeds_used"),
+            stats.get("articles_seen"),
+            stats.get("articles_inserted"),
+            stats.get("clusters_touched"),
+            stats.get("fetch_duration_seconds"),
+            stats.get("errors"),
+        )
         return stats
 
     except Exception:
