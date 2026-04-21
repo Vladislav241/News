@@ -230,13 +230,17 @@ def trending_interests(
 
     since_iso = (_now_utc() - timedelta(hours=LOOKBACK_HOURS)).isoformat()
 
-    clusters = db.query_clusters(
-        interests=interests_list,
-        country=(country or "world"),
-        language="all",
-        since_iso=since_iso,
-        limit=200,
-    )
+    try:
+        clusters = db.query_clusters(
+            interests=interests_list,
+            country=(country or "world"),
+            language="all",
+            since_iso=since_iso,
+            limit=200,
+        )
+    except Exception:
+        logger.exception("trending_interests failed")
+        return {"items": []}
 
     def score_cluster(c: dict[str, Any]) -> float:
         outlets = 0
