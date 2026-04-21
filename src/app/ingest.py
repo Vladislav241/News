@@ -10,6 +10,7 @@ from typing import Any
 
 import feedparser
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from bs4 import BeautifulSoup
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 
@@ -581,6 +582,16 @@ def _liveblog_cluster_key(language: str, url: str) -> str:
         pass
     base = f"live::{(language or 'en').lower()}::{u.lower()}"
     return hashlib.sha1(base.encode("utf-8")).hexdigest()
+
+
+def _scoped_cluster_key(country: str | None, raw_key: str) -> str:
+    scope = (country or "world").strip().lower() or "world"
+    key = (raw_key or "").strip()
+    if not key:
+        return f"{scope}::empty"
+    if key.startswith(f"{scope}::"):
+        return key
+    return f"{scope}::{key}"
 
 
 # =========================================================
