@@ -121,6 +121,22 @@ def _store_payload(
         log.exception("media-bias cache write failed for cluster %s", cluster_id)
 
 
+
+
+def _resolve_bias_fast(domain: str, sample_titles: list[str] | None = None) -> tuple[str, float, str]:
+    """
+    Fast, request-safe bias resolver.
+
+    Important: this intentionally avoids live LLM calls on the widget request path,
+    because a single slow classification can stall the whole feed rendering on prod.
+    We only use DB cache + shipped seed data here; unknown outlets stay unknown until
+    another offline/background path classifies them.
+    """
+    try:
+        return resolve_bias(domain, sample_titles=sample_titles or [], allow_llm=False)
+    except Exception:
+        return ("unknown", 0.0, "unknown")
+
 def _negative_ttl_seconds() -> int:
     try:
         return max(120, min(1800, int(os.getenv("MEDIA_BIAS_NEGATIVE_CACHE_SECONDS", "600") or 600)))
@@ -201,7 +217,7 @@ def media_bias_widget(cluster_id: int):
         # First pass: resolve everything we can from DB / shipped seed data without spending LLM budget.
         for domain, titles in domain_titles.items():
             try:
-                bias, conf, src = resolve_bias(domain, sample_titles=[])
+                bias, conf, src = _resolve_bias_fast(domain, sample_titles=[])
             except Exception:
                 bias, conf, src = ("unknown", 0.0, "unknown")
             if bias in ("left", "center", "right"):
@@ -225,7 +241,7 @@ def media_bias_widget(cluster_id: int):
                 domain_bias[domain] = ("unknown", 0.0, "deferred")
                 continue
             try:
-                domain_bias[domain] = resolve_bias(domain, sample_titles=(titles or [])[:6])
+                domain_bias[domain] = _resolve_bias_fast(domain, sample_titles=(titles or [])[:6])
             except Exception:
                 domain_bias[domain] = ("unknown", 0.0, "unknown")
             llm_used += 1

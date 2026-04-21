@@ -65,7 +65,7 @@ def _load_seed_map() -> dict[str, dict[str, Any]]:
 _SEED = _load_seed_map()
 
 
-def resolve_bias(domain: str, sample_titles: list[str] | None = None) -> tuple[str, float, str]:
+def resolve_bias(domain: str, sample_titles: list[str] | None = None, allow_llm: bool = True) -> tuple[str, float, str]:
     """
     Returns: (bias, confidence, source)
     bias: left|center|right|unknown
@@ -115,6 +115,10 @@ def resolve_bias(domain: str, sample_titles: list[str] | None = None) -> tuple[s
         pass
 
     # 3) LLM (best-effort; cached in DB)
+    # Request-path callers may disable this to keep widgets/feed responsive.
+    if not allow_llm:
+        return ("unknown", 0.0, "unknown")
+
     bias, conf = classify_with_llm(d, sample_titles=sample_titles or [])
     try:
         db.upsert_source_bias(d, bias, conf, "llm" if bias != "unknown" else "unknown")

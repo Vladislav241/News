@@ -163,6 +163,23 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
+
+
+class DotfileBlockMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        path = (request.url.path or '').strip()
+        normalized = path.lstrip('/')
+        first_segment = normalized.split('/', 1)[0] if normalized else ''
+
+        # Never expose dotfiles / repo internals through app routes, SPA fallback,
+        # or accidental reverse-proxy passthroughs. Keep /.well-known available.
+        if first_segment.startswith('.') and first_segment != '.well-known':
+            return Response(status_code=404)
+        if normalized.startswith('.git/') or normalized == '.git':
+            return Response(status_code=404)
+        return await call_next(request)
+
+
 class RequestContextMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
@@ -198,6 +215,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(RequestContextMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(DotfileBlockMiddleware)
 
 
 @app.exception_handler(Exception)
