@@ -295,9 +295,14 @@ def spa_root():
 
 @app.get("/{full_path:path}", include_in_schema=False)
 def spa_fallback(full_path: str):
-    if full_path.startswith("api/") or full_path.startswith("static/"):
+    normalized = (full_path or "").strip()
+    if normalized.startswith("api/") or normalized.startswith("static/"):
         return Response(status_code=404)
-    if full_path in ("favicon.ico",):
+    if normalized in ("favicon.ico",):
+        return Response(status_code=404)
+    # Never let the SPA fallback expose dotfiles like /.env, /.git, etc.
+    first_segment = normalized.split("/", 1)[0] if normalized else ""
+    if first_segment.startswith("."):
         return Response(status_code=404)
     return _spa_response()
 

@@ -2399,6 +2399,15 @@ class Database:
         base_where: list[str] = []
         base_params: list[Any] = []
 
+        latest_published_expr = """
+            (
+                SELECT MAX(COALESCE(a_latest.published_at, a_latest.inserted_at))
+                FROM cluster_articles ca_latest
+                JOIN articles a_latest ON a_latest.id = ca_latest.article_id
+                WHERE ca_latest.cluster_id = c.id
+            )
+        """.strip()
+
         def _fetch_query_rows(extra_where: list[str], extra_params: list[Any], row_limit: int, exclude_ids: list[int] | None = None) -> list[dict[str, Any]]:
             where = list(extra_where)
             params = list(extra_params)
@@ -2407,13 +2416,14 @@ class Database:
                 where.append(f"c.id NOT IN ({placeholders})")
                 params.extend(exclude_ids)
             if since_iso:
-                where.append("c.updated_at >= ?")
+                where.append(f"COALESCE({latest_published_expr}, c.updated_at) >= ?")
                 params.append(since_iso)
             if not where:
                 where.append("1=1")
             sql = f"""
                 SELECT
                     c.*,
+                    {latest_published_expr} AS latest_published_at,
                     s.credibility_score,
                     s.score_details_json,
                     s.computed_at as score_computed_at,
@@ -2426,15 +2436,14 @@ class Database:
                 LEFT JOIN article_scores s ON s.cluster_id=c.id
                 LEFT JOIN article_summaries sm ON sm.cluster_id=c.id
                 WHERE {" AND ".join(where)}
-                ORDER BY c.updated_at DESC, c.id DESC
+                ORDER BY COALESCE({latest_published_expr}, c.updated_at) DESC, c.updated_at DESC, c.id DESC
                 LIMIT ?
             """
-            requested_limit = max(1, min(400, int(row_limit)))
-            # Pull a somewhat broader slice from SQL and let the Python layer do
-            # the final ordering by latest article time. This keeps the feed fresh
-            # on larger DBs without relying on brittle DB-specific computed-column
-            # aliases in ORDER BY.
-            fetch_limit = min(400, max(requested_limit, requested_limit * 3))
+            requested_limit = max(1, min(500, int(row_limit)))
+            # On the production DB, cluster.updated_at can lag behind the freshest
+            # article merged into a cluster. Pulling a broader slice keeps the
+            # world feed fresh even when older clusters receive new source updates.
+            fetch_limit = min(1200, max(requested_limit * 5, 600))
             params.append(fetch_limit)
             return self._fetchall(sql, tuple(params))
 
@@ -2556,6 +2565,12 @@ class Database:
         sql = f"""
             SELECT
                 c.*,
+                (
+                    SELECT MAX(COALESCE(a_latest.published_at, a_latest.inserted_at))
+                    FROM cluster_articles ca_latest
+                    JOIN articles a_latest ON a_latest.id = ca_latest.article_id
+                    WHERE ca_latest.cluster_id = c.id
+                ) AS latest_published_at,
                 s.credibility_score,
                 s.score_details_json,
                 s.computed_at as score_computed_at,
