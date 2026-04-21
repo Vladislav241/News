@@ -322,9 +322,12 @@ async function main() {
 
   bindAuthModalUI();
   bindPricingUI();
-  await refreshAuthState();
-  await handleAuthQueryParams();
-  await handleBillingQueryParams();
+
+  const authBootstrapTask = refreshAuthState().catch(() => {});
+  const authQueryTask = handleAuthQueryParams().catch(() => {});
+  const billingQueryTask = handleBillingQueryParams().catch(() => {});
+
+  await authBootstrapTask;
 
   bindUI();
   initSmartHeader();
@@ -375,6 +378,8 @@ async function main() {
       await fetchFeed({ reset: true });
     }
   }
+
+  await Promise.allSettled([authQueryTask, billingQueryTask]);
 
   // If we arrived via a shared URL (/?open=...), open that article card.
   await maybeOpenDeepLinkedArticle();

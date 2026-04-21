@@ -374,16 +374,17 @@ async function refreshAuthState() {
       if (trackingCountEl) trackingCountEl.textContent = '0';
     } catch {}
     try { state.trackingItems = []; } catch {}
+    try { await refreshBillingState(); } catch {}
   } else {
-    // Logged in -> reconcile favorites safely (server is truth; guest can migrate once).
-    try { await pullFavoritesFromServerAndMerge(); } catch {}
-
-    // Load account-scoped preferences (interests/country/language) so they persist per user.
-    try { if (typeof window.checkneSyncPrefsFromServer === 'function') await window.checkneSyncPrefsFromServer(); } catch {}
+    // Do not block initial app render on secondary account sync calls.
+    Promise.resolve().then(async () => {
+      try { await Promise.allSettled([
+        Promise.resolve().then(() => pullFavoritesFromServerAndMerge()),
+        Promise.resolve().then(() => (typeof window.checkneSyncPrefsFromServer === 'function' ? window.checkneSyncPrefsFromServer() : null)),
+        Promise.resolve().then(() => refreshBillingState()),
+      ]); } catch {}
+    });
   }
-
-  // Billing state depends on auth
-  await refreshBillingState();
 
   if (!wasAuthed && authState?.authenticated && authState?.user) {
     setTimeout(() => {

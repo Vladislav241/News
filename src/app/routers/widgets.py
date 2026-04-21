@@ -12,7 +12,7 @@ from typing import Any, Optional
 from fastapi import APIRouter
 
 from ..db import db
-from ..source_bias import normalize_domain, resolve_bias
+from ..source_bias import get_bias_seed_version, normalize_domain, resolve_bias
 
 router = APIRouter()
 log = logging.getLogger("news.widgets")
@@ -20,6 +20,10 @@ log = logging.getLogger("news.widgets")
 _WIDGET_MEM_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 _WIDGET_LOCKS: dict[str, threading.Lock] = {}
 _WIDGET_LOCKS_GUARD = threading.Lock()
+
+_ENRICH_IN_FLIGHT: set[str] = set()
+_ENRICH_GUARD = threading.Lock()
+
 
 
 def _safe_json(payload: Any) -> str:
@@ -30,7 +34,7 @@ def _safe_json(payload: Any) -> str:
 
 
 def _cluster_cache_key(cluster_id: int, cluster_updated_at: str) -> str:
-    basis = f"bias_widget:{int(cluster_id)}:{str(cluster_updated_at or '')}"
+    basis = f"bias_widget:{int(cluster_id)}:{str(cluster_updated_at or '')}:{get_bias_seed_version()}"
     return hashlib.sha256(basis.encode("utf-8")).hexdigest()
 
 
@@ -144,6 +148,43 @@ def _negative_ttl_seconds() -> int:
         return 600
 
 
+
+
+def _enqueue_background_bias_enrichment(cluster_id: int, domain_titles: dict[str, list[str]], domains: list[str]) -> None:
+    wanted = [normalize_domain(d) for d in (domains or []) if normalize_domain(d)]
+    if not wanted:
+        return
+
+    def worker(todo: list[str]) -> None:
+        try:
+            for domain in todo:
+                try:
+                    titles = (domain_titles.get(domain) or [])[:6]
+                    resolve_bias(domain, sample_titles=titles, allow_llm=True)
+                except Exception:
+                    log.exception("media-bias background enrichment failed for %s", domain)
+        finally:
+            with _ENRICH_GUARD:
+                for domain in todo:
+                    _ENRICH_IN_FLIGHT.discard(domain)
+
+    with _ENRICH_GUARD:
+        todo = []
+        for domain in wanted:
+            if domain in _ENRICH_IN_FLIGHT:
+                continue
+            _ENRICH_IN_FLIGHT.add(domain)
+            todo.append(domain)
+    if not todo:
+        return
+    try:
+        t = threading.Thread(target=worker, args=(todo,), name=f"media-bias-enrich-{cluster_id}", daemon=True)
+        t.start()
+    except Exception:
+        with _ENRICH_GUARD:
+            for domain in todo:
+                _ENRICH_IN_FLIGHT.discard(domain)
+
 @router.get("/api/widgets/media-bias")
 def media_bias_widget(cluster_id: int):
     """
@@ -217,7 +258,7 @@ def media_bias_widget(cluster_id: int):
         # First pass: resolve everything we can from DB / shipped seed data without spending LLM budget.
         for domain, titles in domain_titles.items():
             try:
-                bias, conf, src = _resolve_bias_fast(domain, sample_titles=[])
+                bias, conf, src = _resolve_bias_fast(domain, sample_titles=(titles or [])[:6])
             except Exception:
                 bias, conf, src = ("unknown", 0.0, "unknown")
             if bias in ("left", "center", "right"):
@@ -236,15 +277,14 @@ def media_bias_widget(cluster_id: int):
 
         llm_used = 0
         for domain in unresolved_domains:
-            titles = domain_titles.get(domain) or []
             if llm_budget <= 0 or llm_used >= llm_budget:
                 domain_bias[domain] = ("unknown", 0.0, "deferred")
                 continue
-            try:
-                domain_bias[domain] = _resolve_bias_fast(domain, sample_titles=(titles or [])[:6])
-            except Exception:
-                domain_bias[domain] = ("unknown", 0.0, "unknown")
+            domain_bias[domain] = ("unknown", 0.0, "deferred")
             llm_used += 1
+
+        if unresolved_domains:
+            _enqueue_background_bias_enrichment(cid, domain_titles, unresolved_domains[:max(1, llm_budget)])
 
         buckets: dict[str, dict[str, Any]] = {
             "left": {"count": 0, "sources": []},
@@ -324,5 +364,6 @@ def media_bias_widget(cluster_id: int):
         data["total_sources"] = total_unique
 
         payload = {"data": data, "reason": None}
-        _store_payload(cache_key, cid, payload, cluster_updated_at=str(updated_at))
+        ttl_override = _negative_ttl_seconds() if known_total < total_unique else None
+        _store_payload(cache_key, cid, payload, ttl_seconds=ttl_override, cluster_updated_at=str(updated_at))
         return {"ok": True, "cluster_id": cid, "data": data}

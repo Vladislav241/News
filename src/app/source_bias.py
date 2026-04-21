@@ -65,13 +65,64 @@ def _load_seed_map() -> dict[str, dict[str, Any]]:
 _SEED = _load_seed_map()
 
 
+_BIAS_EQUIVALENTS: dict[str, str] = {
+    "bbc.co.uk": "bbc.com",
+    "bbcnews.com": "bbc.com",
+    "theguardian.co.uk": "theguardian.com",
+    "guardian.co.uk": "theguardian.com",
+    "dailymail.co.uk": "dailymail.co.uk",
+    "dailymail.com": "dailymail.co.uk",
+    "mailplus.co.uk": "dailymail.co.uk",
+    "dw.com": "dw.com",
+    "dw.de": "dw.com",
+    "ft.com": "ft.com",
+    "financialtimes.com": "ft.com",
+    "france24.com": "france24.com",
+    "france24.fr": "france24.com",
+    "irishtimes.com": "irishtimes.com",
+    "politico.eu": "politico.eu",
+    "politico.com": "politico.com",
+    "washingtonexaminer.com": "washingtonexaminer.com",
+    "independent.co.uk": "independent.co.uk",
+    "jpost.com": "jpost.com",
+    "jerusalempost.com": "jpost.com",
+    "euronews.com": "euronews.com",
+}
+
+
+
+def _canonical_bias_domain(domain: str) -> str:
+    d = normalize_domain(domain)
+    if not d:
+        return ""
+    if d in _BIAS_EQUIVALENTS:
+        return _BIAS_EQUIVALENTS[d]
+    parts = d.split(".")
+    if len(parts) >= 3:
+        for i in range(1, len(parts) - 1):
+            cand = ".".join(parts[i:])
+            if cand in _BIAS_EQUIVALENTS:
+                return _BIAS_EQUIVALENTS[cand]
+            if cand in _SEED:
+                return cand
+    return d
+
+
+def get_bias_seed_version() -> str:
+    try:
+        items = sorted((str(k), str((v or {}).get("bias") or "")) for k, v in _SEED.items())
+        payload = json.dumps(items, ensure_ascii=False, separators=(",", ":"))
+        return __import__("hashlib").sha1(payload.encode("utf-8")).hexdigest()[:12]
+    except Exception:
+        return "seed0"
+
 def resolve_bias(domain: str, sample_titles: list[str] | None = None, allow_llm: bool = True) -> tuple[str, float, str]:
     """
     Returns: (bias, confidence, source)
     bias: left|center|right|unknown
     source: db|dataset|llm|unknown
     """
-    d = normalize_domain(domain)
+    d = _canonical_bias_domain(domain)
     if not d:
         return ("unknown", 0.0, "unknown")
 
