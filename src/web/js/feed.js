@@ -2892,6 +2892,7 @@ renderCards(items, {
 
 
 async function fetchFavorites(opts = {}) {
+  const externalSignal = opts && opts.signal;
   if (!authState.authenticated) {
     openAuthModal('tracking');
     setStatus('');
@@ -2908,7 +2909,7 @@ async function fetchFavorites(opts = {}) {
   setStatus('Loading tracking…');
 
   try {
-    const r = await fetch(`${API_BASE}/api/tracking`);
+    const r = await fetch(`${API_BASE}/api/tracking`, externalSignal ? { signal: externalSignal } : undefined);
     if (r.status === 401) {
       authState = { authenticated: false, user: null };
       updateAuthUI();
@@ -2943,6 +2944,9 @@ async function fetchFavorites(opts = {}) {
       }
     } catch {}
   } catch (e) {
+    if (e && (e.name === 'AbortError' || String(e.message || '').toLowerCase().includes('abort'))) {
+      return;
+    }
     console.error(e);
     setStatus('Failed to load tracking.');
   }

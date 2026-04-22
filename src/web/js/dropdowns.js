@@ -392,8 +392,11 @@ async function main() {
    */
   const AUTO_REFRESH_MS = 60 * 1000;      // baseline: 1 min while visible
   const WAKE_THROTTLE_MS = 15 * 1000;     // focus/visibility won't refresh more often than this
+  const REFRESH_TIMEOUT_MS = 25 * 1000;   // self-heal if a refresh hangs after sleep/network changes
+  const STUCK_INFLIGHT_MS = REFRESH_TIMEOUT_MS + 5 * 1000;
   let lastFetchAt = 0;
   let inFlight = null;
+  let inFlightStartedAt = 0;
 
   async function safeRefresh(reason, opts = {}) {
     const now = Date.now();
@@ -409,16 +412,36 @@ async function main() {
       return;
     }
 
+    // Recover from a stuck promise (e.g. laptop sleep / lost network / stalled request)
+    if (inFlight && inFlightStartedAt && (now - inFlightStartedAt) > STUCK_INFLIGHT_MS) {
+      console.warn('[refresh] clearing stuck refresh latch', { reason, ageMs: now - inFlightStartedAt });
+      inFlight = null;
+      inFlightStartedAt = 0;
+    }
+
     // Don't overlap network requests
     if (inFlight) return inFlight;
 
+    const controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    const timeoutId = controller ? window.setTimeout(() => {
+      try { controller.abort(); } catch (_) {}
+    }, REFRESH_TIMEOUT_MS) : null;
+
+    inFlightStartedAt = now;
     inFlight = (async () => {
       try {
-        if (isFeed) await fetchFeed(opts);
-        else await fetchFavorites(opts);
+        const runOpts = controller ? { ...opts, signal: controller.signal } : opts;
+        if (isFeed) await fetchFeed(runOpts);
+        else await fetchFavorites(runOpts);
         lastFetchAt = Date.now();
+      } catch (err) {
+        if (!(err && (err.name === 'AbortError' || String(err.message || '').toLowerCase().includes('abort')))) {
+          console.warn('[refresh] safeRefresh failed', { reason, err });
+        }
       } finally {
+        if (timeoutId) window.clearTimeout(timeoutId);
         inFlight = null;
+        inFlightStartedAt = 0;
       }
     })();
 

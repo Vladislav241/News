@@ -17,6 +17,7 @@
 const TRENDING_LIMIT = 8;
 const TRENDING_CACHE_MS = 5 * 60 * 1000; // 5 min
 const TRENDING_ICON_SRC = "/static/icons/new.svg";
+const TRENDING_ICON_FALLBACK = "🔥";
 
 let __trendingCache = { key: "", ts: 0, items: [] };
 
@@ -153,6 +154,16 @@ function __makeTrendChip(label, q){
   img.alt = "Trending";
   img.src = TRENDING_ICON_SRC;
   img.loading = "lazy";
+  img.onerror = () => {
+    try { img.remove(); } catch {}
+    if (!el.querySelector('.tagFlameFallback')) {
+      const fallback = document.createElement('span');
+      fallback.className = 'tagFlame tagFlameFallback';
+      fallback.setAttribute('aria-hidden', 'true');
+      fallback.textContent = TRENDING_ICON_FALLBACK;
+      el.appendChild(fallback);
+    }
+  };
   el.appendChild(img);
   return el;
 }
@@ -192,14 +203,29 @@ function __applyTopicQuery(q){
 
 const __trendingInflight = new Map();
 
+async function __fetchTrendingItems(interestsList){
+  const params = new URLSearchParams();
+  params.set("ui_lang", (state.language || "en"));
+  params.set("country", (state.country || "world"));
+  params.set("language", "all");
+  params.set("interests", (Array.isArray(interestsList) && interestsList.length ? interestsList : ["general"]).join(","));
+  params.set("limit", String(TRENDING_LIMIT));
+
+  const r = await fetch(`${API_BASE}/api/interests/trending?${params.toString()}`);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const data = await r.json();
+  return Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []);
+}
+
 async function loadTrendingInterests({ force } = { force: false }){
   const tagsEl = qs("tags");
   if (!tagsEl) return;
 
+  const effectiveInterests = (__getEffectiveInterestParams() || ["general"]);
   const key = [
     (state.country || "world").toLowerCase(),
     "all",
-    (__getEffectiveInterestParams() || ["general"]).slice().sort().join(","),
+    effectiveInterests.slice().sort().join(","),
     (state.language || "en").toLowerCase(), // ui lang
   ].join("|");
 
@@ -209,13 +235,6 @@ async function loadTrendingInterests({ force } = { force: false }){
     return;
   }
 
-  const params = new URLSearchParams();
-  params.set("ui_lang", (state.language || "en"));
-  params.set("country", (state.country || "world"));
-  params.set("language", "all");
-  params.set("interests", (__getEffectiveInterestParams() || ["general"]).join(","));
-  params.set("limit", String(TRENDING_LIMIT));
-
   if (__trendingInflight.has(key)) {
     const items = await __trendingInflight.get(key);
     renderTrendingChips(items);
@@ -223,10 +242,13 @@ async function loadTrendingInterests({ force } = { force: false }){
   }
 
   const request = (async () => {
-    const r = await fetch(`${API_BASE}/api/interests/trending?${params.toString()}`);
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const data = await r.json();
-    return Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []);
+    let items = await __fetchTrendingItems(effectiveInterests);
+    // When the current interest subset is too narrow, keep the UX stable by
+    // falling back to the broad feed universe instead of rendering no 🔥 chips.
+    if ((!Array.isArray(items) || items.length === 0) && !__isBroadInterestSelection(effectiveInterests)) {
+      items = await __fetchTrendingItems(['general']);
+    }
+    return Array.isArray(items) ? items : [];
   })();
 
   __trendingInflight.set(key, request);
