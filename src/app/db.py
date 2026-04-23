@@ -8,8 +8,9 @@ from functools import lru_cache
 from urllib.parse import urlparse
 
 import psycopg2
+from psycopg2 import IntegrityError, InterfaceError, OperationalError
+from psycopg2 import pool as pg_pool
 from psycopg2.extras import RealDictCursor
-from psycopg2 import IntegrityError
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
@@ -215,82 +216,161 @@ def _append_cluster_or_article_language(where: list[str], params: list[Any], lan
     params.extend(langs)
 
 class _PGCursor:
-    def __init__(self, cur) -> None:
+    def __init__(self, cur=None, *, conn=None, pool=None, rowcount: int = -1) -> None:
         self._cur = cur
+        self._conn = conn
+        self._pool = pool
+        self._rowcount = rowcount
 
     @property
     def rowcount(self) -> int:
-        return getattr(self._cur, "rowcount", -1)
+        if self._cur is not None:
+            return getattr(self._cur, "rowcount", self._rowcount)
+        return self._rowcount
 
-    def fetchone(self):
-        row = self._cur.fetchone()
+    def _close(self) -> None:
         try:
-            self._cur.close()
+            if self._cur is not None:
+                self._cur.close()
         except Exception:
             pass
+        finally:
+            self._cur = None
+        try:
+            if self._conn is not None and self._pool is not None:
+                self._conn.rollback()
+        except Exception:
+            pass
+        try:
+            if self._conn is not None and self._pool is not None:
+                self._pool.putconn(self._conn)
+        except Exception:
+            pass
+        finally:
+            self._conn = None
+
+    def fetchone(self):
+        if self._cur is None:
+            return None
+        row = self._cur.fetchone()
+        self._close()
         return row
 
     def fetchall(self):
+        if self._cur is None:
+            return []
         rows = self._cur.fetchall()
-        try:
-            self._cur.close()
-        except Exception:
-            pass
+        self._close()
         return rows
 
+
 class _PGConn:
-    def __init__(self, raw_conn, lock: threading.RLock):
-        self._raw = raw_conn
-        self._lock = lock
+    def __init__(self, db: "Database"):
+        self._db = db
+        self._tx_conn = None
 
     def __enter__(self):
+        if self._tx_conn is None:
+            self._tx_conn = self._db._borrow_conn(autocommit=False)
         return self
 
     def __exit__(self, exc_type, exc, tb):
-        with self._lock:
-            if getattr(self._raw, "closed", 1):
-                return False
+        conn = self._tx_conn
+        self._tx_conn = None
+        if conn is None:
+            return False
+        try:
             if exc_type is None:
-                self._raw.commit()
+                conn.commit()
             else:
-                self._raw.rollback()
+                conn.rollback()
+        finally:
+            self._db._return_conn(conn)
         return False
 
     def execute(self, sql, params=None):
-        cur = self._raw.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        try:
-            cur.execute(_adapt_sqlite_dialect(sql), params or ())
-            return cur
-        except Exception:
-            try:
-                self._raw.rollback()
-            except Exception:
-                pass
-            try:
-                cur.close()
-            except Exception:
-                pass
-            raise
+        sql_adapted = _adapt_sqlite_dialect(sql)
+        params = params or ()
 
+        if self._tx_conn is not None:
+            cur = self._tx_conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+            try:
+                cur.execute(sql_adapted, params)
+                return _PGCursor(cur, rowcount=getattr(cur, "rowcount", -1))
+            except Exception:
+                try:
+                    cur.close()
+                except Exception:
+                    pass
+                raise
 
+        last_exc = None
+        for attempt in range(2):
+            conn = self._db._borrow_conn(autocommit=True)
+            cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+            try:
+                cur.execute(sql_adapted, params)
+                if cur.description is None:
+                    rowcount = getattr(cur, "rowcount", -1)
+                    try:
+                        cur.close()
+                    except Exception:
+                        pass
+                    self._db._return_conn(conn)
+                    return _PGCursor(None, rowcount=rowcount)
+                return _PGCursor(cur, conn=conn, pool=self._db._pool, rowcount=getattr(cur, "rowcount", -1))
+            except (OperationalError, InterfaceError) as exc:
+                last_exc = exc
+                try:
+                    cur.close()
+                except Exception:
+                    pass
+                self._db._discard_conn(conn)
+                if attempt == 0:
+                    self._db._reset_pool()
+                    continue
+                raise
+            except Exception:
+                try:
+                    cur.close()
+                except Exception:
+                    pass
+                self._db._return_conn(conn)
+                raise
+        if last_exc:
+            raise last_exc
+        raise RuntimeError("database execute failed")
 
     def executemany(self, sql: str, seq_of_params):
-        with self._lock:
-            cur = self._raw.cursor()
-            cur.executemany(_adapt_sqlite_dialect(sql), seq_of_params)
+        sql_adapted = _adapt_sqlite_dialect(sql)
+        conn = self._tx_conn or self._db._borrow_conn(autocommit=(self._tx_conn is None))
+        own_conn = self._tx_conn is None
+        cur = conn.cursor()
+        try:
+            cur.executemany(sql_adapted, seq_of_params)
+            if own_conn:
+                self._db._return_conn(conn)
+        except (OperationalError, InterfaceError):
+            if own_conn:
+                self._db._discard_conn(conn)
+            raise
+        finally:
             try:
                 cur.close()
             except Exception:
                 pass
-            return cur
 
     def commit(self):
-        with self._lock:
-            self._raw.commit()
+        if self._tx_conn is not None:
+            self._tx_conn.commit()
+
+    def rollback(self):
+        if self._tx_conn is not None:
+            self._tx_conn.rollback()
 
     @property
     def closed(self):
-        return getattr(self._raw, "closed", 1)
+        return 0 if self._db._pool is not None else 1
 
 
 def _utc_now_iso() -> str:
@@ -305,9 +385,8 @@ def _utc_days_ago_iso(days: int) -> str:
 class Database:
     def __init__(self) -> None:
         self._lock = threading.RLock()
-        self._raw_conn = None   # <-- ДОДАЙ ОЦЕ
+        self._pool: Optional[pg_pool.ThreadedConnectionPool] = None
         self._conn: Optional[_PGConn] = None
-
 
     @property
     def conn(self) -> _PGConn:
@@ -328,19 +407,81 @@ class Database:
         )
 
 
-    def connect(self) -> _PGConn:
+    def _pool_dsn(self) -> str:
         dsn = (os.getenv("DATABASE_URL") or "").strip()
         if not dsn:
             raise RuntimeError(
                 "DATABASE_URL is not set. Configure PostgreSQL and set DATABASE_URL like "
                 "'postgresql://user:pass@host:5432/dbname'."
             )
-        with self._lock:
-            if self._raw_conn is None or getattr(self._raw_conn, "closed", 1):
-                self._raw_conn = psycopg2.connect(dsn)
-                self._raw_conn.autocommit = True
-                self._conn = _PGConn(self._raw_conn, self._lock)
+        return dsn
 
+    def _new_pool(self) -> pg_pool.ThreadedConnectionPool:
+        minconn = max(1, int(os.getenv("DB_POOL_MIN_CONN", "1") or 1))
+        maxconn = max(minconn + 1, int(os.getenv("DB_POOL_MAX_CONN", "12") or 12))
+        dsn = self._pool_dsn()
+        return pg_pool.ThreadedConnectionPool(
+            minconn=minconn,
+            maxconn=maxconn,
+            dsn=dsn,
+            connect_timeout=int(os.getenv("DB_CONNECT_TIMEOUT", "8") or 8),
+            application_name=os.getenv("DB_APPLICATION_NAME", "checkne-web"),
+            keepalives=1,
+            keepalives_idle=int(os.getenv("DB_KEEPALIVES_IDLE", "30") or 30),
+            keepalives_interval=int(os.getenv("DB_KEEPALIVES_INTERVAL", "10") or 10),
+            keepalives_count=int(os.getenv("DB_KEEPALIVES_COUNT", "5") or 5),
+        )
+
+    def _reset_pool(self) -> None:
+        with self._lock:
+            old = self._pool
+            self._pool = None
+            if old is not None:
+                try:
+                    old.closeall()
+                except Exception:
+                    pass
+            self._pool = self._new_pool()
+            self._conn = _PGConn(self)
+
+    def _borrow_conn(self, *, autocommit: bool) -> Any:
+        self.connect()
+        assert self._pool is not None
+        conn = self._pool.getconn()
+        conn.autocommit = bool(autocommit)
+        return conn
+
+    def _return_conn(self, conn: Any) -> None:
+        if conn is None:
+            return
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        if self._pool is not None:
+            self._pool.putconn(conn)
+        else:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    def _discard_conn(self, conn: Any) -> None:
+        if conn is None:
+            return
+        try:
+            if self._pool is not None:
+                self._pool.putconn(conn, close=True)
+            else:
+                conn.close()
+        except Exception:
+            pass
+
+    def connect(self) -> _PGConn:
+        with self._lock:
+            if self._pool is None:
+                self._pool = self._new_pool()
+                self._conn = _PGConn(self)
             return self._conn
 
 

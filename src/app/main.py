@@ -329,6 +329,10 @@ _auto_task: Optional[asyncio.Task] = None
 _notify_task: Optional[asyncio.Task] = None
 _fulltext_task: Optional[asyncio.Task] = None
 _ingest_lock = asyncio.Lock()
+_last_ingest_started_at: float | None = None
+_last_ingest_finished_at: float | None = None
+_last_ingest_error_at: float | None = None
+
 
 
 def _env_bool(name: str, default: bool = True) -> bool:
@@ -393,10 +397,14 @@ async def _auto_refresh_loop() -> None:
 
             scheduled_at = next_run_at
             started_at = time.monotonic()
+            global _last_ingest_started_at, _last_ingest_finished_at
+            _last_ingest_started_at = started_at
+            log.info("auto refresh cycle started")
             async with _ingest_lock:
                 db.ensure_schema()
                 await asyncio.to_thread(run_ingest_cycle)
             finished_at = time.monotonic()
+            _last_ingest_finished_at = finished_at
 
             # Keep a fixed cadence relative to the scheduled tick, not relative to
             # the moment the previous cycle finished. This prevents a 10-minute
@@ -411,6 +419,8 @@ async def _auto_refresh_loop() -> None:
         except asyncio.CancelledError:
             break
         except Exception:
+            global _last_ingest_error_at
+            _last_ingest_error_at = time.monotonic()
             log.exception("auto refresh failed")
             next_run_at = time.monotonic() + 10.0
             await asyncio.sleep(10.0)
@@ -443,15 +453,45 @@ async def _startup_autorefresh() -> None:
     if _notify_task is None:
         _notify_task = asyncio.create_task(notify_loop())
         log.info("notify loop started")
+    if getattr(app.state, "_watchdog_task", None) is None:
+        app.state._watchdog_task = asyncio.create_task(_background_watchdog_loop())
+        log.info("background watchdog started")
 
+
+
+
+async def _background_watchdog_loop() -> None:
+    await asyncio.sleep(15.0)
+    stall_warn_seconds = float(os.getenv("INGEST_STALL_WARN_SECONDS", "1800") or 1800)
+    while True:
+        try:
+            now = time.monotonic()
+            started = _last_ingest_started_at
+            finished = _last_ingest_finished_at
+            if started is not None:
+                in_progress_for = now - started
+                if finished is None or started > finished:
+                    if in_progress_for >= stall_warn_seconds:
+                        log.warning("auto refresh appears stalled in_progress_s=%.2f", in_progress_for)
+                else:
+                    idle_for = now - finished
+                    log.info("auto refresh heartbeat idle_s=%.2f", idle_for)
+            await asyncio.sleep(float(os.getenv("INGEST_WATCHDOG_TICK_SECONDS", "60") or 60))
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            log.exception("background watchdog failed")
+            await asyncio.sleep(30.0)
 
 @app.on_event("shutdown")
 async def _shutdown_autorefresh() -> None:
     global _auto_task, _fulltext_task, _notify_task
-    for name, task in (("auto refresh", _auto_task), ("fulltext", _fulltext_task), ("notify", _notify_task)):
+    watchdog_task = getattr(app.state, "_watchdog_task", None)
+    for name, task in (("auto refresh", _auto_task), ("fulltext", _fulltext_task), ("notify", _notify_task), ("background watchdog", watchdog_task)):
         if task is not None:
             task.cancel()
             app_log.info("%s loop stopped", name)
     _auto_task = None
     _fulltext_task = None
     _notify_task = None
+    app.state._watchdog_task = None

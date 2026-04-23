@@ -1324,8 +1324,8 @@ function createCardElement(item, ctx, seen, idx) {
   // "New" vs "Updated" is computed on the server so everyone sees the same label.
   const isNew = !!item.is_new;
   const metaTime = isNew
-    ? (item.created_at || item.updated_at || item.latest_published_at)
-    : (item.updated_at || item.latest_published_at || item.created_at);
+    ? (item.created_at || item.latest_published_at || item.updated_at)
+    : (item.latest_published_at || item.updated_at || item.created_at);
   const metaAge = formatRelativeTimeFromNow(metaTime);
   const firstSourceName = getFirstSourceName(item);
   const displayCountry = inferCountryDisplay(item);
