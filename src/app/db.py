@@ -2492,8 +2492,6 @@ class Database:
             if country and country != "world":
                 base_where.append("(c.country=? OR c.country='world')")
                 base_params.append(country)
-            # World feed must aggregate all countries. Restricting to c.country='world'
-            # hides fresh clusters classified as us/de/fr/gb on production datasets.
 
             rows = _fetch_query_rows(base_where, base_params, limit)
 
@@ -2547,15 +2545,40 @@ class Database:
             if _is_broad_interest_selection(interests_norm):
                 return rows
 
-            filtered: list[dict[str, Any]] = []
-            for r in rows:
+            def _matches_interest(r: dict[str, Any]) -> bool:
                 title_l = (r.get("title") or "").lower()
                 topic_l = (r.get("topic") or "").strip().lower()
                 inferred = _infer_topic_from_title(title_l) if (not topic_l or topic_l == "general") else topic_l
+                return any(i == inferred or i in title_l for i in interests_norm)
 
-                # Union semantics across selected interests.
-                if any(i == inferred or i in title_l for i in interests_norm):
-                    filtered.append(r)
+            filtered: list[dict[str, Any]] = [r for r in rows if _matches_interest(r)]
+
+            # Production DBs with many sources can have a very large volume of fresh
+            # `general` / non-matching rows ahead of the actually relevant business /
+            # technology / politics stories. The old logic fetched a single broad slice
+            # and filtered it afterwards, which made focused feeds look frozen on prod:
+            # ingest kept inserting fresh articles, but the matching rows were pushed
+            # beyond the first fetched window. Keep expanding the scan until we either
+            # collect enough matching rows or exhaust the recent slice budget.
+            target_count = max(1, min(500, int(limit or 120)))
+            scanned_rows = len(rows)
+            exclude_ids: list[int] = [int(r.get("id") or 0) for r in rows if int(r.get("id") or 0) > 0]
+            max_scan_rows = max(1800, min(5000, target_count * 20))
+
+            while len(filtered) < target_count and scanned_rows < max_scan_rows:
+                remaining_budget = max_scan_rows - scanned_rows
+                batch_limit = min(600, max(target_count * 3, 240), remaining_budget)
+                if batch_limit <= 0:
+                    break
+                extra_rows = _fetch_query_rows(base_where, base_params, batch_limit, exclude_ids=exclude_ids)
+                if not extra_rows:
+                    break
+                scanned_rows += len(extra_rows)
+                exclude_ids.extend(int(r.get("id") or 0) for r in extra_rows if int(r.get("id") or 0) > 0)
+                filtered.extend(r for r in extra_rows if _matches_interest(r))
+                if len(extra_rows) < batch_limit:
+                    break
+
             rows = filtered
 
         return rows
