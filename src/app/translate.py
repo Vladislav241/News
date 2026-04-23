@@ -338,6 +338,13 @@ async def translate_feed_items(items: List[Dict[str, Any]], ui_lang: str) -> Lis
     if not items:
         return items
 
+    # English UI is the dominant production path and does not benefit from
+    # machine translation in this feed pipeline. Keeping translation enabled for
+    # EN causes blocking external calls and repeated DeepL 456 quota responses
+    # that slow down every /api/news request.
+    if lang == "en":
+        return items
+
     # If DeepL is disabled (quota exceeded) -> fail-open.
     if not _deepl_is_enabled():
         return items

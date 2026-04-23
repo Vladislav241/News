@@ -1454,10 +1454,10 @@ def _parse_feed_with_requests(url: str, headers: dict[str, str]) -> tuple[feedpa
 
         sess = requests.Session()
         retry = Retry(
-            total=3,
-            connect=3,
-            read=3,
-            backoff_factor=0.5,
+            total=int(os.getenv("INGEST_FETCH_RETRIES", "1") or 1),
+            connect=int(os.getenv("INGEST_FETCH_RETRIES", "1") or 1),
+            read=int(os.getenv("INGEST_FETCH_RETRIES", "1") or 1),
+            backoff_factor=float(os.getenv("INGEST_FETCH_BACKOFF", "0.25") or 0.25),
             status_forcelist=(429, 500, 502, 503, 504),
             allowed_methods=("GET",),
             raise_on_status=False,
@@ -1475,10 +1475,13 @@ def _parse_feed_with_requests(url: str, headers: dict[str, str]) -> tuple[feedpa
 
     try:
         response = None
+        connect_timeout = float(os.getenv("INGEST_FEED_CONNECT_TIMEOUT", "4.0") or 4.0)
+        read_timeout = float(os.getenv("INGEST_FEED_READ_TIMEOUT", "6.0") or 6.0)
+        timeout = (connect_timeout, read_timeout)
         if sess is not None:
-            response = sess.get(u, headers=h, timeout=15, allow_redirects=True)
+            response = sess.get(u, headers=h, timeout=timeout, allow_redirects=True)
         else:
-            response = requests.get(u, headers=h, timeout=15, allow_redirects=True)
+            response = requests.get(u, headers=h, timeout=timeout, allow_redirects=True)
 
         fetch_meta['status_code'] = getattr(response, 'status_code', None)
         fetch_meta['content_type'] = (getattr(response, 'headers', {}) or {}).get('content-type')
@@ -1508,8 +1511,11 @@ def _parse_feed_with_requests(url: str, headers: dict[str, str]) -> tuple[feedpa
         except Exception:
             pass
 
-    # Last resort: let feedparser fetch it itself.
-    return feedparser.parse(u, request_headers=headers), fetch_meta
+    # Do not fall back to letting feedparser fetch the URL itself. That path uses
+    # urllib with weak observability and can hang a whole ingest cycle on broken
+    # publishers. Returning an empty parse here keeps the cycle moving and the
+    # next rotation can try the outlet again.
+    return feedparser.parse(b''), fetch_meta
 
 
 def _fetch_rss_feed(feed: dict[str, str], per_feed: int = 80) -> tuple[list[dict[str, Any]], dict[str, Any]]:

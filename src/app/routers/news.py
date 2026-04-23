@@ -2715,11 +2715,13 @@ def market_fx(base: str = "EUR", symbols: str = "USD,GBP,PLN,UAH"):
                 out[s] = rates[s]
         return out
 
+    stale_cached = _market_get_stale(cache_key, max_age=1800)
+
     # 1) exchangerate.host
     try:
         url = "https://api.exchangerate.host/latest"
         params = {"base": base_u, "symbols": ",".join(syms)}
-        r = requests.get(url, params=params, timeout=(2.5, 4.5))
+        r = requests.get(url, params=params, timeout=(1.8, 3.0))
         if not r.ok:
             raise RuntimeError(f"fx_http_{r.status_code}")
         j = r.json() or {}
@@ -2736,7 +2738,7 @@ def market_fx(base: str = "EUR", symbols: str = "USD,GBP,PLN,UAH"):
     # 2) Fallback provider: open.er-api.com
     try:
         url2 = f"https://open.er-api.com/v6/latest/{base_u}"
-        r2 = requests.get(url2, timeout=8)
+        r2 = requests.get(url2, timeout=(1.8, 3.0))
         if not r2.ok:
             raise RuntimeError(f"fx2_http_{r2.status_code}")
         j2 = r2.json() or {}
@@ -2752,6 +2754,8 @@ def market_fx(base: str = "EUR", symbols: str = "USD,GBP,PLN,UAH"):
         return out2
     except Exception as e:
         log_market.warning("fx proxy fallback failed: %s", e)
+        if stale_cached is not None:
+            return {**stale_cached, "stale": True}
         raise HTTPException(status_code=503, detail="fx_unavailable")
 
 
