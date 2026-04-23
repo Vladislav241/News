@@ -2440,10 +2440,10 @@ class Database:
                 LIMIT ?
             """
             requested_limit = max(1, min(500, int(row_limit)))
-            # On the production DB, cluster.updated_at can lag behind the freshest
-            # article merged into a cluster. Pulling a broader slice keeps the
-            # world feed fresh even when older clusters receive new source updates.
-            fetch_limit = min(1200, max(requested_limit * 5, 600))
+            # Production has a much larger / noisier cluster table than local.
+            # Pull a substantially wider candidate window so freshness and
+            # interest filtering do not get starved by stale cluster metadata.
+            fetch_limit = min(4000, max(requested_limit * 12, 1500))
             params.append(fetch_limit)
             return self._fetchall(sql, tuple(params))
 
@@ -2486,14 +2486,22 @@ class Database:
                 rows = _fetch_query_rows(fallback_where, fallback_params, limit)
         else:
             if language and language not in {"all", "*"}:
+                # World feed on production can contain legacy clusters whose
+                # cluster.language lags behind the underlying articles. Match on
+                # either layer so fresh English articles are not hidden just
+                # because the cluster row stayed broad/blank.
                 _append_cluster_or_article_language(base_where, base_params, [language])
 
-            # World feed should aggregate the freshest global stories across all
-            # countries. Restricting it to c.country='world' makes the feed look
-            # frozen on production once most fresh clusters are tagged as us/de/fr/gb.
-            if country and country not in {"world", "all", "*"}:
-                base_where.append("(LOWER(COALESCE(c.country, ''))=? OR LOWER(COALESCE(c.country, ''))='world')")
-                base_params.append(country)
+            if country:
+                # For the world feed, do not artificially restrict to rows that
+                # were stamped country='world'. Fresh clusters often carry a more
+                # specific country (us/de/fr/gb/iran/...) and still belong in the
+                # global newest feed.
+                if country == "world":
+                    pass
+                else:
+                    base_where.append("(c.country=? OR c.country='world')")
+                    base_params.append(country)
 
             rows = _fetch_query_rows(base_where, base_params, limit)
 
@@ -2547,43 +2555,15 @@ class Database:
             if _is_broad_interest_selection(interests_norm):
                 return rows
 
-            def _filter_rows(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
-                filtered_rows: list[dict[str, Any]] = []
-                for r in candidates:
-                    title_l = (r.get("title") or "").lower()
-                    topic_l = (r.get("topic") or "").strip().lower()
-                    inferred = _infer_topic_from_title(title_l) if (not topic_l or topic_l == "general") else topic_l
+            filtered: list[dict[str, Any]] = []
+            for r in rows:
+                title_l = (r.get("title") or "").lower()
+                topic_l = (r.get("topic") or "").strip().lower()
+                inferred = _infer_topic_from_title(title_l) if (not topic_l or topic_l == "general") else topic_l
 
-                    # Union semantics across selected interests.
-                    if any(i == inferred or i in title_l for i in interests_norm):
-                        filtered_rows.append(r)
-                return filtered_rows
-
-            filtered = _filter_rows(rows)
-
-            # On large production datasets a narrow interest selection can be much
-            # sparser than the latest raw cluster stream. Keep scanning older slices
-            # until we have enough matching rows instead of freezing the feed on an
-            # old visible window.
-            if len(filtered) < int(limit):
-                seen_ids = [int(r.get("id") or 0) for r in rows if int(r.get("id") or 0) > 0]
-                attempts = 0
-                while len(filtered) < int(limit) and attempts < 4:
-                    attempts += 1
-                    batch_rows = _fetch_query_rows(
-                        base_where,
-                        base_params,
-                        max(int(limit) * 4, 200),
-                        exclude_ids=seen_ids,
-                    )
-                    if not batch_rows:
-                        break
-                    new_ids = [int(r.get("id") or 0) for r in batch_rows if int(r.get("id") or 0) > 0]
-                    if not new_ids:
-                        break
-                    seen_ids.extend(new_ids)
-                    filtered.extend(_filter_rows(batch_rows))
-
+                # Union semantics across selected interests.
+                if any(i == inferred or i in title_l for i in interests_norm):
+                    filtered.append(r)
             rows = filtered
 
         return rows
