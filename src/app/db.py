@@ -2489,9 +2489,11 @@ class Database:
                 base_where.append("c.language=?")
                 base_params.append(language)
 
-            if country:
+            if country and country != "world":
                 base_where.append("(c.country=? OR c.country='world')")
                 base_params.append(country)
+            # World feed must aggregate all countries. Restricting to c.country='world'
+            # hides fresh clusters classified as us/de/fr/gb on production datasets.
 
             rows = _fetch_query_rows(base_where, base_params, limit)
 
