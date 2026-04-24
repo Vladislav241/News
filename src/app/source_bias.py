@@ -87,6 +87,20 @@ _BIAS_EQUIVALENTS: dict[str, str] = {
     "jpost.com": "jpost.com",
     "jerusalempost.com": "jpost.com",
     "euronews.com": "euronews.com",
+    "news.sky.com": "sky.com",
+    "feeds.skynews.com": "sky.com",
+    "skynews.com": "sky.com",
+    "axios.com": "axios.com",
+    "nypost.com": "nypost.com",
+    "npr.org": "npr.org",
+    "marketwatch.com": "marketwatch.com",
+    "hackernews.com": "hackernews.com",
+    "thehackernews.com": "hackernews.com",
+    "aljazeera.com": "aljazeera.com",
+    "aljazeera.net": "aljazeera.com",
+    "bloomberg.com": "bloomberg.com",
+    "thehill.com": "thehill.com",
+    "cnbc.com": "cnbc.com",
 }
 
 
@@ -127,10 +141,17 @@ def resolve_bias(domain: str, sample_titles: list[str] | None = None, allow_llm:
         return ("unknown", 0.0, "unknown")
 
     # 1) DB
+    # Important: do not let old "unknown" rows permanently poison the resolver.
+    # Earlier versions stored unknown when the LLM was disabled/timed out; if we
+    # return that immediately, newer shipped seed entries can never repair the
+    # widget and Media Bias keeps showing Unknown forever. Known labels are still
+    # trusted and returned fast. Unknown rows fall through to seed/LLM below.
     try:
         row = db.get_source_bias(d)
-        if row and row.get("bias") in ("left", "center", "right", "unknown"):
-            return (str(row.get("bias")), float(row.get("confidence") or 0.0), str(row.get("source") or "db"))
+        if row:
+            rbias = str(row.get("bias") or "").lower()
+            if rbias in ("left", "center", "right"):
+                return (rbias, float(row.get("confidence") or 0.0), str(row.get("source") or "db"))
     except Exception:
         pass
 

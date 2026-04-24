@@ -1,8 +1,13 @@
 {
-  "reuters.com": {
+  "abcnews.go.com": {
     "bias": "center",
-    "confidence": 0.9,
-    "source": "dataset"
+    "confidence": 0.76,
+    "source": "seed"
+  },
+  "aljazeera.com": {
+    "bias": "left",
+    "confidence": 0.68,
+    "source": "seed"
   },
   "apnews.com": {
     "bias": "center",
@@ -14,6 +19,11 @@
     "confidence": 0.9,
     "source": "dataset"
   },
+  "axios.com": {
+    "bias": "center",
+    "confidence": 0.78,
+    "source": "seed"
+  },
   "bbc.co.uk": {
     "bias": "center",
     "confidence": 0.7,
@@ -24,24 +34,29 @@
     "confidence": 0.7,
     "source": "dataset"
   },
+  "bloomberg.com": {
+    "bias": "center",
+    "confidence": 0.78,
+    "source": "seed"
+  },
+  "businessinsider.com": {
+    "bias": "left",
+    "confidence": 0.66,
+    "source": "seed"
+  },
+  "cbsnews.com": {
+    "bias": "center",
+    "confidence": 0.76,
+    "source": "seed"
+  },
+  "cnbc.com": {
+    "bias": "center",
+    "confidence": 0.76,
+    "source": "seed"
+  },
   "cnn.com": {
     "bias": "left",
     "confidence": 0.75,
-    "source": "dataset"
-  },
-  "msnbc.com": {
-    "bias": "left",
-    "confidence": 0.8,
-    "source": "dataset"
-  },
-  "theguardian.com": {
-    "bias": "left",
-    "confidence": 0.8,
-    "source": "dataset"
-  },
-  "foxnews.com": {
-    "bias": "right",
-    "confidence": 0.85,
     "source": "dataset"
   },
   "dailycaller.com": {
@@ -49,24 +64,204 @@
     "confidence": 0.75,
     "source": "dataset"
   },
-  "wsj.com": {
+  "dailymail.co.uk": {
+    "bias": "right",
+    "confidence": 0.76,
+    "source": "seed"
+  },
+  "dailymail.com": {
+    "bias": "right",
+    "confidence": 0.76,
+    "source": "seed"
+  },
+  "engadget.com": {
+    "bias": "center",
+    "confidence": 0.72,
+    "source": "seed"
+  },
+  "euronews.com": {
+    "bias": "center",
+    "confidence": 0.78,
+    "source": "seed"
+  },
+  "eveningstandard.co.uk": {
+    "bias": "center",
+    "confidence": 0.7,
+    "source": "seed"
+  },
+  "express.co.uk": {
+    "bias": "right",
+    "confidence": 0.78,
+    "source": "seed"
+  },
+  "financialtimes.com": {
+    "bias": "center",
+    "confidence": 0.82,
+    "source": "seed"
+  },
+  "forbes.com": {
+    "bias": "center",
+    "confidence": 0.7,
+    "source": "seed"
+  },
+  "fortune.com": {
+    "bias": "center",
+    "confidence": 0.72,
+    "source": "seed"
+  },
+  "foxnews.com": {
+    "bias": "right",
+    "confidence": 0.85,
+    "source": "dataset"
+  },
+  "france24.com": {
+    "bias": "center",
+    "confidence": 0.78,
+    "source": "seed"
+  },
+  "ft.com": {
+    "bias": "center",
+    "confidence": 0.82,
+    "source": "seed"
+  },
+  "hackernews.com": {
     "bias": "center",
     "confidence": 0.65,
+    "source": "seed"
+  },
+  "independent.co.uk": {
+    "bias": "left",
+    "confidence": 0.7,
+    "source": "seed"
+  },
+  "irishtimes.com": {
+    "bias": "center",
+    "confidence": 0.76,
+    "source": "seed"
+  },
+  "jerusalempost.com": {
+    "bias": "right",
+    "confidence": 0.68,
+    "source": "seed"
+  },
+  "jpost.com": {
+    "bias": "right",
+    "confidence": 0.68,
+    "source": "seed"
+  },
+  "marketwatch.com": {
+    "bias": "center",
+    "confidence": 0.74,
+    "source": "seed"
+  },
+  "mirror.co.uk": {
+    "bias": "left",
+    "confidence": 0.72,
+    "source": "seed"
+  },
+  "msnbc.com": {
+    "bias": "left",
+    "confidence": 0.8,
     "source": "dataset"
+  },
+  "nbcnews.com": {
+    "bias": "left",
+    "confidence": 0.7,
+    "source": "seed"
+  },
+  "news.sky.com": {
+    "bias": "center",
+    "confidence": 0.76,
+    "source": "seed"
+  },
+  "npr.org": {
+    "bias": "left",
+    "confidence": 0.7,
+    "source": "seed"
+  },
+  "nypost.com": {
+    "bias": "right",
+    "confidence": 0.82,
+    "source": "seed"
   },
   "nytimes.com": {
     "bias": "left",
     "confidence": 0.75,
     "source": "dataset"
   },
+  "politico.com": {
+    "bias": "center",
+    "confidence": 0.76,
+    "source": "seed"
+  },
+  "politico.eu": {
+    "bias": "center",
+    "confidence": 0.76,
+    "source": "seed"
+  },
+  "reuters.com": {
+    "bias": "center",
+    "confidence": 0.9,
+    "source": "dataset"
+  },
+  "sky.com": {
+    "bias": "center",
+    "confidence": 0.76,
+    "source": "seed"
+  },
+  "standard.co.uk": {
+    "bias": "center",
+    "confidence": 0.7,
+    "source": "seed"
+  },
+  "techcrunch.com": {
+    "bias": "center",
+    "confidence": 0.7,
+    "source": "seed"
+  },
+  "telegraph.co.uk": {
+    "bias": "right",
+    "confidence": 0.76,
+    "source": "seed"
+  },
+  "theepochtimes.com": {
+    "bias": "right",
+    "confidence": 0.75,
+    "source": "dataset"
+  },
+  "theguardian.com": {
+    "bias": "left",
+    "confidence": 0.8,
+    "source": "dataset"
+  },
+  "thehill.com": {
+    "bias": "center",
+    "confidence": 0.74,
+    "source": "seed"
+  },
+  "time.com": {
+    "bias": "left",
+    "confidence": 0.68,
+    "source": "seed"
+  },
+  "usatoday.com": {
+    "bias": "center",
+    "confidence": 0.74,
+    "source": "seed"
+  },
+  "washingtonexaminer.com": {
+    "bias": "right",
+    "confidence": 0.82,
+    "source": "seed"
+  },
   "washingtonpost.com": {
     "bias": "left",
     "confidence": 0.7,
     "source": "dataset"
   },
-  "theepochtimes.com": {
-    "bias": "right",
-    "confidence": 0.75,
+  "wsj.com": {
+    "bias": "center",
+    "confidence": 0.65,
     "source": "dataset"
   }
 }

@@ -56,9 +56,9 @@ def _memory_ttl_seconds() -> int:
 
 def _max_llm_domains_per_request() -> int:
     try:
-        return max(0, min(4, int(os.getenv("MEDIA_BIAS_MAX_LLM_DOMAINS_PER_REQUEST", "1") or 1)))
+        return max(0, min(8, int(os.getenv("MEDIA_BIAS_MAX_LLM_DOMAINS_PER_REQUEST", "4") or 4)))
     except Exception:
-        return 1
+        return 4
 
 
 def _get_lock(cache_key: str) -> threading.Lock:
@@ -160,8 +160,7 @@ def _enqueue_background_bias_enrichment(cluster_id: int, domain_titles: dict[str
             for domain in todo:
                 try:
                     titles = (domain_titles.get(domain) or [])[:6]
-                    bias, conf, src = resolve_bias(domain, sample_titles=titles, allow_llm=True)
-                    log.info("media-bias enriched %s => %s (%s)", domain, bias, src)
+                    resolve_bias(domain, sample_titles=titles, allow_llm=True)
                 except Exception:
                     log.exception("media-bias background enrichment failed for %s", domain)
         finally:
@@ -209,7 +208,12 @@ def media_bias_widget(cluster_id: int):
 
     cached = _load_cached_payload(cache_key)
     if isinstance(cached, dict):
-        return {"ok": True, "cluster_id": cid, "data": cached.get("data"), "reason": cached.get("reason")}
+        cached_data = cached.get("data")
+        # Do not let partial/negative widget payloads stay stale while background
+        # enrichment or a new shipped seed map can now classify more domains.
+        # Fully classified payloads are still served from cache.
+        if cached.get("reason") is None and isinstance(cached_data, dict) and not cached_data.get("is_partial"):
+            return {"ok": True, "cluster_id": cid, "data": cached_data, "reason": None}
 
     lock = _get_lock(cache_key)
     with lock:
@@ -246,7 +250,7 @@ def media_bias_widget(cluster_id: int):
 
         if len(outlet_rows) < 2:
             payload = {"data": None, "reason": "not_enough_sources"}
-            _store_payload(cache_key, cid, payload, ttl_seconds=_negative_ttl_seconds(), cluster_updated_at=str(updated_at))
+            _store_payload(cache_key, cid, payload, ttl_seconds=60, cluster_updated_at=str(updated_at))
             return {"ok": True, "cluster_id": cid, "data": None, "reason": "not_enough_sources"}
 
         domain_titles: dict[str, list[str]] = {}
@@ -285,7 +289,10 @@ def media_bias_widget(cluster_id: int):
             llm_used += 1
 
         if unresolved_domains:
-            _enqueue_background_bias_enrichment(cid, domain_titles, unresolved_domains)
+            # Enrich up to the configured budget in the background. The request path
+            # stays fast, but one unresolved source no longer blocks all the others.
+            background_budget = max(1, min(len(unresolved_domains), _max_llm_domains_per_request()))
+            _enqueue_background_bias_enrichment(cid, domain_titles, unresolved_domains[:background_budget])
 
         buckets: dict[str, dict[str, Any]] = {
             "left": {"count": 0, "sources": []},
@@ -316,12 +323,11 @@ def media_bias_widget(cluster_id: int):
 
         known_total = buckets["left"]["count"] + buckets["center"]["count"] + buckets["right"]["count"]
         total_unique = len(outlet_rows)
-        if known_total <= 0 and unresolved_domains:
-            # return partial data while enrichment runs instead of empty widget
-            pass
         if known_total <= 0:
             payload = {"data": None, "reason": "not_enough_bias_data"}
-            _store_payload(cache_key, cid, payload, ttl_seconds=_negative_ttl_seconds(), cluster_updated_at=str(updated_at))
+            # Keep negative cache very short so newly-seeded/resolved domains are
+            # visible almost immediately after deploy or background enrichment.
+            _store_payload(cache_key, cid, payload, ttl_seconds=60, cluster_updated_at=str(updated_at))
             return {"ok": True, "cluster_id": cid, "data": None, "reason": "not_enough_bias_data"}
 
         def pct(x: int) -> int:
@@ -368,6 +374,6 @@ def media_bias_widget(cluster_id: int):
         data["total_sources"] = total_unique
 
         payload = {"data": data, "reason": None}
-        ttl_override = _negative_ttl_seconds() if known_total < total_unique else None
+        ttl_override = 60 if known_total < total_unique else None
         _store_payload(cache_key, cid, payload, ttl_seconds=ttl_override, cluster_updated_at=str(updated_at))
         return {"ok": True, "cluster_id": cid, "data": data}
