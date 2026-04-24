@@ -160,7 +160,8 @@ def _enqueue_background_bias_enrichment(cluster_id: int, domain_titles: dict[str
             for domain in todo:
                 try:
                     titles = (domain_titles.get(domain) or [])[:6]
-                    resolve_bias(domain, sample_titles=titles, allow_llm=True)
+                    bias, conf, src = resolve_bias(domain, sample_titles=titles, allow_llm=True)
+                    log.info("media-bias enriched %s => %s (%s)", domain, bias, src)
                 except Exception:
                     log.exception("media-bias background enrichment failed for %s", domain)
         finally:
@@ -284,7 +285,7 @@ def media_bias_widget(cluster_id: int):
             llm_used += 1
 
         if unresolved_domains:
-            _enqueue_background_bias_enrichment(cid, domain_titles, unresolved_domains[:max(1, llm_budget)])
+            _enqueue_background_bias_enrichment(cid, domain_titles, unresolved_domains)
 
         buckets: dict[str, dict[str, Any]] = {
             "left": {"count": 0, "sources": []},
@@ -315,6 +316,9 @@ def media_bias_widget(cluster_id: int):
 
         known_total = buckets["left"]["count"] + buckets["center"]["count"] + buckets["right"]["count"]
         total_unique = len(outlet_rows)
+        if known_total <= 0 and unresolved_domains:
+            # return partial data while enrichment runs instead of empty widget
+            pass
         if known_total <= 0:
             payload = {"data": None, "reason": "not_enough_bias_data"}
             _store_payload(cache_key, cid, payload, ttl_seconds=_negative_ttl_seconds(), cluster_updated_at=str(updated_at))
