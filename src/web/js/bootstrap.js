@@ -1169,3 +1169,9 @@ try{
 
 // Initial sync
 try{ setTimeout(updateTrackingLimitBarUI, 0); }catch{}
+
+(function(){
+ const hide=()=>document.documentElement.classList.add("app-ready");
+ window.addEventListener("feed:first-render", hide, {once:true});
+ setTimeout(hide,2500);
+})();

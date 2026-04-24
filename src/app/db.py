@@ -2540,13 +2540,13 @@ class Database:
         base_where: list[str] = []
         base_params: list[Any] = []
 
-        latest_published_expr = """
-            (
-                SELECT MAX(COALESCE(a_latest.published_at, a_latest.inserted_at))
-                FROM cluster_articles ca_latest
-                JOIN articles a_latest ON a_latest.id = ca_latest.article_id
-                WHERE ca_latest.cluster_id = c.id
-            )
+        latest_join = """
+            LEFT JOIN (
+                SELECT ca.cluster_id, MAX(COALESCE(a.published_at,a.inserted_at)) AS latest_published_at
+                FROM cluster_articles ca
+                JOIN articles a ON a.id = ca.article_id
+                GROUP BY ca.cluster_id
+            ) lp ON lp.cluster_id = c.id
         """.strip()
 
         def _fetch_query_rows(extra_where: list[str], extra_params: list[Any], row_limit: int, exclude_ids: list[int] | None = None) -> list[dict[str, Any]]:
@@ -2557,14 +2557,14 @@ class Database:
                 where.append(f"c.id NOT IN ({placeholders})")
                 params.extend(exclude_ids)
             if since_iso:
-                where.append(f"COALESCE({latest_published_expr}, c.updated_at) >= ?")
+                where.append(f"COALESCE(lp.latest_published_at, c.updated_at) >= ?")
                 params.append(since_iso)
             if not where:
                 where.append("1=1")
             sql = f"""
                 SELECT
                     c.*,
-                    {latest_published_expr} AS latest_published_at,
+                    lp.latest_published_at AS latest_published_at,
                     s.credibility_score,
                     s.score_details_json,
                     s.computed_at as score_computed_at,
@@ -2574,10 +2574,11 @@ class Database:
                     sm.status as summary_status,
                     sm.model as summary_model
                 FROM clusters c
+                {latest_join}
                 LEFT JOIN article_scores s ON s.cluster_id=c.id
                 LEFT JOIN article_summaries sm ON sm.cluster_id=c.id
                 WHERE {" AND ".join(where)}
-                ORDER BY COALESCE({latest_published_expr}, c.updated_at) DESC, c.updated_at DESC, c.id DESC
+                ORDER BY COALESCE(lp.latest_published_at, c.updated_at) DESC, c.updated_at DESC, c.id DESC
                 LIMIT ?
             """
             requested_limit = max(1, min(500, int(row_limit)))
@@ -2639,7 +2640,7 @@ class Database:
                 # specific country (us/de/fr/gb/iran/...) and still belong in the
                 # global newest feed.
                 if country == "world":
-                    pass
+                    _append_cluster_or_article_language(base_where, base_params, ["en"])
                 else:
                     base_where.append("(c.country=? OR c.country='world')")
                     base_params.append(country)

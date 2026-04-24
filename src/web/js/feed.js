@@ -4515,3 +4515,8 @@ function __openWidgetFix() {
 function __closeWidgetFix() {
   document.body.classList.remove('widget-open');
 }
+
+(function(){
+ const orig=window.renderCards;
+ if(typeof orig==='function'){window.renderCards=function(){const r=orig.apply(this,arguments);try{window.dispatchEvent(new Event('feed:first-render'));}catch(e){} return r;}}
+})();
