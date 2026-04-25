@@ -111,6 +111,17 @@ function authScrollGuard(e) {
   try { e.preventDefault(); } catch (_) {}
 }
 
+function trackSignupConversion() {
+  try {
+    if (typeof window.gtag !== 'function') return;
+    window.gtag('event', 'conversion', {
+      send_to: 'AW-18103691184/mE7FCNGc06IcELDPwbhD',
+      value: 1.0,
+      currency: 'EUR',
+    });
+  } catch (_) {}
+}
+
 function _showAuthError(elId, msg, asHtml = false) {
   const el = document.getElementById(elId);
   if (!el) return;
@@ -514,6 +525,7 @@ function bindAuthModalUI() {
             body: JSON.stringify({ email, password }),
           });
           if (r.ok) {
+            trackSignupConversion();
             setAuthStep('email');
             const emailInput = document.getElementById('authEmail');
             if (emailInput) emailInput.value = email;
