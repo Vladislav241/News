@@ -1591,6 +1591,7 @@ class Database:
                 a.published_at,
                 a.description,
                 a.image_url,
+                a.raw_json,
                 a.inserted_at
             FROM cluster_articles ca
             JOIN articles a ON a.id = ca.article_id

@@ -12,7 +12,7 @@ from typing import Any, Optional
 from fastapi import APIRouter
 
 from ..db import db
-from ..source_bias import get_bias_seed_version, normalize_domain, resolve_bias
+from ..source_bias import domain_from_source_name, get_bias_seed_version, normalize_domain, resolve_bias
 
 router = APIRouter()
 log = logging.getLogger("news.widgets")
@@ -154,6 +154,35 @@ def _negative_ttl_seconds() -> int:
         return 600
 
 
+def _partial_ttl_seconds() -> int:
+    try:
+        return max(30, min(600, int(os.getenv("MEDIA_BIAS_PARTIAL_CACHE_SECONDS", "60") or 60)))
+    except Exception:
+        return 60
+
+
+def _raw_feed_domain(row: dict[str, Any]) -> str:
+    try:
+        raw = row.get("raw_json")
+        obj = json.loads(raw) if isinstance(raw, str) and raw.strip() else (raw if isinstance(raw, dict) else {})
+        feed = obj.get("feed") if isinstance(obj, dict) else None
+        if isinstance(feed, dict):
+            return normalize_domain(feed.get("url") or "")
+    except Exception:
+        return ""
+    return ""
+
+
+def _best_bias_domain(row: dict[str, Any]) -> str:
+    for candidate in (
+        domain_from_source_name(str(row.get("source_name") or "")),
+        _raw_feed_domain(row),
+        normalize_domain(str(row.get("source_key") or "")),
+        normalize_domain(str(row.get("url") or "")),
+    ):
+        if candidate:
+            return candidate
+    return ""
 
 
 def _enqueue_background_bias_enrichment(cluster_id: int, domain_titles: dict[str, list[str]], domains: list[str]) -> None:
@@ -232,18 +261,20 @@ def media_bias_widget(cluster_id: int):
         for s in sources:
             try:
                 url = (s.get("url") or "").strip()
-                domain = normalize_domain(url)
-                if not domain:
+                article_domain = normalize_domain(url)
+                source_name = (s.get("source_name") or article_domain or "unknown").strip()
+                bias_domain = _best_bias_domain(s)
+                if not bias_domain:
                     continue
-                source_name = (s.get("source_name") or domain).strip() or domain
-                outlet_key = (source_name.casefold(), domain)
+                outlet_key = (source_name.casefold(), bias_domain)
                 if outlet_key in seen_outlets:
                     continue
                 seen_outlets.add(outlet_key)
                 title = (s.get("title") or "").strip()
                 outlet_rows.append({
-                    "name": source_name,
-                    "domain": domain,
+                    "name": source_name or bias_domain,
+                    "domain": bias_domain,
+                    "article_domain": article_domain,
                     "titles": [title] if title else [],
                 })
             except Exception:
@@ -370,6 +401,6 @@ def media_bias_widget(cluster_id: int):
         data["total_sources"] = total_unique
 
         payload = {"data": data, "reason": None}
-        ttl_override = _negative_ttl_seconds() if known_total < total_unique else None
+        ttl_override = _partial_ttl_seconds() if known_total < total_unique else None
         _store_payload(cache_key, cid, payload, ttl_seconds=ttl_override, cluster_updated_at=str(updated_at))
         return {"ok": True, "cluster_id": cid, "data": data}

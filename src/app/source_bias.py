@@ -113,6 +113,46 @@ _BIAS_EQUIVALENTS: dict[str, str] = {
 
 
 
+
+_SOURCE_NAME_DOMAIN_ALIASES: dict[str, str] = {
+    "abc news": "abcnews.go.com", "abc": "abcnews.go.com", "pbs": "pbs.org", "pbs newshour": "pbs.org", "techmeme": "techmeme.com",
+    "bbc": "bbc.com", "bbc news": "bbc.com", "bbc world": "bbc.com", "cnn": "cnn.com", "cnn top stories": "cnn.com", "reuters": "reuters.com",
+    "associated press": "apnews.com", "ap": "apnews.com", "ap top news": "apnews.com", "npr": "npr.org", "npr news": "npr.org",
+    "the guardian": "theguardian.com", "guardian": "theguardian.com", "washington post": "washingtonpost.com", "nytimes": "nytimes.com", "new york times": "nytimes.com",
+    "bloomberg": "bloomberg.com", "cnbc": "cnbc.com", "politico": "politico.com", "politico europe": "politico.eu", "the hill": "thehill.com", "axios": "axios.com",
+    "al jazeera": "aljazeera.com", "aljazeera": "aljazeera.com", "euronews": "euronews.com", "sky news": "sky.com", "sky news uk": "sky.com",
+    "le monde": "lemonde.fr", "le monde france": "lemonde.fr", "le monde economie": "lemonde.fr", "le figaro": "lefigaro.fr", "le figaro economie": "lefigaro.fr", "le figaro politique": "lefigaro.fr",
+    "bfmtv": "bfmtv.com", "bfm tv": "bfmtv.com", "franceinfo": "franceinfo.fr", "france info": "franceinfo.fr", "france24": "france24.com", "france24 fr": "france24.com", "france24 en": "france24.com", "france 24": "france24.com",
+    "tagesschau": "tagesschau.de", "spiegel": "spiegel.de", "der spiegel": "spiegel.de", "zeit online": "zeit.de", "die zeit": "zeit.de", "sueddeutsche": "sueddeutsche.de", "süddeutsche": "sueddeutsche.de", "handelsblatt": "handelsblatt.com", "heise news": "heise.de", "dw": "dw.com", "dw english germany": "dw.com",
+    "independent uk": "independent.co.uk", "independent": "independent.co.uk",
+}
+
+_SOURCE_NAME_SUFFIX_RE = re.compile(r"\s+(world|top stories|top|news|u\.s\.|us|uk|business|markets|politics|technology|tech|france|economie|économie|politique|inland|wirtschaft|international)$", re.IGNORECASE)
+
+def normalize_source_name(name: str) -> str:
+    s = (name or "").strip().lower()
+    if not s:
+        return ""
+    s = s.replace("&", " and ")
+    s = re.sub(r"[^a-z0-9À-ÿ.]+", " ", s, flags=re.IGNORECASE).strip()
+    return re.sub(r"\s+", " ", s)
+
+def domain_from_source_name(name: str) -> str:
+    key = normalize_source_name(name)
+    if not key:
+        return ""
+    for cand in (key, key.replace(".", "")):
+        if cand in _SOURCE_NAME_DOMAIN_ALIASES:
+            return _canonical_bias_domain(_SOURCE_NAME_DOMAIN_ALIASES[cand])
+    trimmed = key
+    for _ in range(3):
+        trimmed2 = _SOURCE_NAME_SUFFIX_RE.sub("", trimmed).strip()
+        if trimmed2 == trimmed:
+            break
+        trimmed = trimmed2
+        if trimmed in _SOURCE_NAME_DOMAIN_ALIASES:
+            return _canonical_bias_domain(_SOURCE_NAME_DOMAIN_ALIASES[trimmed])
+    return ""
 def _canonical_bias_domain(domain: str) -> str:
     d = normalize_domain(domain)
     if not d:
@@ -133,6 +173,7 @@ def _canonical_bias_domain(domain: str) -> str:
 def get_bias_seed_version() -> str:
     try:
         items = sorted((str(k), str((v or {}).get("bias") or "")) for k, v in _SEED.items())
+        items.extend((f"alias:{k}", v) for k, v in sorted(_SOURCE_NAME_DOMAIN_ALIASES.items()))
         payload = json.dumps(items, ensure_ascii=False, separators=(",", ":"))
         return __import__("hashlib").sha1(payload.encode("utf-8")).hexdigest()[:12]
     except Exception:
@@ -156,11 +197,14 @@ def resolve_bias(domain: str, sample_titles: list[str] | None = None, allow_llm:
     # widget and Media Bias keeps showing Unknown forever. Known labels are still
     # trusted and returned fast. Unknown rows fall through to seed/LLM below.
     try:
-        row = db.get_source_bias(d)
-        if row:
-            rbias = str(row.get("bias") or "").lower()
-            if rbias in ("left", "center", "right"):
-                return (rbias, float(row.get("confidence") or 0.0), str(row.get("source") or "db"))
+        for lookup_domain in dict.fromkeys([d, original_d]):
+            if not lookup_domain:
+                continue
+            row = db.get_source_bias(lookup_domain)
+            if row:
+                rbias = str(row.get("bias") or "").lower()
+                if rbias in ("left", "center", "right"):
+                    return (rbias, float(row.get("confidence") or 0.0), str(row.get("source") or "db"))
     except Exception:
         pass
 
