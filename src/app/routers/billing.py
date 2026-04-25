@@ -356,6 +356,105 @@ def _paid_access_active(plan: Optional[str], status: Optional[str]) -> bool:
     return plan_v in ("pro", "analyst") and status_v in ("active", "trialing")
 
 
+def _stripe_error_message(exc: Exception) -> str:
+    try:
+        user_msg = getattr(exc, "user_message", None)
+        if user_msg:
+            return str(user_msg)
+    except Exception:
+        pass
+    return str(exc or "")
+
+
+def _is_missing_stripe_subscription_error(exc: Exception) -> bool:
+    msg = _stripe_error_message(exc).lower()
+    return "no such subscription" in msg or "resource_missing" in msg
+
+
+def _subscription_period_end_iso(subscription_obj) -> Optional[str]:
+    try:
+        value = subscription_obj.get("current_period_end") if isinstance(subscription_obj, dict) else getattr(subscription_obj, "current_period_end", None)
+        if value:
+            return datetime.fromtimestamp(int(value), tz=timezone.utc).replace(microsecond=0).isoformat()
+    except Exception:
+        pass
+    return None
+
+
+def _active_subscription_from_customer(stripe, customer_id: Optional[str]):
+    """Return the newest usable Stripe subscription for a customer, or None.
+
+    This heals local DB drift when the stored sub_ id is stale but the customer still has
+    a valid active/trialing subscription in Stripe. Canceled/deleted subscriptions are not
+    used for cancel/resume actions.
+    """
+    if not customer_id:
+        return None
+    try:
+        result = stripe.Subscription.list(
+            customer=customer_id,
+            status="all",
+            limit=20,
+            expand=["data.items.data.price.product"],
+        )
+    except Exception as exc:
+        logger.warning("Failed to list Stripe subscriptions for customer %s: %s", customer_id, exc)
+        return None
+
+    usable = []
+    for sub in (result.get("data") or []):
+        try:
+            status = str(sub.get("status") or "").lower()
+            if status in ("active", "trialing", "past_due", "unpaid"):
+                usable.append(sub)
+        except Exception:
+            continue
+    if not usable:
+        return None
+    usable.sort(key=lambda item: int(item.get("created") or item.get("current_period_start") or 0), reverse=True)
+    return usable[0]
+
+
+def _refresh_or_expire_missing_subscription(user_id: int, current: dict, *, action: str) -> Optional[dict]:
+    """Recover from stale local sub_ ids.
+
+    If Stripe says the stored subscription does not exist, Stripe is the source of truth:
+    first try to find another active subscription for the same customer, otherwise clear
+    the dead local subscription so the UI stops retrying the impossible action forever.
+    """
+    stripe = _stripe()
+    customer_id = str(current.get("stripe_customer_id") or "").strip() or None
+    replacement = _active_subscription_from_customer(stripe, customer_id)
+    if replacement:
+        logger.warning(
+            "Recovered stale Stripe subscription for user %s during %s: old=%s new=%s",
+            user_id,
+            action,
+            current.get("stripe_subscription_id"),
+            _stripe_id(replacement),
+        )
+        updated = _apply_subscription_state(
+            int(user_id),
+            customer_id=customer_id,
+            subscription_obj=replacement,
+            fallback_plan=(current.get("plan") if str(current.get("plan") or "").lower() in ("pro", "analyst") else None),
+            fallback_interval=(current.get("billing_interval") if str(current.get("billing_interval") or "").lower() in ("monthly", "yearly") else None),
+        )
+        return {**current, "stripe_subscription_id": _stripe_id(replacement), **updated}
+
+    logger.warning(
+        "Expiring stale local subscription for user %s during %s: missing Stripe subscription %s",
+        user_id,
+        action,
+        current.get("stripe_subscription_id"),
+    )
+    try:
+        db.expire_user_subscription_now(int(user_id), reason="stripe_missing")
+    except Exception:
+        logger.exception("Failed to expire stale local subscription for user %s", user_id)
+    return None
+
+
 def _normalize_billing_payload(sub: Optional[dict], *, preserve_recent_cancel: bool = True) -> dict:
     if not sub:
         return {
@@ -408,13 +507,18 @@ def _sync_user_subscription_from_stripe(user_id: int) -> Optional[dict]:
 
     stripe_subscription_id = str(current.get("stripe_subscription_id") or "").strip()
     stripe_customer_id = str(current.get("stripe_customer_id") or "").strip() or None
+
     if not stripe_subscription_id:
         return current
 
+    stripe = _stripe()
     try:
-        stripe = _stripe()
-        stripe_sub = stripe.Subscription.retrieve(stripe_subscription_id)
-    except Exception:
+        stripe_sub = stripe.Subscription.retrieve(stripe_subscription_id, expand=["items.data.price.product"])
+    except Exception as exc:
+        if _is_missing_stripe_subscription_error(exc):
+            recovered = _refresh_or_expire_missing_subscription(int(user_id), current, action="sync")
+            return recovered or db.get_user_subscription(int(user_id))
+        logger.warning("Stripe subscription sync failed for user %s / %s: %s", user_id, stripe_subscription_id, exc)
         return current
 
     current_plan = str(current.get("plan") or "").strip().lower()
@@ -432,7 +536,8 @@ def _sync_user_subscription_from_stripe(user_id: int) -> Optional[dict]:
         "status": updated.get("status") or current.get("status"),
         "billing_interval": updated.get("interval") or current.get("billing_interval"),
         "current_period_end": updated.get("current_period_end"),
-        "cancel_at_period_end": bool(getattr(stripe_sub, "cancel_at_period_end", False)),
+        "cancel_at_period_end": bool(stripe_sub.get("cancel_at_period_end") if isinstance(stripe_sub, dict) else getattr(stripe_sub, "cancel_at_period_end", False)),
+        "stripe_subscription_id": _stripe_id(stripe_sub),
     }
 
 
@@ -475,34 +580,52 @@ def cancel_at_period_end(user=Depends(require_user)):
         raise HTTPException(status_code=400, detail="No active subscription")
 
     stripe = _stripe()
+    sub_id = str(current.get("stripe_subscription_id") or "").strip()
     try:
         stripe_sub = stripe.Subscription.modify(
-            current["stripe_subscription_id"],
+            sub_id,
             cancel_at_period_end=True,
+            expand=["items.data.price.product"],
         )
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Stripe error: {e}")
+    except Exception as exc:
+        if _is_missing_stripe_subscription_error(exc):
+            recovered = _refresh_or_expire_missing_subscription(int(user["id"]), current, action="cancel")
+            if recovered and recovered.get("stripe_subscription_id") and recovered.get("stripe_subscription_id") != sub_id:
+                try:
+                    stripe_sub = stripe.Subscription.modify(
+                        recovered["stripe_subscription_id"],
+                        cancel_at_period_end=True,
+                        expand=["items.data.price.product"],
+                    )
+                    current = recovered
+                except Exception as retry_exc:
+                    raise HTTPException(status_code=400, detail=f"Stripe error: {_stripe_error_message(retry_exc)}")
+            else:
+                raise HTTPException(
+                    status_code=409,
+                    detail="This subscription no longer exists in Stripe. Your local billing state was refreshed; please start a new subscription if you want to continue.",
+                )
+        else:
+            raise HTTPException(status_code=400, detail=f"Stripe error: {_stripe_error_message(exc)}")
 
-    period_end_iso = None
-    if getattr(stripe_sub, "current_period_end", None):
-        period_end_iso = datetime.fromtimestamp(int(stripe_sub.current_period_end), tz=timezone.utc).isoformat()
+    period_end_iso = _subscription_period_end_iso(stripe_sub)
 
     db.set_user_subscription(
         int(user["id"]),
         plan=(current.get("plan") or "free"),
-        status=stripe_sub.status,
+        status=stripe_sub.get("status") if isinstance(stripe_sub, dict) else stripe_sub.status,
         billing_interval=(current.get("billing_interval") or "monthly"),
         stripe_customer_id=current.get("stripe_customer_id"),
-        stripe_subscription_id=current.get("stripe_subscription_id"),
+        stripe_subscription_id=_stripe_id(stripe_sub) or current.get("stripe_subscription_id"),
         current_period_end=period_end_iso,
-        cancel_at_period_end=bool(getattr(stripe_sub, "cancel_at_period_end", False)),
+        cancel_at_period_end=bool(stripe_sub.get("cancel_at_period_end") if isinstance(stripe_sub, dict) else getattr(stripe_sub, "cancel_at_period_end", False)),
     )
 
     return {
         "ok": True,
-        "status": stripe_sub.status,
+        "status": stripe_sub.get("status") if isinstance(stripe_sub, dict) else stripe_sub.status,
         "current_period_end": period_end_iso,
-        "cancel_at_period_end": bool(getattr(stripe_sub, "cancel_at_period_end", False)),
+        "cancel_at_period_end": bool(stripe_sub.get("cancel_at_period_end") if isinstance(stripe_sub, dict) else getattr(stripe_sub, "cancel_at_period_end", False)),
     }
 
 
@@ -513,34 +636,52 @@ def resume_subscription(user=Depends(require_user)):
         raise HTTPException(status_code=400, detail="No active subscription")
 
     stripe = _stripe()
+    sub_id = str(current.get("stripe_subscription_id") or "").strip()
     try:
         stripe_sub = stripe.Subscription.modify(
-            current["stripe_subscription_id"],
+            sub_id,
             cancel_at_period_end=False,
+            expand=["items.data.price.product"],
         )
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Stripe error: {e}")
+    except Exception as exc:
+        if _is_missing_stripe_subscription_error(exc):
+            recovered = _refresh_or_expire_missing_subscription(int(user["id"]), current, action="resume")
+            if recovered and recovered.get("stripe_subscription_id") and recovered.get("stripe_subscription_id") != sub_id:
+                try:
+                    stripe_sub = stripe.Subscription.modify(
+                        recovered["stripe_subscription_id"],
+                        cancel_at_period_end=False,
+                        expand=["items.data.price.product"],
+                    )
+                    current = recovered
+                except Exception as retry_exc:
+                    raise HTTPException(status_code=400, detail=f"Stripe error: {_stripe_error_message(retry_exc)}")
+            else:
+                raise HTTPException(
+                    status_code=409,
+                    detail="This subscription no longer exists in Stripe. Your local billing state was refreshed; please start a new subscription instead of resuming it.",
+                )
+        else:
+            raise HTTPException(status_code=400, detail=f"Stripe error: {_stripe_error_message(exc)}")
 
-    period_end_iso = None
-    if getattr(stripe_sub, "current_period_end", None):
-        period_end_iso = datetime.fromtimestamp(int(stripe_sub.current_period_end), tz=timezone.utc).isoformat()
+    period_end_iso = _subscription_period_end_iso(stripe_sub)
 
     db.set_user_subscription(
         int(user["id"]),
         plan=(current.get("plan") or "free"),
-        status=stripe_sub.status,
+        status=stripe_sub.get("status") if isinstance(stripe_sub, dict) else stripe_sub.status,
         billing_interval=(current.get("billing_interval") or "monthly"),
         stripe_customer_id=current.get("stripe_customer_id"),
-        stripe_subscription_id=current.get("stripe_subscription_id"),
+        stripe_subscription_id=_stripe_id(stripe_sub) or current.get("stripe_subscription_id"),
         current_period_end=period_end_iso,
-        cancel_at_period_end=bool(getattr(stripe_sub, "cancel_at_period_end", False)),
+        cancel_at_period_end=bool(stripe_sub.get("cancel_at_period_end") if isinstance(stripe_sub, dict) else getattr(stripe_sub, "cancel_at_period_end", False)),
     )
 
     return {
         "ok": True,
-        "status": stripe_sub.status,
+        "status": stripe_sub.get("status") if isinstance(stripe_sub, dict) else stripe_sub.status,
         "current_period_end": period_end_iso,
-        "cancel_at_period_end": bool(getattr(stripe_sub, "cancel_at_period_end", False)),
+        "cancel_at_period_end": bool(stripe_sub.get("cancel_at_period_end") if isinstance(stripe_sub, dict) else getattr(stripe_sub, "cancel_at_period_end", False)),
     }
 
 
@@ -552,7 +693,7 @@ def set_free(user=Depends(require_user)):
 
 @router.post("/api/billing/checkout")
 def create_checkout(payload: CheckoutIn, user=Depends(require_user)):
-    current = db.get_user_subscription(int(user["id"]))
+    current = _sync_user_subscription_from_stripe(int(user["id"]))
     if current:
         cur_plan = (current.get("plan") or "free").lower()
         cur_status = (current.get("status") or "active").lower()

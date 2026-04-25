@@ -1189,6 +1189,53 @@ class Database:
                 )
             conn.commit()
 
+
+    def expire_user_subscription_now(self, user_id: int, reason: str = "stripe_missing") -> None:
+        """Safely downgrade a user when Stripe confirms the stored subscription is gone.
+
+        This intentionally clears the stored subscription id. set_user_subscription() uses
+        COALESCE to preserve ids during normal updates, so cancellation/recovery paths need
+        an explicit hard-clear method to avoid reusing a dead sub_... forever.
+        """
+        conn = self.connect()
+        now = _utc_now_iso()
+        with self._lock:
+            conn.execute(
+                """
+                UPDATE user_subscriptions
+                SET plan = 'free',
+                    status = 'expired',
+                    billing_interval = 'monthly',
+                    stripe_subscription_id = NULL,
+                    current_period_end = COALESCE(current_period_end, ?),
+                    cancel_at_period_end = FALSE,
+                    previous_plan = CASE
+                        WHEN plan IN ('pro','analyst') THEN plan
+                        ELSE previous_plan
+                    END,
+                    ended_at = COALESCE(ended_at, ?),
+                    updated_at = ?
+                WHERE user_id = ?
+                """,
+                (now, now, now, int(user_id)),
+            )
+            conn.commit()
+
+    def clear_user_subscription_stripe_id(self, user_id: int) -> None:
+        """Clear only the stored Stripe subscription id after Stripe says it is invalid."""
+        conn = self.connect()
+        now = _utc_now_iso()
+        with self._lock:
+            conn.execute(
+                """
+                UPDATE user_subscriptions
+                SET stripe_subscription_id = NULL, updated_at = ?
+                WHERE user_id = ?
+                """,
+                (now, int(user_id)),
+            )
+            conn.commit()
+
     def set_user_stripe_customer_id(self, user_id: int, stripe_customer_id: str) -> None:
         conn = self.connect()
         with self._lock:
@@ -2540,13 +2587,13 @@ class Database:
         base_where: list[str] = []
         base_params: list[Any] = []
 
-        latest_join = """
-            LEFT JOIN (
-                SELECT ca.cluster_id, MAX(COALESCE(a.published_at,a.inserted_at)) AS latest_published_at
-                FROM cluster_articles ca
-                JOIN articles a ON a.id = ca.article_id
-                GROUP BY ca.cluster_id
-            ) lp ON lp.cluster_id = c.id
+        latest_published_expr = """
+            (
+                SELECT MAX(COALESCE(a_latest.published_at, a_latest.inserted_at))
+                FROM cluster_articles ca_latest
+                JOIN articles a_latest ON a_latest.id = ca_latest.article_id
+                WHERE ca_latest.cluster_id = c.id
+            )
         """.strip()
 
         def _fetch_query_rows(extra_where: list[str], extra_params: list[Any], row_limit: int, exclude_ids: list[int] | None = None) -> list[dict[str, Any]]:
@@ -2557,14 +2604,14 @@ class Database:
                 where.append(f"c.id NOT IN ({placeholders})")
                 params.extend(exclude_ids)
             if since_iso:
-                where.append(f"COALESCE(lp.latest_published_at, c.updated_at) >= ?")
+                where.append(f"COALESCE({latest_published_expr}, c.updated_at) >= ?")
                 params.append(since_iso)
             if not where:
                 where.append("1=1")
             sql = f"""
                 SELECT
                     c.*,
-                    lp.latest_published_at AS latest_published_at,
+                    {latest_published_expr} AS latest_published_at,
                     s.credibility_score,
                     s.score_details_json,
                     s.computed_at as score_computed_at,
@@ -2574,11 +2621,10 @@ class Database:
                     sm.status as summary_status,
                     sm.model as summary_model
                 FROM clusters c
-                {latest_join}
                 LEFT JOIN article_scores s ON s.cluster_id=c.id
                 LEFT JOIN article_summaries sm ON sm.cluster_id=c.id
                 WHERE {" AND ".join(where)}
-                ORDER BY COALESCE(lp.latest_published_at, c.updated_at) DESC, c.updated_at DESC, c.id DESC
+                ORDER BY COALESCE({latest_published_expr}, c.updated_at) DESC, c.updated_at DESC, c.id DESC
                 LIMIT ?
             """
             requested_limit = max(1, min(500, int(row_limit)))
@@ -2640,7 +2686,7 @@ class Database:
                 # specific country (us/de/fr/gb/iran/...) and still belong in the
                 # global newest feed.
                 if country == "world":
-                    _append_cluster_or_article_language(base_where, base_params, ["en"])
+                    pass
                 else:
                     base_where.append("(c.country=? OR c.country='world')")
                     base_params.append(country)

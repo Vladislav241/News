@@ -9,6 +9,21 @@
 // ----------------------------
 // Pricing / Billing UI
 // ----------------------------
+
+let __billingActionInFlight = false;
+let __lastBillingErrorToast = { message: "", at: 0 };
+
+function showBillingErrorOnce(message){
+  const msg = String(message || 'Billing action failed. Please try again.');
+  const now = Date.now();
+  if (__lastBillingErrorToast.message === msg && now - __lastBillingErrorToast.at < 8000) return;
+  __lastBillingErrorToast = { message: msg, at: now };
+  try {
+    if (typeof window.toast === 'function') window.toast(msg, 'error');
+    else if (typeof window.uiAlert === 'function') window.uiAlert(msg, { title: 'Subscription issue', meta: 'Billing' });
+  } catch {}
+}
+
 function bindPricingUI(){
   const pricingSection = document.getElementById('pricingSection');
   const profileSection = document.getElementById('profileSection');
@@ -1001,18 +1016,21 @@ function updateProfileUI(){
       btnResume.style.display = '';
       btnResume.disabled = false;
       btnResume.onclick = async ()=>{
+        if (__billingActionInFlight) return;
         try{
+          __billingActionInFlight = true;
           btnResume.disabled = true;
           const r = await fetch(`${API_BASE}/api/billing/resume`, { method:'POST', credentials:'same-origin' });
           const j = await r.json().catch(()=> ({}));
-          if(!r.ok) throw new Error(j?.detail || `HTTP ${r.status}`);
+          if(!r.ok){
+            await refreshBillingState().catch(()=>{});
+            throw new Error(j?.detail || `HTTP ${r.status}`);
+          }
           await refreshBillingState();
         }catch(e){
-          try{
-            if (typeof window.toast === 'function') window.toast(String(e?.message || e || pt('profile.failed_resume','Failed to resume subscription')), 'error');
-            else if (typeof window.uiAlert === 'function') await window.uiAlert(String(e?.message || e || pt('profile.failed_resume','Failed to resume subscription')), { title: pt('profile.subscription_error','Subscription issue'), meta: 'Billing' });
-          }catch{}
+          showBillingErrorOnce(String(e?.message || e || pt('profile.failed_resume','Failed to resume subscription')));
         }finally{
+          __billingActionInFlight = false;
           btnResume.disabled = false;
         }
       };
@@ -1038,18 +1056,21 @@ function updateProfileUI(){
             )
           : window.confirm(pt('profile.cancel_confirm_body','Cancel at period end? You will keep access until the end of the current billing period.'));
         if(!ok) return;
+        if (__billingActionInFlight) return;
         try{
+          __billingActionInFlight = true;
           btnCancel.disabled = true;
           const r = await fetch(`${API_BASE}/api/billing/cancel`, { method:'POST', credentials:'same-origin' });
           const j = await r.json().catch(()=> ({}));
-          if(!r.ok) throw new Error(j?.detail || `HTTP ${r.status}`);
+          if(!r.ok){
+            await refreshBillingState().catch(()=>{});
+            throw new Error(j?.detail || `HTTP ${r.status}`);
+          }
           await refreshBillingState();
         }catch(e){
-          try{
-            if (typeof window.toast === 'function') window.toast(String(e?.message || e || pt('profile.failed_cancel','Failed to cancel subscription')), 'error');
-            else if (typeof window.uiAlert === 'function') await window.uiAlert(String(e?.message || e || pt('profile.failed_cancel','Failed to cancel subscription')), { title: pt('profile.subscription_error','Subscription issue'), meta: 'Billing' });
-          }catch{}
+          showBillingErrorOnce(String(e?.message || e || pt('profile.failed_cancel','Failed to cancel subscription')));
         }finally{
+          __billingActionInFlight = false;
           btnCancel.disabled = false;
         }
       };
