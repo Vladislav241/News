@@ -38,18 +38,17 @@ def normalize_domain(url_or_domain: str) -> str:
     s = (url_or_domain or "").strip().lower()
     if not s:
         return ""
-    # If it's a URL, parse hostname
+    s = s.replace("\u200b", "").strip()
     try:
-        if "://" in s:
-            host = urlparse(s).hostname or ""
-        else:
-            host = s
+        parsed = urlparse(s if "://" in s else f"http://{s}")
+        host = parsed.hostname or s
     except Exception:
         host = s
-    host = host.strip().lower()
-    host = re.sub(r"^www\.", "", host)
+    host = host.strip().lower().strip(".")
+    host = host.split(":", 1)[0]
+    host = re.sub(r"^www\d*\.", "", host)
+    host = re.sub(r"^m\.", "", host)
     return host
-
 
 def _load_seed_map() -> dict[str, dict[str, Any]]:
     try:
@@ -101,6 +100,15 @@ _BIAS_EQUIVALENTS: dict[str, str] = {
     "bloomberg.com": "bloomberg.com",
     "thehill.com": "thehill.com",
     "cnbc.com": "cnbc.com",
+    "metro.co.uk": "metro.co.uk",
+    "belfasttelegraph.co.uk": "belfasttelegraph.co.uk",
+    "standard.co.uk": "standard.co.uk",
+    "eveningstandard.co.uk": "standard.co.uk",
+    "mirror.co.uk": "mirror.co.uk",
+    "dailymirror.co.uk": "mirror.co.uk",
+    "telegraph.co.uk": "telegraph.co.uk",
+    "express.co.uk": "express.co.uk",
+    "dailyexpress.co.uk": "express.co.uk",
 }
 
 
@@ -136,6 +144,7 @@ def resolve_bias(domain: str, sample_titles: list[str] | None = None, allow_llm:
     bias: left|center|right|unknown
     source: db|dataset|llm|unknown
     """
+    original_d = normalize_domain(domain)
     d = _canonical_bias_domain(domain)
     if not d:
         return ("unknown", 0.0, "unknown")
@@ -163,8 +172,10 @@ def resolve_bias(domain: str, sample_titles: list[str] | None = None, allow_llm:
         src = str(rec.get("source") or "dataset")
         try:
             db.upsert_source_bias(d, bias, conf, src)
+            if original_d and original_d != d:
+                db.upsert_source_bias(original_d, bias, conf, src)
         except Exception:
-            pass
+            logger.exception("Failed to store seeded media bias for %s", d)
         return (bias, conf, "dataset")
 
     # Also try a suffix match for common cases (e.g. edition.cnn.com -> cnn.com)
@@ -180,8 +191,10 @@ def resolve_bias(domain: str, sample_titles: list[str] | None = None, allow_llm:
                     src = str(rec.get("source") or "dataset")
                     try:
                         db.upsert_source_bias(d, bias, conf, src)
+                        if original_d and original_d != d:
+                            db.upsert_source_bias(original_d, bias, conf, src)
                     except Exception:
-                        pass
+                        logger.exception("Failed to store suffix media bias for %s via %s", d, cand)
                     return (bias, conf, "dataset")
     except Exception:
         pass
@@ -193,9 +206,16 @@ def resolve_bias(domain: str, sample_titles: list[str] | None = None, allow_llm:
 
     bias, conf = classify_with_llm(d, sample_titles=sample_titles or [])
     try:
-        db.upsert_source_bias(d, bias, conf, "llm" if bias != "unknown" else "unknown")
+        # Persist only useful classifications. Do not permanently store fresh
+        # unknown rows: API quota/timeouts would otherwise poison the widget and
+        # prevent future seed/LLM improvements from taking effect. Existing old
+        # unknown rows are already ignored above.
+        if bias in ("left", "center", "right"):
+            db.upsert_source_bias(d, bias, conf, "llm")
+            if original_d and original_d != d:
+                db.upsert_source_bias(original_d, bias, conf, "llm")
     except Exception:
-        pass
+        logger.exception("Failed to store LLM media bias for %s", d)
     return (bias, conf, "llm" if bias != "unknown" else "unknown")
 
 
