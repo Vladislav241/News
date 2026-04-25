@@ -63,6 +63,101 @@ def _load_seed_map() -> dict[str, dict[str, Any]]:
 
 _SEED = _load_seed_map()
 
+# Source names coming from RSS often are not domains ("Daily Mail", "Washington Examiner", etc.).
+# Resolve those stable names to canonical domains before hitting DB/seed/LLM.
+_SOURCE_NAME_ALIASES: dict[str, str] = {
+    "abc": "abcnews.go.com",
+    "abc news": "abcnews.go.com",
+    "axios": "axios.com",
+    "bfmtv": "bfmtv.com",
+    "bloomberg": "bloomberg.com",
+    "cnbc": "cnbc.com",
+    "daily mail": "dailymail.co.uk",
+    "deutsche welle": "dw.com",
+    "dw": "dw.com",
+    "franceinfo": "franceinfo.fr",
+    "france info": "franceinfo.fr",
+    "france 24": "france24.com",
+    "jerusalem post": "jpost.com",
+    "le figaro": "lefigaro.fr",
+    "le monde": "lemonde.fr",
+    "npr": "npr.org",
+    "pbs": "pbs.org",
+    "pbs news": "pbs.org",
+    "pbs newshour": "pbs.org",
+    "politico": "politico.com",
+    "sky news": "sky.com",
+    "techmeme": "techmeme.com",
+    "the guardian": "theguardian.com",
+    "the hill": "thehill.com",
+    "the washington examiner": "washingtonexaminer.com",
+    "washington examiner": "washingtonexaminer.com",
+}
+
+_GENERIC_SOURCE_NAMES = {
+    "news", "google news", "rss", "world", "general", "business", "technology",
+    "science", "sports", "health", "politics", "unknown", "source"
+}
+
+
+def normalize_source_name(name: str) -> str:
+    s = (name or "").strip().lower()
+    if not s:
+        return ""
+    s = s.replace("&amp;", "&")
+    s = re.sub(r"\s+", " ", s)
+    s = re.sub(r"\s*[-|:].*$", "", s).strip()
+    return s
+
+
+def domain_from_source_name(name: str) -> str:
+    key = normalize_source_name(name)
+    if not key or key in _GENERIC_SOURCE_NAMES:
+        return ""
+    if key in _SOURCE_NAME_ALIASES:
+        return _SOURCE_NAME_ALIASES[key]
+    # Some feeds put a host-like value in source_name/source_key.
+    if "." in key and " " not in key:
+        return normalize_domain(key)
+    return ""
+
+
+def best_bias_domain(*, url: str = "", source_name: str = "", source_key: str = "", raw_json: Any = None) -> str:
+    """Return the most stable domain for media-bias classification.
+
+    Priority matters: source_name aliases are usually more reliable than article URLs
+    from syndication/proxy pages. Then RSS feed URL from raw_json, then source_key,
+    then final article URL.
+    """
+    for candidate in (
+        domain_from_source_name(source_name),
+        _extract_feed_domain(raw_json),
+        domain_from_source_name(source_key),
+        normalize_domain(source_key),
+        normalize_domain(url),
+    ):
+        d = normalize_domain(candidate)
+        if d:
+            return _canonical_bias_domain(d)
+    return ""
+
+
+def _extract_feed_domain(raw_json: Any) -> str:
+    try:
+        if isinstance(raw_json, str) and raw_json.strip():
+            raw_json = json.loads(raw_json)
+        if not isinstance(raw_json, dict):
+            return ""
+        for key in ("feed_url", "rss_url", "source_url", "source_feed", "feed", "link"):
+            val = raw_json.get(key)
+            if isinstance(val, str) and val.strip():
+                d = normalize_domain(val)
+                if d:
+                    return d
+    except Exception:
+        return ""
+    return ""
+
 
 _BIAS_EQUIVALENTS: dict[str, str] = {
     "bbc.co.uk": "bbc.com",
@@ -82,6 +177,18 @@ _BIAS_EQUIVALENTS: dict[str, str] = {
     "politico.eu": "politico.eu",
     "politico.com": "politico.com",
     "washingtonexaminer.com": "washingtonexaminer.com",
+    "daily_mail": "dailymail.co.uk",
+    "jerusalem_post": "jpost.com",
+    "washington_examiner": "washingtonexaminer.com",
+    "abcnews.go.com": "abcnews.go.com",
+    "abcnews.com": "abcnews.go.com",
+    "pbs.org": "pbs.org",
+    "newshour.pbs.org": "pbs.org",
+    "lemonde.fr": "lemonde.fr",
+    "lefigaro.fr": "lefigaro.fr",
+    "bfmtv.com": "bfmtv.com",
+    "franceinfo.fr": "franceinfo.fr",
+    "techmeme.com": "techmeme.com",
     "independent.co.uk": "independent.co.uk",
     "jpost.com": "jpost.com",
     "jerusalempost.com": "jpost.com",
@@ -113,46 +220,6 @@ _BIAS_EQUIVALENTS: dict[str, str] = {
 
 
 
-
-_SOURCE_NAME_DOMAIN_ALIASES: dict[str, str] = {
-    "abc news": "abcnews.go.com", "abc": "abcnews.go.com", "pbs": "pbs.org", "pbs newshour": "pbs.org", "techmeme": "techmeme.com",
-    "bbc": "bbc.com", "bbc news": "bbc.com", "bbc world": "bbc.com", "cnn": "cnn.com", "cnn top stories": "cnn.com", "reuters": "reuters.com",
-    "associated press": "apnews.com", "ap": "apnews.com", "ap top news": "apnews.com", "npr": "npr.org", "npr news": "npr.org",
-    "the guardian": "theguardian.com", "guardian": "theguardian.com", "washington post": "washingtonpost.com", "nytimes": "nytimes.com", "new york times": "nytimes.com",
-    "bloomberg": "bloomberg.com", "cnbc": "cnbc.com", "politico": "politico.com", "politico europe": "politico.eu", "the hill": "thehill.com", "axios": "axios.com",
-    "al jazeera": "aljazeera.com", "aljazeera": "aljazeera.com", "euronews": "euronews.com", "sky news": "sky.com", "sky news uk": "sky.com",
-    "le monde": "lemonde.fr", "le monde france": "lemonde.fr", "le monde economie": "lemonde.fr", "le figaro": "lefigaro.fr", "le figaro economie": "lefigaro.fr", "le figaro politique": "lefigaro.fr",
-    "bfmtv": "bfmtv.com", "bfm tv": "bfmtv.com", "franceinfo": "franceinfo.fr", "france info": "franceinfo.fr", "france24": "france24.com", "france24 fr": "france24.com", "france24 en": "france24.com", "france 24": "france24.com",
-    "tagesschau": "tagesschau.de", "spiegel": "spiegel.de", "der spiegel": "spiegel.de", "zeit online": "zeit.de", "die zeit": "zeit.de", "sueddeutsche": "sueddeutsche.de", "süddeutsche": "sueddeutsche.de", "handelsblatt": "handelsblatt.com", "heise news": "heise.de", "dw": "dw.com", "dw english germany": "dw.com",
-    "independent uk": "independent.co.uk", "independent": "independent.co.uk",
-}
-
-_SOURCE_NAME_SUFFIX_RE = re.compile(r"\s+(world|top stories|top|news|u\.s\.|us|uk|business|markets|politics|technology|tech|france|economie|économie|politique|inland|wirtschaft|international)$", re.IGNORECASE)
-
-def normalize_source_name(name: str) -> str:
-    s = (name or "").strip().lower()
-    if not s:
-        return ""
-    s = s.replace("&", " and ")
-    s = re.sub(r"[^a-z0-9À-ÿ.]+", " ", s, flags=re.IGNORECASE).strip()
-    return re.sub(r"\s+", " ", s)
-
-def domain_from_source_name(name: str) -> str:
-    key = normalize_source_name(name)
-    if not key:
-        return ""
-    for cand in (key, key.replace(".", "")):
-        if cand in _SOURCE_NAME_DOMAIN_ALIASES:
-            return _canonical_bias_domain(_SOURCE_NAME_DOMAIN_ALIASES[cand])
-    trimmed = key
-    for _ in range(3):
-        trimmed2 = _SOURCE_NAME_SUFFIX_RE.sub("", trimmed).strip()
-        if trimmed2 == trimmed:
-            break
-        trimmed = trimmed2
-        if trimmed in _SOURCE_NAME_DOMAIN_ALIASES:
-            return _canonical_bias_domain(_SOURCE_NAME_DOMAIN_ALIASES[trimmed])
-    return ""
 def _canonical_bias_domain(domain: str) -> str:
     d = normalize_domain(domain)
     if not d:
@@ -172,8 +239,11 @@ def _canonical_bias_domain(domain: str) -> str:
 
 def get_bias_seed_version() -> str:
     try:
-        items = sorted((str(k), str((v or {}).get("bias") or "")) for k, v in _SEED.items())
-        items.extend((f"alias:{k}", v) for k, v in sorted(_SOURCE_NAME_DOMAIN_ALIASES.items()))
+        items = {
+            "seed": sorted((str(k), str((v or {}).get("bias") or "")) for k, v in _SEED.items()),
+            "aliases": sorted((str(k), str(v)) for k, v in _SOURCE_NAME_ALIASES.items()),
+            "resolver": "llm-batch-v2",
+        }
         payload = json.dumps(items, ensure_ascii=False, separators=(",", ":"))
         return __import__("hashlib").sha1(payload.encode("utf-8")).hexdigest()[:12]
     except Exception:
@@ -197,14 +267,11 @@ def resolve_bias(domain: str, sample_titles: list[str] | None = None, allow_llm:
     # widget and Media Bias keeps showing Unknown forever. Known labels are still
     # trusted and returned fast. Unknown rows fall through to seed/LLM below.
     try:
-        for lookup_domain in dict.fromkeys([d, original_d]):
-            if not lookup_domain:
-                continue
-            row = db.get_source_bias(lookup_domain)
-            if row:
-                rbias = str(row.get("bias") or "").lower()
-                if rbias in ("left", "center", "right"):
-                    return (rbias, float(row.get("confidence") or 0.0), str(row.get("source") or "db"))
+        row = db.get_source_bias(d)
+        if row:
+            rbias = str(row.get("bias") or "").lower()
+            if rbias in ("left", "center", "right"):
+                return (rbias, float(row.get("confidence") or 0.0), str(row.get("source") or "db"))
     except Exception:
         pass
 
@@ -263,48 +330,126 @@ def resolve_bias(domain: str, sample_titles: list[str] | None = None, allow_llm:
     return (bias, conf, "llm" if bias != "unknown" else "unknown")
 
 
+def _bias_model_name() -> str:
+    return (os.getenv("OPENAI_BIAS_MODEL") or os.getenv("OPENAI_CLUSTER_MATCH_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-4.1-nano").strip()
+
+
+def _extract_json_object(text: str) -> Any:
+    txt = (text or "").strip()
+    if not txt:
+        raise ValueError("empty LLM response")
+    if txt.startswith("{") or txt.startswith("["):
+        return json.loads(txt)
+    m = re.search(r"(\{[\s\S]*\}|\[[\s\S]*\])", txt)
+    if not m:
+        raise ValueError("no JSON in LLM response")
+    return json.loads(m.group(1))
+
+
+def _coerce_bias_result(obj: Any) -> tuple[str, float]:
+    if not isinstance(obj, dict):
+        return ("unknown", 0.0)
+    bias = str(obj.get("bias") or "unknown").strip().lower()
+    if bias not in ("left", "center", "right", "unknown"):
+        bias = "unknown"
+    try:
+        conf = float(obj.get("confidence") or 0.0)
+    except Exception:
+        conf = 0.0
+    conf = max(0.0, min(1.0, conf))
+    # Honesty guard: do not persist a forced vector as fact when the model itself is unsure.
+    if bias in ("left", "center", "right") and conf < 0.35:
+        return ("unknown", conf)
+    return (bias, conf)
+
+
 def classify_with_llm(domain: str, sample_titles: list[str]) -> tuple[str, float]:
+    result = classify_many_with_llm({domain: sample_titles or []})
+    return result.get(normalize_domain(domain), ("unknown", 0.0))
+
+
+def classify_many_with_llm(domain_titles: dict[str, list[str]]) -> dict[str, tuple[str, float]]:
+    """Classify many unknown outlets in one cheap deterministic API call.
+
+    This is the production-safe path: each unresolved domain costs at most one batch
+    classification call, then the result is persisted in source_bias forever and the
+    widget reads from DB/seed on later requests.
+    """
     api_key = (os.getenv("OPENAI_API_KEY") or "").strip()
     if not api_key or not _llm_enabled():
-        return ("unknown", 0.0)
+        return {}
 
-    # Import lazily so dev runs without the package don't crash.
+    clean: dict[str, list[str]] = {}
+    for domain, titles in (domain_titles or {}).items():
+        d = _canonical_bias_domain(domain)
+        if not d or d in clean:
+            continue
+        clean[d] = [str(t).strip()[:180] for t in (titles or []) if str(t).strip()][:5]
+    if not clean:
+        return {}
+
     from openai import OpenAI
 
-    # Keep the prompt short and deterministic to reduce tokens/cost.
-    # We do NOT browse; we classify using domain + a few recent headlines from our own corpus.
-    headlines = [t.strip() for t in (sample_titles or []) if (t or "").strip()][:6]
-    bullets = "\n".join([f"- {h[:180]}" for h in headlines]) if headlines else "- (no headlines available)"
+    outlets = []
+    for d, titles in clean.items():
+        outlets.append({"domain": d, "headlines": titles})
 
     prompt = (
-        "Classify the political media bias of the news outlet by domain.\n"
-        "Allowed labels: left, center, right, unknown.\n"
-        "Return ONLY JSON with keys: bias, confidence.\n"
-        "confidence must be a number 0..1.\n\n"
-        f"Domain: {domain}\n"
-        "Recent headlines from this outlet (may be incomplete):\n"
-        f"{bullets}\n"
+        "Classify political/editorial media bias for each news outlet.\n"
+        "Use the outlet's known editorial reputation and the provided recent headlines only as supporting context.\n"
+        "Allowed bias labels: left, center, right, unknown.\n"
+        "Be honest: use unknown only when the outlet is not a real news outlet, is too obscure, or evidence is insufficient.\n"
+        "For mainstream established outlets, choose the best vector with confidence.\n"
+        "Return ONLY JSON: {\"results\":[{\"domain\":\"...\",\"bias\":\"left|center|right|unknown\",\"confidence\":0.0-1.0}]}\n\n"
+        f"Outlets: {json.dumps(outlets, ensure_ascii=False)}"
     )
 
     try:
         client = OpenAI(api_key=api_key, timeout=_llm_timeout_seconds())
         resp = client.chat.completions.create(
-            model=(os.getenv("OPENAI_BIAS_MODEL") or os.getenv("OPENAI_CLUSTER_MATCH_MODEL") or "gpt-4.1-nano"),
+            model=_bias_model_name(),
             messages=[
-                {"role": "system", "content": "You are a careful media bias classifier. If unsure, answer unknown with low confidence."},
+                {"role": "system", "content": "You are a careful, non-partisan media bias classifier. Return strict JSON only. Never invent domains."},
                 {"role": "user", "content": prompt},
             ],
             temperature=0,
-            max_tokens=80,
+            max_tokens=max(180, min(1400, 90 * len(clean))),
         )
         txt = (resp.choices[0].message.content or "").strip()
-        obj = json.loads(txt) if txt.startswith("{") else json.loads(re.search(r"\{[\s\S]*\}", txt).group(0))
-        bias = str(obj.get("bias") or "unknown").strip().lower()
-        if bias not in ("left", "center", "right", "unknown"):
-            bias = "unknown"
-        conf = float(obj.get("confidence") or 0.0)
-        conf = max(0.0, min(1.0, conf))
-        return (bias, conf)
+        obj = _extract_json_object(txt)
+        rows = obj.get("results") if isinstance(obj, dict) else obj
+        out: dict[str, tuple[str, float]] = {}
+        if isinstance(rows, list):
+            for item in rows:
+                if not isinstance(item, dict):
+                    continue
+                d = _canonical_bias_domain(str(item.get("domain") or ""))
+                if d not in clean:
+                    continue
+                bias, conf = _coerce_bias_result(item)
+                out[d] = (bias, conf)
+        return out
     except Exception:
-        logger.exception("LLM bias classification failed for %s", domain)
-        return ("unknown", 0.0)
+        logger.warning("LLM batch media-bias classification failed for %d domains", len(clean), exc_info=True)
+        return {}
+
+
+def persist_llm_bias_results(results: dict[str, tuple[str, float]], aliases: dict[str, str] | None = None) -> int:
+    saved = 0
+    aliases = aliases or {}
+    for domain, pair in (results or {}).items():
+        d = _canonical_bias_domain(domain)
+        bias, conf = pair
+        if bias not in ("left", "center", "right"):
+            continue
+        try:
+            db.upsert_source_bias(d, bias, float(conf), "llm")
+            saved += 1
+            for alias, canonical in aliases.items():
+                if _canonical_bias_domain(canonical) == d:
+                    a = normalize_domain(alias)
+                    if a and a != d:
+                        db.upsert_source_bias(a, bias, float(conf), "llm")
+        except Exception:
+            logger.exception("Failed to persist LLM media bias for %s", d)
+    return saved

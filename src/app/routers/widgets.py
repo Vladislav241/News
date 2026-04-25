@@ -12,7 +12,14 @@ from typing import Any, Optional
 from fastapi import APIRouter
 
 from ..db import db
-from ..source_bias import domain_from_source_name, get_bias_seed_version, normalize_domain, resolve_bias
+from ..source_bias import (
+    best_bias_domain,
+    classify_many_with_llm,
+    get_bias_seed_version,
+    normalize_domain,
+    persist_llm_bias_results,
+    resolve_bias,
+)
 
 router = APIRouter()
 log = logging.getLogger("news.widgets")
@@ -56,7 +63,7 @@ def _memory_ttl_seconds() -> int:
 
 def _max_llm_domains_per_request() -> int:
     try:
-        return max(0, min(8, int(os.getenv("MEDIA_BIAS_MAX_LLM_DOMAINS_PER_REQUEST", "3") or 3)))
+        return max(0, min(30, int(os.getenv("MEDIA_BIAS_MAX_LLM_DOMAINS_PER_REQUEST", "12") or 12)))
     except Exception:
         return 3
 
@@ -154,35 +161,6 @@ def _negative_ttl_seconds() -> int:
         return 600
 
 
-def _partial_ttl_seconds() -> int:
-    try:
-        return max(30, min(600, int(os.getenv("MEDIA_BIAS_PARTIAL_CACHE_SECONDS", "60") or 60)))
-    except Exception:
-        return 60
-
-
-def _raw_feed_domain(row: dict[str, Any]) -> str:
-    try:
-        raw = row.get("raw_json")
-        obj = json.loads(raw) if isinstance(raw, str) and raw.strip() else (raw if isinstance(raw, dict) else {})
-        feed = obj.get("feed") if isinstance(obj, dict) else None
-        if isinstance(feed, dict):
-            return normalize_domain(feed.get("url") or "")
-    except Exception:
-        return ""
-    return ""
-
-
-def _best_bias_domain(row: dict[str, Any]) -> str:
-    for candidate in (
-        domain_from_source_name(str(row.get("source_name") or "")),
-        _raw_feed_domain(row),
-        normalize_domain(str(row.get("source_key") or "")),
-        normalize_domain(str(row.get("url") or "")),
-    ):
-        if candidate:
-            return candidate
-    return ""
 
 
 def _enqueue_background_bias_enrichment(cluster_id: int, domain_titles: dict[str, list[str]], domains: list[str]) -> None:
@@ -192,12 +170,14 @@ def _enqueue_background_bias_enrichment(cluster_id: int, domain_titles: dict[str
 
     def worker(todo: list[str]) -> None:
         try:
-            for domain in todo:
-                try:
-                    titles = (domain_titles.get(domain) or [])[:6]
-                    resolve_bias(domain, sample_titles=titles, allow_llm=True)
-                except Exception:
-                    log.exception("media-bias background enrichment failed for %s", domain)
+            try:
+                batch_input = {d: (domain_titles.get(d) or [])[:6] for d in todo}
+                results = classify_many_with_llm(batch_input)
+                saved = persist_llm_bias_results(results)
+                if saved:
+                    log.info("media-bias background classified %s/%s domains", saved, len(todo))
+            except Exception:
+                log.warning("media-bias background batch enrichment failed", exc_info=True)
         finally:
             with _ENRICH_GUARD:
                 for domain in todo:
@@ -257,24 +237,29 @@ def media_bias_widget(cluster_id: int):
             sources = []
 
         outlet_rows: list[dict[str, Any]] = []
-        seen_outlets: set[tuple[str, str]] = set()
+        seen_domains: set[str] = set()
         for s in sources:
             try:
-                url = (s.get("url") or "").strip()
-                article_domain = normalize_domain(url)
-                source_name = (s.get("source_name") or article_domain or "unknown").strip()
-                bias_domain = _best_bias_domain(s)
-                if not bias_domain:
+                domain = best_bias_domain(
+                    url=(s.get("url") or ""),
+                    source_name=(s.get("source_name") or ""),
+                    source_key=(s.get("source_key") or ""),
+                    raw_json=s.get("raw_json"),
+                )
+                if not domain:
                     continue
-                outlet_key = (source_name.casefold(), bias_domain)
-                if outlet_key in seen_outlets:
-                    continue
-                seen_outlets.add(outlet_key)
+                source_name = (s.get("source_name") or domain).strip() or domain
                 title = (s.get("title") or "").strip()
+                if domain in seen_domains:
+                    for row in outlet_rows:
+                        if row.get("domain") == domain and title:
+                            row.setdefault("titles", []).append(title)
+                            break
+                    continue
+                seen_domains.add(domain)
                 outlet_rows.append({
-                    "name": source_name or bias_domain,
-                    "domain": bias_domain,
-                    "article_domain": article_domain,
+                    "name": source_name,
+                    "domain": domain,
                     "titles": [title] if title else [],
                 })
             except Exception:
@@ -303,25 +288,30 @@ def media_bias_widget(cluster_id: int):
             else:
                 unresolved_domains.append(domain)
 
-        known_pre = sum(1 for v in domain_bias.values() if v[0] in ("left", "center", "right"))
         max_llm_domains = _max_llm_domains_per_request()
-        # If we do not yet have enough classified outlets for a meaningful distribution,
-        # spend a few LLM calls on the unresolved domains to avoid the widget being empty all the time.
-        target_known = 2 if len(outlet_rows) >= 2 else 1
-        llm_budget = max_llm_domains
-        if known_pre < target_known:
-            llm_budget = max(max_llm_domains, min(3, len(unresolved_domains)))
+        # New production path: classify unresolved domains in one bounded batch call,
+        # persist good labels forever, then render from those results immediately.
+        # Cost stays controlled because only DB/seed misses are sent to OpenAI.
+        if unresolved_domains and max_llm_domains > 0:
+            batch_domains = unresolved_domains[:max_llm_domains]
+            try:
+                batch_input = {d: (domain_titles.get(d) or [])[:6] for d in batch_domains}
+                batch_results = classify_many_with_llm(batch_input)
+                persist_llm_bias_results(batch_results)
+                for d in batch_domains:
+                    if d in batch_results and batch_results[d][0] in ("left", "center", "right"):
+                        domain_bias[d] = (batch_results[d][0], batch_results[d][1], "llm")
+                    else:
+                        domain_bias[d] = ("unknown", 0.0, "needs_review")
+            except Exception:
+                log.warning("media-bias live batch enrichment failed", exc_info=True)
 
-        llm_used = 0
-        for domain in unresolved_domains:
-            if llm_budget <= 0 or llm_used >= llm_budget:
-                domain_bias[domain] = ("unknown", 0.0, "deferred")
-                continue
-            domain_bias[domain] = ("unknown", 0.0, "deferred")
-            llm_used += 1
+        still_unresolved = [d for d in unresolved_domains if d not in domain_bias or domain_bias.get(d, ("unknown", 0, ""))[0] == "unknown"]
+        for domain in still_unresolved:
+            domain_bias.setdefault(domain, ("unknown", 0.0, "deferred"))
 
-        if unresolved_domains:
-            _enqueue_background_bias_enrichment(cid, domain_titles, unresolved_domains[:_background_max_domains_per_request()])
+        if still_unresolved:
+            _enqueue_background_bias_enrichment(cid, domain_titles, still_unresolved[:_background_max_domains_per_request()])
 
         buckets: dict[str, dict[str, Any]] = {
             "left": {"count": 0, "sources": []},
@@ -401,6 +391,6 @@ def media_bias_widget(cluster_id: int):
         data["total_sources"] = total_unique
 
         payload = {"data": data, "reason": None}
-        ttl_override = _partial_ttl_seconds() if known_total < total_unique else None
+        ttl_override = min(_negative_ttl_seconds(), 180) if known_total < total_unique else None
         _store_payload(cache_key, cid, payload, ttl_seconds=ttl_override, cluster_updated_at=str(updated_at))
         return {"ok": True, "cluster_id": cid, "data": data}
