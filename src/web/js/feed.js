@@ -37,6 +37,7 @@ const VISUAL_SEARCH_MIN_DIMENSION = 900;
 const PERSONAL_RECO_INSERT_AFTER = 5;
 const PERSONAL_RECO_MAX_ITEMS = 4;
 const PERSONAL_RECO_ENDPOINT_LIMIT = 120;
+const FEED_INITIAL_FAST_LIMIT = 40; // first paint only; full feed hydrates quietly after render
 
 
 function getGuestPreviewIds() {
@@ -2740,11 +2741,13 @@ window.addEventListener('resize', () => {
   }
 }, { passive: true });
 
-function getFeedLimitForCurrentPlan() {
+function getFeedLimitForCurrentPlan(opts = {}) {
   const plan = String((typeof billingState !== 'undefined' && billingState && billingState.plan) ? billingState.plan : 'free').toLowerCase();
-  if (plan === 'analyst') return 500;
-  if (plan === 'pro') return 300;
-  return 120;
+  let fullLimit = 120;
+  if (plan === 'analyst') fullLimit = 500;
+  else if (plan === 'pro') fullLimit = 300;
+  if (opts && opts.initialFast) return Math.min(fullLimit, FEED_INITIAL_FAST_LIMIT);
+  return fullLimit;
 }
 
 async function fetchFeed(opts) {
@@ -2753,6 +2756,7 @@ async function fetchFeed(opts) {
   const forceReset = !!options.reset;
   const externalSignal = options.signal;
   const requestReason = String(options.reason || '').trim();
+  const initialFast = !!options.initialFast;
   const requestSeq = ++__feedRequestSeq;
   let controller = null;
   let signal = externalSignal;
@@ -2796,7 +2800,7 @@ async function fetchFeed(opts) {
       `&country=${encodeURIComponent(state.country)}` +
       `&language=all` +
       `&ui_lang=${encodeURIComponent(state.language || "en")}` +
-      `&limit=${encodeURIComponent(String(getFeedLimitForCurrentPlan()))}` +
+      `&limit=${encodeURIComponent(String(getFeedLimitForCurrentPlan({ initialFast })))}` +
       (trendId ? `&trend_cluster_id=${trendId}` : "") +
       (q ? `&q=${q}` : "");
 
@@ -2885,6 +2889,19 @@ renderCards(items, {
   }
 
   if (!quiet) setStatus("");
+
+  // Fast first paint: load only enough for the visible collapsed feed, then
+  // hydrate the full plan-sized feed quietly after render.
+  if (initialFast && !isUrl && !rawQ && state.mode === 'feed') {
+    const fullLimit = getFeedLimitForCurrentPlan();
+    const fastLimit = getFeedLimitForCurrentPlan({ initialFast: true });
+    if (fullLimit > fastLimit) {
+      window.setTimeout(() => {
+        try { void fetchFeed({ quiet: true, reset: false, reason: 'initial-full-hydrate' }); } catch {}
+      }, 180);
+    }
+  }
+
   if (controller && __feedActiveAbortController === controller) {
     __feedActiveAbortController = null;
   }

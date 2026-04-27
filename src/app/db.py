@@ -2629,10 +2629,17 @@ class Database:
                 LIMIT ?
             """
             requested_limit = max(1, min(500, int(row_limit)))
-            # Production has a much larger / noisier cluster table than local.
-            # Pull a substantially wider candidate window so freshness and
-            # interest filtering do not get starved by stale cluster metadata.
-            fetch_limit = min(4000, max(requested_limit * 12, 1500))
+            # Production can have a noisy cluster table, but pulling 1500-4000
+            # rows for every cold first page makes /api/news block the app shell.
+            # Keep a wider candidate window for filtering, but cap it more
+            # aggressively and allow env tuning if a deployment needs more recall.
+            try:
+                candidate_min = int(os.getenv("NEWS_QUERY_CANDIDATE_MIN", "300") or "300")
+                candidate_mult = int(os.getenv("NEWS_QUERY_CANDIDATE_MULT", "8") or "8")
+                candidate_max = int(os.getenv("NEWS_QUERY_CANDIDATE_MAX", "1200") or "1200")
+            except Exception:
+                candidate_min, candidate_mult, candidate_max = 300, 8, 1200
+            fetch_limit = min(max(100, candidate_max), max(requested_limit * max(2, candidate_mult), max(100, candidate_min)))
             params.append(fetch_limit)
             return self._fetchall(sql, tuple(params))
 

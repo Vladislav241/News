@@ -354,6 +354,11 @@ async function main() {
     }
   })();
 
+  // The full-page boot overlay must not wait for slow API calls.
+  // Show the app shell as soon as controls/i18n are ready; feed requests then
+  // continue with the normal in-page status so users are not stuck on dots.
+  try { if (typeof window.__setAppBusy === 'function') window.__setAppBusy(false, { delay: 60 }); } catch {}
+
   // Initial data load must respect the direct route.
   // Without this, opening /tracking and then refreshing can first render the
   // main feed snapshot, which mixes feed cards into the tracking view.
@@ -375,7 +380,7 @@ async function main() {
         if (typeof window.__renderGuestLanding === 'function') await window.__renderGuestLanding();
       } catch {}
     } else {
-      await fetchFeed({ reset: true });
+      await fetchFeed({ reset: true, initialFast: true, reason: 'initial-fast' });
     }
   }
 

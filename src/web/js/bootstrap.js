@@ -357,6 +357,18 @@ function __setGlobalAppBusy(active, opts = {}) {
     body.classList.add('app-busy');
     html.classList.add('app-booting');
     body.style.overflow = 'hidden';
+    // Hard safety cap: never leave users staring at the dot loader because one
+    // startup network request is slow or stalled.
+    window.setTimeout(() => {
+      try {
+        if ((Number(body.dataset.appBusyCount || '0') || 0) > 0) {
+          body.dataset.appBusyCount = '0';
+          body.classList.remove('app-busy');
+          html.classList.remove('app-booting');
+          if (!authModalIsOpen || !authModalIsOpen()) body.style.overflow = '';
+        }
+      } catch {}
+    }, 2800);
     return;
   }
 
